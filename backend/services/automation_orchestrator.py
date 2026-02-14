@@ -124,7 +124,6 @@ class AutomationOrchestrator:
         Args:
             sample_id: 采样ID
         """
-        print(f"[DEBUG] automation_orchestrator.process_abnormal_sample called with sample_id={sample_id}")
         db = SessionLocal()
 
         try:
@@ -134,14 +133,11 @@ class AutomationOrchestrator:
                 logger.error(f"Sample not found: {sample_id}")
                 return
 
-            print(f"[DEBUG] Sample found: id={sample.id}, is_abnormal={sample.is_abnormal}, abnormal_type={sample.abnormal_type}")
-
             if not sample.is_abnormal:
                 logger.info(f"Sample {sample_id} is not abnormal, skipping")
                 return
 
             logger.info(f"Processing abnormal sample: {sample_id}, type: {sample.abnormal_type}")
-            print(f"[DEBUG] Processing abnormal sample: {sample_id}, type: {sample.abnormal_type}")
 
             # 步骤1：执行状态聚合
             state_result = state_aggregator.aggregate_device_state(
@@ -169,12 +165,9 @@ class AutomationOrchestrator:
                     device_ip=sample.raw_data.get("device_ip") if sample.raw_data else None,
                     abnormal_type=sample.abnormal_type
                 )
-                print(f"[DEBUG] diagnosis_task created: {diagnosis_task}")
 
                 # 执行研判
-                print(f"[DEBUG] Calling diagnosis_service.diagnose...")
                 diagnosis_result = await diagnosis_service.diagnose(diagnosis_task)
-                print(f"[DEBUG] diagnosis_result: {diagnosis_result}")
 
                 # 步骤4：写入分析结果
                 self._save_analysis_result(db, sample, diagnosis_result, state_result, upgrade_result)
@@ -357,18 +350,12 @@ class AutomationOrchestrator:
             )
 
             logger.info(f"Created decision task {task_id} for sample {sample.id}")
-            print(f"[DEBUG] Created decision task {task_id} for sample {sample.id}")
 
             # 查找匹配的策略
-            print(f"[DEBUG] Calling _find_matching_policy for site_id={sample.site_id}")
-            print(f"[DEBUG] diagnosis_result type: {type(diagnosis_result)}")
-            print(f"[DEBUG] diagnosis_result: {diagnosis_result}")
-            if hasattr(diagnosis_result, 'diagnosis_type'):
-                print(f"[DEBUG] diagnosis_result.diagnosis_type: {diagnosis_result.diagnosis_type}")
-                if hasattr(diagnosis_result.diagnosis_type, 'value'):
-                    print(f"[DEBUG] diagnosis_result.diagnosis_type.value: {diagnosis_result.diagnosis_type.value}")
             policy = self._find_matching_policy(db, sample.site_id, diagnosis_result)
-            print(f"[DEBUG] _find_matching_policy returned: policy={policy.policy_code if policy else None}")
+            logger.debug(
+                f"Policy matching for task {task_id}: {policy.policy_code if policy else 'none'}"
+            )
 
             if policy:
                 # 重新加载task对象

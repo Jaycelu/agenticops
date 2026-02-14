@@ -27,6 +27,14 @@ class TaskFeedbackRequest(BaseModel):
     tags: Optional[List[str]] = Field(default_factory=list)
 
 
+class TriggerDiagnosisRequest(BaseModel):
+    sample_id: int
+
+
+class TriggerAlertsRequest(BaseModel):
+    site_id: Optional[int] = None
+
+
 # ============ 基地管理 ============
 
 @router.get("/sites")
@@ -559,6 +567,15 @@ async def get_dashboard_summary(
     success_tasks_count = tasks_query.filter(AutomationTask.status == "success").count()
     failed_tasks_count = tasks_query.filter(AutomationTask.status == "failed").count()
 
+    feedback_stats = feedback_learning_service.get_feedback_stats(
+        db=db,
+        site_id=site_id
+    )
+    feedback_total = sum(item.get("total", 0) for item in feedback_stats.values())
+    feedback_correct = sum(item.get("correct", 0) for item in feedback_stats.values())
+    feedback_incorrect = sum(item.get("incorrect", 0) for item in feedback_stats.values())
+    feedback_partial = sum(item.get("partial", 0) for item in feedback_stats.values())
+
     return {
         "sites": {
             "total": sites_count
@@ -580,6 +597,14 @@ async def get_dashboard_summary(
             "success": success_tasks_count,
             "failed": failed_tasks_count,
             "success_rate": round(success_tasks_count / tasks_count * 100, 2) if tasks_count > 0 else 0
+        },
+        "feedback": {
+            "total": feedback_total,
+            "correct": feedback_correct,
+            "incorrect": feedback_incorrect,
+            "partial": feedback_partial,
+            "correct_rate": round(feedback_correct / feedback_total * 100, 2) if feedback_total > 0 else 0,
+            "incorrect_rate": round(feedback_incorrect / feedback_total * 100, 2) if feedback_total > 0 else 0
         }
     }
 
@@ -689,10 +714,11 @@ async def get_dashboard_trends(
 
 @router.post("/trigger-diagnosis")
 async def trigger_diagnosis(
-    sample_id: int,
+    payload: TriggerDiagnosisRequest,
     db: Session = Depends(get_db)
 ):
     """手动触发研判"""
+    sample_id = payload.sample_id
     sample = db.query(LogSample).filter(LogSample.id == sample_id).first()
     if not sample:
         raise HTTPException(status_code=404, detail="Sample not found")
@@ -709,12 +735,12 @@ async def trigger_diagnosis(
 
 @router.post("/trigger-alerts")
 async def trigger_alerts(
-    site_id: Optional[int] = None,
+    payload: TriggerAlertsRequest,
     db: Session = Depends(get_db)
 ):
     """手动触发告警"""
     try:
-        await alert_service.process_new_analysis_results(site_id)
+        await alert_service.process_new_analysis_results(payload.site_id)
         return {
             "success": True,
             "message": "Alerts triggered successfully"
