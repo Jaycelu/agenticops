@@ -1,0 +1,483 @@
+{
+  "templates": [
+    {
+      "template_id": "core_switch_template",
+      "name": "核心交换机巡检模板",
+      "description": "适用于核心交换机的全面巡检模板",
+      "device_role": "核心交换机",
+      "items": [
+        {
+          "item_id": "cpu_usage",
+          "name": "CPU使用率检查",
+          "category": "device_status",
+          "description": "检查设备CPU使用率是否超过阈值",
+          "commands": ["display cpu-usage"],
+          "severity": "warning",
+          "threshold": {"max": 80, "critical": 90},
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "memory_usage",
+          "name": "内存使用率检查",
+          "category": "device_status",
+          "description": "检查设备内存使用率是否超过阈值",
+          "commands": ["display memory all"],
+          "severity": "warning",
+          "threshold": {"max": 85, "critical": 95},
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "device_temperature",
+          "name": "设备温度检查",
+          "category": "device_status",
+          "description": "检查设备温度是否正常",
+          "commands": ["display device", "display environment"],
+          "severity": "warning",
+          "threshold": {"max": 70},
+          "device_types": ["huawei", "h3c"],
+          "enabled": true
+        },
+        {
+          "item_id": "port_status",
+          "name": "端口状态检查",
+          "category": "port_status",
+          "description": "检查是否有异常端口状态（DOWN端口）",
+          "commands": ["display interface brief"],
+          "severity": "info",
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "port_errors",
+          "name": "端口错误统计",
+          "category": "port_status",
+          "description": "检查端口错误包统计",
+          "commands": ["display interface"],
+          "severity": "warning",
+          "threshold": {"max_errors": 1000},
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "link_utilization",
+          "name": "链路带宽利用率",
+          "category": "link_status",
+          "description": "检查链路带宽利用率",
+          "commands": ["display interface", "display traffic statistics"],
+          "severity": "warning",
+          "threshold": {"max": 80, "critical": 90},
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "routing_table",
+          "name": "路由表完整性",
+          "category": "route_status",
+          "description": "检查路由表条目数",
+          "commands": ["display ip routing-table", "show ip route"],
+          "severity": "info",
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "ospf_status",
+          "name": "OSPF邻居状态",
+          "category": "route_status",
+          "description": "检查OSPF邻居状态",
+          "commands": ["display ospf peer", "show ip ospf neighbor"],
+          "severity": "error",
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "acl_status",
+          "name": "ACL状态检查",
+          "category": "security_status",
+          "description": "检查ACL配置和命中统计",
+          "commands": ["display acl all", "show access-lists"],
+          "severity": "info",
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "security_policy",
+          "name": "安全策略检查",
+          "category": "security_status",
+          "description": "检查安全策略配置",
+          "commands": ["display security-policy", "display firewall policy"],
+          "severity": "info",
+          "device_types": ["huawei", "h3c"],
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "template_id": "aggregation_switch_template",
+      "name": "汇聚交换机巡检模板",
+      "description": "适用于汇聚交换机的巡检模板",
+      "device_role": "汇聚交换机",
+      "items": [
+        {
+          "item_id": "cpu_usage",
+          "name": "CPU使用率检查",
+          "category": "device_status",
+          "description": "检查设备CPU使用率",
+          "commands": ["display cpu-usage"],
+          "severity": "warning",
+          "threshold": {"max": 80},
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "memory_usage",
+          "name": "内存使用率检查",
+          "category": "device_status",
+          "description": "检查设备内存使用率",
+          "commands": ["display memory all"],
+          "severity": "warning",
+          "threshold": {"max": 85},
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "port_status",
+          "name": "端口状态检查",
+          "category": "port_status",
+          "description": "检查端口状态，重点关注上联和下联端口",
+          "commands": ["display interface brief"],
+          "severity": "error",
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "port_errors",
+          "name": "端口错误统计",
+          "category": "port_status",
+          "description": "检查端口错误包",
+          "commands": ["display interface"],
+          "severity": "warning",
+          "threshold": {"max_errors": 500},
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "uplink_status",
+          "name": "上联链路状态",
+          "category": "link_status",
+          "description": "检查上联链路状态和聚合组",
+          "commands": ["display interface brief", "display link-aggregation"],
+          "severity": "error",
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "vlan_status",
+          "name": "VLAN配置检查",
+          "category": "security_status",
+          "description": "检查VLAN配置",
+          "commands": ["display vlan"],
+          "severity": "info",
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "ospf_status",
+          "name": "OSPF邻居状态",
+          "category": "route_status",
+          "description": "检查OSPF邻居状态",
+          "commands": ["display ospf peer", "show ip ospf neighbor"],
+          "severity": "error",
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "stp_status",
+          "name": "STP状态检查",
+          "category": "security_status",
+          "description": "检查STP状态",
+          "commands": ["display stp", "show spanning-tree"],
+          "severity": "warning",
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "template_id": "access_switch_template",
+      "name": "接入交换机巡检模板",
+      "description": "适用于接入交换机的巡检模板",
+      "device_role": "接入交换机",
+      "items": [
+        {
+          "item_id": "cpu_usage",
+          "name": "CPU使用率检查",
+          "category": "device_status",
+          "description": "检查设备CPU使用率",
+          "commands": ["display cpu-usage"],
+          "severity": "warning",
+          "threshold": {"max": 80},
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "memory_usage",
+          "name": "内存使用率检查",
+          "category": "device_status",
+          "description": "检查设备内存使用率",
+          "commands": ["display memory all"],
+          "severity": "warning",
+          "threshold": {"max": 85},
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "port_status",
+          "name": "端口状态检查",
+          "category": "port_status",
+          "description": "检查端口状态，识别DOWN端口",
+          "commands": ["display interface brief"],
+          "severity": "info",
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "port_errors",
+          "name": "端口错误统计",
+          "category": "port_status",
+          "description": "检查端口错误包",
+          "commands": ["display interface"],
+          "severity": "warning",
+          "threshold": {"max_errors": 500},
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "uplink_status",
+          "name": "上联链路状态",
+          "category": "link_status",
+          "description": "检查上联链路状态",
+          "commands": ["display interface brief", "display link-aggregation"],
+          "severity": "error",
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "vlan_status",
+          "name": "VLAN配置检查",
+          "category": "security_status",
+          "description": "检查VLAN配置",
+          "commands": ["display vlan"],
+          "severity": "info",
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "stp_status",
+          "name": "STP状态检查",
+          "category": "security_status",
+          "description": "检查STP状态",
+          "commands": ["display stp", "show spanning-tree"],
+          "severity": "warning",
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "template_id": "wlan_controller_template",
+      "name": "无线控制器巡检模板",
+      "description": "适用于无线控制器的巡检模板",
+      "device_role": "无线控制器",
+      "items": [
+        {
+          "item_id": "cpu_usage",
+          "name": "CPU使用率检查",
+          "category": "device_status",
+          "description": "检查控制器CPU使用率",
+          "commands": ["display cpu-usage"],
+          "severity": "warning",
+          "threshold": {"max": 80, "critical": 90},
+          "device_types": ["huawei", "h3c"],
+          "enabled": true
+        },
+        {
+          "item_id": "memory_usage",
+          "name": "内存使用率检查",
+          "category": "device_status",
+          "description": "检查控制器内存使用率",
+          "commands": ["display memory all"],
+          "severity": "warning",
+          "threshold": {"max": 85, "critical": 95},
+          "device_types": ["huawei", "h3c"],
+          "enabled": true
+        },
+        {
+          "item_id": "ap_status",
+          "name": "AP在线状态检查",
+          "category": "device_status",
+          "description": "检查AP在线状态和离线AP数量",
+          "commands": ["display ap all"],
+          "severity": "error",
+          "device_types": ["huawei", "h3c"],
+          "enabled": true
+        },
+        {
+          "item_id": "ap_cpu",
+          "name": "AP CPU使用率检查",
+          "category": "device_status",
+          "description": "检查AP的CPU使用率",
+          "commands": ["display ap cpu"],
+          "severity": "warning",
+          "threshold": {"max": 80},
+          "device_types": ["huawei", "h3c"],
+          "enabled": true
+        },
+        {
+          "item_id": "ap_memory",
+          "name": "AP内存使用率检查",
+          "category": "device_status",
+          "description": "检查AP的内存使用率",
+          "commands": ["display ap memory"],
+          "severity": "warning",
+          "threshold": {"max": 85},
+          "device_types": ["huawei", "h3c"],
+          "enabled": true
+        },
+        {
+          "item_id": "wlan_status",
+          "name": "WLAN配置检查",
+          "category": "security_status",
+          "description": "检查WLAN配置和SSID状态",
+          "commands": ["display wlan all"],
+          "severity": "info",
+          "device_types": ["huawei", "h3c"],
+          "enabled": true
+        },
+        {
+          "item_id": "ap_radio_status",
+          "name": "AP射频状态检查",
+          "category": "device_status",
+          "description": "检查AP射频接口状态",
+          "commands": ["display ap radio all"],
+          "severity": "warning",
+          "device_types": ["huawei", "h3c"],
+          "enabled": true
+        },
+        {
+          "item_id": "client_count",
+          "name": "终端连接数检查",
+          "category": "device_status",
+          "description": "检查终端连接数",
+          "commands": ["display station all"],
+          "severity": "info",
+          "threshold": {"max_clients": 100},
+          "device_types": ["huawei", "h3c"],
+          "enabled": true
+        },
+        {
+          "item_id": "interface_status",
+          "name": "接口状态检查",
+          "category": "port_status",
+          "description": "检查控制器接口状态",
+          "commands": ["display interface brief"],
+          "severity": "error",
+          "device_types": ["huawei", "h3c"],
+          "enabled": true
+        },
+        {
+          "item_id": "license_status",
+          "name": "License状态检查",
+          "category": "security_status",
+          "description": "检查License使用情况",
+          "commands": ["display license resource"],
+          "severity": "warning",
+          "device_types": ["huawei", "h3c"],
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "template_id": "firewall_template",
+      "name": "防火墙巡检模板",
+      "description": "适用于防火墙的巡检模板",
+      "device_role": "防火墙",
+      "items": [
+        {
+          "item_id": "cpu_usage",
+          "name": "CPU使用率检查",
+          "category": "device_status",
+          "description": "检查防火墙CPU使用率",
+          "commands": ["display cpu-usage", "show cpu"],
+          "severity": "warning",
+          "threshold": {"max": 70, "critical": 85},
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "memory_usage",
+          "name": "内存使用率检查",
+          "category": "device_status",
+          "description": "检查防火墙内存使用率",
+          "commands": ["display memory all", "show memory"],
+          "severity": "warning",
+          "threshold": {"max": 80, "critical": 90},
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "firewall_policy",
+          "name": "防火墙策略检查",
+          "category": "security_status",
+          "description": "检查防火墙策略配置",
+          "commands": ["display firewall policy", "show access-list"],
+          "severity": "info",
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "session_status",
+          "name": "会话状态检查",
+          "category": "security_status",
+          "description": "检查当前会话数",
+          "commands": ["display firewall session table", "show conn"],
+          "severity": "warning",
+          "threshold": {"max_sessions": 1000000},
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "attack_detection",
+          "name": "攻击检测状态",
+          "category": "security_status",
+          "description": "检查攻击检测日志",
+          "commands": ["display firewall log", "show logging"],
+          "severity": "warning",
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "interface_status",
+          "name": "接口状态检查",
+          "category": "port_status",
+          "description": "检查接口状态",
+          "commands": ["display interface", "show interface"],
+          "severity": "error",
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        },
+        {
+          "item_id": "routing_table",
+          "name": "路由表检查",
+          "category": "route_status",
+          "description": "检查路由表",
+          "commands": ["display ip routing-table", "show ip route"],
+          "severity": "info",
+          "device_types": ["huawei", "h3c", "cisco"],
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}

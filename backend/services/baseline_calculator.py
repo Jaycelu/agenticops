@@ -1,0 +1,156 @@
+"""
+Baseline计算服务
+计算日志模式的baseline统计信息，用于异常检测
+"""
+import logging
+from typing import Dict, List, Optional
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+
+from database import SessionLocal
+
+logger = logging.getLogger(__name__)
+
+
+class BaselineCalculator:
+    """Baseline计算器"""
+    
+    @classmethod
+    def calculate_7d_baseline(
+        cls,
+        site_id: int,
+        netbox_device_id: int,
+        log_fingerprint: str,
+        db: Optional[Session] = None
+    ) -> Dict:
+        """
+        计算7天baseline统计信息
+
+        Args:
+            site_id: 基地ID
+            netbox_device_id: NetBox设备ID
+            log_fingerprint: 日志指纹
+            db: 数据库会话（可选）
+
+        Returns:
+            baseline统计信息字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 查询过去7天的采样数据
+            sql = text("""
+                SELECT
+                    site_id,
+                    netbox_device_id,
+                    log_fingerprint,
+                    AVG(log_count)::NUMERIC(10,2) AS baseline_avg_5m,
+                    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY log_count) AS baseline_p95_5m,
+                    COUNT(*) AS baseline_count_7d
+                FROM log_sample
+                WHERE
+                    site_id = :site_id
+                    AND netbox_device_id = :netbox_device_id
+                    AND log_fingerprint = :log_fingerprint
+                    AND sampled_at >= NOW() - INTERVAL '7 days'
+                GROUP BY site_id, netbox_device_id, log_fingerprint
+            """)
+
+            result = db.execute(sql, {
+                'site_id': site_id,
+                'netbox_device_id': netbox_device_id,
+                'log_fingerprint': log_fingerprint
+            }).fetchone()
+            
+            if result:
+                return {
+                    'baseline_avg_5m': float(result[2]) if result[2] else None,
+                    'baseline_p95_5m': float(result[3]) if result[3] else None,
+                    'baseline_count_7d': int(result[4]) if result[4] else 0
+                }
+            else:
+                # 没有历史数据，返回默认值
+                return {
+                    'baseline_avg_5m': None,
+                    'baseline_p95_5m': None,
+                    'baseline_count_7d': 0
+                }
+                
+        except Exception as e:
+            logger.error(f"Error calculating baseline: {e}", exc_info=True)
+            return {
+                'baseline_avg_5m': None,
+                'baseline_p95_5m': None,
+                'baseline_count_7d': 0
+            }
+        finally:
+            if should_close:
+                db.close()
+    
+    @classmethod
+    def calculate_deviation_ratio(
+        cls,
+        current_count: int,
+        baseline_avg: Optional[float]
+    ) -> Optional[float]:
+        """
+        计算偏离比率
+        
+        Args:
+            current_count: 当前窗口的日志数量
+            baseline_avg: baseline平均值
+        
+        Returns:
+            偏离比率（current_count / baseline_avg）
+        """
+        if baseline_avg is None or baseline_avg == 0:
+            return None
+        return round(current_count / baseline_avg, 2)
+    
+    @classmethod
+    def is_raw_anomaly(
+        cls,
+        log_count: int,
+        baseline_avg_5m: Optional[float],
+        baseline_p95_5m: Optional[float],
+        baseline_count_7d: int
+    ) -> bool:
+        """
+        判断是否为Raw Anomaly（行为偏离正常基线）
+        
+        判定条件（满足任意一个即为Raw Anomaly）：
+        1. log_count >= baseline_p95_5m
+        2. deviation_ratio >= 3
+        3. baseline_count_7d < 5 且 log_count >= 3（新模式）
+        
+        Args:
+            log_count: 当前窗口的日志数量
+            baseline_avg_5m: baseline平均值
+            baseline_p95_5m: baseline P95值
+            baseline_count_7d: 7天出现次数
+        
+        Returns:
+            是否为Raw Anomaly
+        """
+        # 条件1：超过P95阈值
+        if baseline_p95_5m is not None and log_count >= baseline_p95_5m:
+            return True
+        
+        # 条件2：偏离比率 >= 3
+        deviation_ratio = cls.calculate_deviation_ratio(log_count, baseline_avg_5m)
+        if deviation_ratio is not None and deviation_ratio >= 3:
+            return True
+        
+        # 条件3：新模式（历史出现次数少，但当前出现频繁）
+        if baseline_count_7d < 5 and log_count >= 3:
+            return True
+        
+        return False
+
+
+# 全局baseline计算器实例
+baseline_calculator = BaselineCalculator()

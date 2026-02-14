@@ -1,0 +1,168 @@
+{
+  "timestamp": "2026-01-14T15:29:12.490232",
+  "total": 20,
+  "success": 20,
+  "failed": 0,
+  "results": [
+    {
+      "device_id": 8,
+      "device_name": "CNSF-AC-01-Air9700",
+      "device_ip": "10.128.253.2",
+      "success": true,
+      "config_length": 2159,
+      "fetched_at": "2026-01-14 15:24:14.794882"
+    },
+    {
+      "device_id": 10,
+      "device_name": "CNSF-AC-02-Air9700",
+      "device_ip": "10.128.253.3",
+      "success": true,
+      "config_length": 2305,
+      "fetched_at": "2026-01-14 15:24:29.564214"
+    },
+    {
+      "device_id": 1,
+      "device_name": "CNSF-Core-S7706-CSS-6",
+      "device_ip": "10.128.254.1",
+      "success": true,
+      "config_length": 1579,
+      "fetched_at": "2026-01-14 15:24:46.530183"
+    },
+    {
+      "device_id": 193,
+      "device_name": "CNSF-FT-LJ1-1F-FT01-15",
+      "device_ip": "10.128.245.1",
+      "success": true,
+      "config_length": 1358,
+      "fetched_at": "2026-01-14 15:25:02.870374"
+    },
+    {
+      "device_id": 195,
+      "device_name": "CNSF-FT-LJ1-1F-FT02-15",
+      "device_ip": "10.128.245.2",
+      "success": true,
+      "config_length": 1358,
+      "fetched_at": "2026-01-14 15:25:18.838197"
+    },
+    {
+      "device_id": 197,
+      "device_name": "CNSF-FT-LJ1-1F-FT03-15",
+      "device_ip": "10.128.245.3",
+      "success": true,
+      "config_length": 1358,
+      "fetched_at": "2026-01-14 15:25:34.493670"
+    },
+    {
+      "device_id": 199,
+      "device_name": "CNSF-FT-LJ1-1F-FT04-15",
+      "device_ip": "10.128.245.4",
+      "success": true,
+      "config_length": 1358,
+      "fetched_at": "2026-01-14 15:25:49.982762"
+    },
+    {
+      "device_id": 201,
+      "device_name": "CNSF-FT-LJ1-1F-FT05-15",
+      "device_ip": "10.128.245.5",
+      "success": true,
+      "config_length": 1358,
+      "fetched_at": "2026-01-14 15:26:04.892345"
+    },
+    {
+      "device_id": 202,
+      "device_name": "CNSF-FT-LJ1-1F-FT06-15",
+      "device_ip": "10.128.245.6",
+      "success": true,
+      "config_length": 1358,
+      "fetched_at": "2026-01-14 15:26:19.699624"
+    },
+    {
+      "device_id": 203,
+      "device_name": "CNSF-FT-LJ1-1F-FT07-15",
+      "device_ip": "10.128.245.7",
+      "success": true,
+      "config_length": 1358,
+      "fetched_at": "2026-01-14 15:26:35.575350"
+    },
+    {
+      "device_id": 204,
+      "device_name": "CNSF-FT-LJ1-1F-FT08-15",
+      "device_ip": "10.128.245.8",
+      "success": true,
+      "config_length": 1358,
+      "fetched_at": "2026-01-14 15:26:50.818747"
+    },
+    {
+      "device_id": 207,
+      "device_name": "CNSF-FT-LJ1-1F-FT14-15",
+      "device_ip": "10.128.245.65",
+      "success": true,
+      "config_length": 1358,
+      "fetched_at": "2026-01-14 15:27:06.712475"
+    },
+    {
+      "device_id": 209,
+      "device_name": "CNSF-FT-LJ1-1F-FT15-15",
+      "device_ip": "10.128.245.66",
+      "success": true,
+      "config_length": 1358,
+      "fetched_at": "2026-01-14 15:27:22.209501"
+    },
+    {
+      "device_id": 212,
+      "device_name": "CNSF-FT-LJ1-1F-FT16-15",
+      "device_ip": "10.128.245.67",
+      "success": true,
+      "config_length": 1358,
+      "fetched_at": "2026-01-14 15:27:37.257428"
+    },
+    {
+      "device_id": 214,
+      "device_name": "CNSF-FT-LJ1-1F-FT17-15",
+      "device_ip": "10.128.245.68",
+      "success": true,
+      "config_length": 1358,
+      "fetched_at": "2026-01-14 15:27:53.585071"
+    },
+    {
+      "device_id": 219,
+      "device_name": "CNSF-FT-LJ1-1F-FT18-15",
+      "device_ip": "10.128.245.69",
+      "success": true,
+      "config_length": 1358,
+      "fetched_at": "2026-01-14 15:28:09.121009"
+    },
+    {
+      "device_id": 221,
+      "device_name": "CNSF-FT-LJ1-1F-FT19-15",
+      "device_ip": "10.128.245.70",
+      "success": true,
+      "config_length": 1358,
+      "fetched_at": "2026-01-14 15:28:24.127385"
+    },
+    {
+      "device_id": 222,
+      "device_name": "CNSF-FT-LJ1-1F-FT20-15",
+      "device_ip": "10.128.245.71",
+      "success": true,
+      "config_length": 1358,
+      "fetched_at": "2026-01-14 15:28:39.953712"
+    },
+    {
+      "device_id": 224,
+      "device_name": "CNSF-FT-LJ1-1F-FT21-15",
+      "device_ip": "10.128.245.72",
+      "success": true,
+      "config_length": 1358,
+      "fetched_at": "2026-01-14 15:28:55.120695"
+    },
+    {
+      "device_id": 50,
+      "device_name": "CNSF-FT-LJ1-FTHJ01-33/35",
+      "device_ip": "10.128.245.9",
+      "success": true,
+      "config_length": 1607,
+      "fetched_at": "2026-01-14 15:29:11.870287"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+[Unit]
+Description=NetOps AI Frontend Service (Streamlit)
+After=network.target netops-backend.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/netops/frontend/streamlit
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+ExecStart=/usr/local/bin/streamlit run app.py --server.port 5173 --server.address 0.0.0.0 --server.headless true
+Restart=always
+RestartSec=10
+StandardOutput=append:/opt/netops/logs/streamlit.log
+StandardError=append:/opt/netops/logs/streamlit.log
+
+[Install]
+WantedBy=multi-user.target
