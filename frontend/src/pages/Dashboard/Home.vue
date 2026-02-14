@@ -15,8 +15,9 @@
           </button>
         </div>
       </section>
-      <section class="card base-section">
-        <div class="base-section-header">
+      <section class="base-section">
+        <div class="section-header">
+          <Building2 class="section-icon" :size="20" />
           <h3>选择基地</h3>
         </div>
         <div v-if="loading.sites" class="empty">加载基地列表中...</div>
@@ -29,7 +30,9 @@
             :class="{ active: selectedSiteName === site.name }"
             @click="handleSiteSelect(site.name)"
           >
-            <div class="base-icon">基</div>
+            <div class="base-icon">
+              <Building2 :size="28" />
+            </div>
             <div class="base-info">
               <div class="base-name">{{ site.name }}</div>
             </div>
@@ -203,6 +206,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { Building2 } from 'lucide-vue-next'
 import { alertsApi } from '@/api/alerts'
 import { assetsApi, Device, Site } from '@/api/assets'
 import {
@@ -684,58 +688,69 @@ onUnmounted(() => {
 }
 
 .base-section {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
-.base-section-header h3 {
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.section-icon {
+  color: #4a9eff;
+}
+
+.section-header h3 {
   margin: 0;
+  color: #333;
   font-size: 16px;
-  color: #1e293b;
+  font-weight: 600;
 }
 
 .base-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
 }
 
 .base-card {
   background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
   border: 2px solid transparent;
   border-radius: 12px;
-  padding: 14px;
+  padding: 20px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
 }
 
 .base-card:hover {
-  border-color: #93c5fd;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(59, 130, 246, 0.12);
+  background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .base-card.active {
-  border-color: #3b82f6;
+  border-color: #4a9eff;
   background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.22);
+  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.25);
 }
 
 .base-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
   background: linear-gradient(135deg, #4a9eff 0%, #2196f3 100%);
-  color: #fff;
+  color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
-  font-weight: 700;
   flex-shrink: 0;
 }
 
@@ -746,7 +761,7 @@ onUnmounted(() => {
 .base-name {
   font-size: 15px;
   font-weight: 600;
-  color: #334155;
+  color: #333;
 }
 
 .panel {
