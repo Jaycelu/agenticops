@@ -17,6 +17,9 @@
           <span class="sync-hint" :class="{ running: syncState.running }">
             {{ syncState.running ? '资产数据预热中...' : `上次预热：${syncState.lastLabel}` }}
           </span>
+          <button class="btn-secondary refresh-btn" :disabled="loading.data || syncState.running" @click="handleManualRefresh">
+            {{ loading.data || syncState.running ? '刷新中...' : '手动刷新' }}
+          </button>
         </div>
       </section>
 
@@ -27,7 +30,7 @@
             <span class="muted">按站点聚合（含缓存与实时刷新）</span>
           </div>
 
-          <div class="metric-grid five-col">
+          <div class="metric-grid four-col">
             <button class="metric-item metric-device" @click="goToAssets('device')">
               <span class="metric-value">{{ assetSnapshot.deviceCount }}</span>
               <span class="metric-label">设备总数</span>
@@ -43,10 +46,6 @@
             <button class="metric-item metric-vlan" @click="goToAssets('vlan')">
               <span class="metric-value">{{ assetSnapshot.vlanCount }}</span>
               <span class="metric-label">VLAN数量</span>
-            </button>
-            <button class="metric-item metric-prefix" @click="goToAssets('prefix')">
-              <span class="metric-value">{{ assetSnapshot.prefixCount }}</span>
-              <span class="metric-label">前缀数量</span>
             </button>
           </div>
 
@@ -188,7 +187,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { alertsApi } from '@/api/alerts'
 import { assetsApi, Device, Site } from '@/api/assets'
@@ -210,7 +209,6 @@ interface AssetSnapshot {
   ipCount: number
   rackCount: number
   vlanCount: number
-  prefixCount: number
   devices: Device[]
 }
 
@@ -221,9 +219,10 @@ interface PieSegment {
   color: string
 }
 
-const ASSET_CACHE_TTL = 5 * 60 * 1000
+const ASSET_CACHE_TTL = 30 * 60 * 1000
 const SYNC_THROTTLE = 90 * 1000
 const PIE_COLORS = ['#3b82f6', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
+const AUTO_REFRESH_INTERVAL = 30 * 60 * 1000
 
 const router = useRouter()
 const sites = ref<Site[]>([])
@@ -245,7 +244,6 @@ const assetSnapshot = ref<AssetSnapshot>({
   ipCount: 0,
   rackCount: 0,
   vlanCount: 0,
-  prefixCount: 0,
   devices: []
 })
 
@@ -253,6 +251,7 @@ const alerts = ref<any[]>([])
 const automationSummary = ref<any>({ tasks: { failed: 0 } })
 const hourlyTrends = ref<HourTrend[]>([])
 const feedbackStats = ref<Record<string, any>>({})
+let autoRefreshTimer: number | null = null
 
 const normalized = (value: string) => value.toLowerCase().replace(/[\s_-]/g, '')
 const cacheKey = (siteName?: string) => `dashboard:assets:v2:${siteName || 'all'}`
@@ -429,6 +428,7 @@ const loadSites = async () => {
 
 const loadAssetsData = async () => {
   const siteName = selectedSiteName.value || undefined
+  const siteSlug = selectedSite.value?.slug || undefined
   const cache = readAssetCache(siteName)
   if (cache) {
     applySnapshot(cache)
@@ -437,13 +437,44 @@ const loadAssetsData = async () => {
   await prewarmAssets(siteName)
 
   try {
-    const [deviceResp, ipResp, rackResp, vlanResp, prefixResp] = await Promise.all([
-      assetsApi.getDevices(siteName ? { site: siteName } : undefined),
-      assetsApi.getIPs(),
-      assetsApi.getRacks(siteName ? { site: siteName } : undefined),
-      assetsApi.getVLANs(siteName ? { site: siteName } : undefined),
-      assetsApi.getPrefixes(siteName ? { site: siteName } : undefined)
+    let [deviceResp, rackResp, vlanResp] = await Promise.all([
+      assetsApi.getDevices(siteSlug ? { site: siteSlug } : siteName ? { site: siteName } : undefined),
+      assetsApi.getRacks(siteSlug ? { site: siteSlug } : siteName ? { site: siteName } : undefined),
+      assetsApi.getVLANs(siteSlug ? { site: siteSlug } : siteName ? { site: siteName } : undefined)
     ])
+
+    // 兜底：当站点过滤参数与NetBox字段不一致时，回退到全量并在前端按站点名/slug筛选
+    if ((deviceResp.count || 0) === 0 && selectedSite.value) {
+      const fallback = await assetsApi.getDevices()
+      const tokens = [selectedSite.value.name, selectedSite.value.slug].filter(Boolean).map((v) => String(v).toLowerCase())
+      const filtered = (fallback.devices || []).filter((item) => {
+        const siteValue = String(item.site || '').toLowerCase()
+        return tokens.some((token) => siteValue.includes(token))
+      })
+      deviceResp = { count: filtered.length, devices: filtered }
+    }
+
+    const ipResp = await assetsApi.getIPs()
+
+    // Racks/VLAN 同样兜底
+    if ((rackResp.count || 0) === 0 && selectedSite.value) {
+      const fallback = await assetsApi.getRacks()
+      const tokens = [selectedSite.value.name, selectedSite.value.slug].filter(Boolean).map((v) => String(v).toLowerCase())
+      const filtered = (fallback.racks || []).filter((item: any) => {
+        const siteValue = String(item.site || '').toLowerCase()
+        return tokens.some((token) => siteValue.includes(token))
+      })
+      rackResp = { count: filtered.length, racks: filtered }
+    }
+    if ((vlanResp.count || 0) === 0 && selectedSite.value) {
+      const fallback = await assetsApi.getVLANs()
+      const tokens = [selectedSite.value.name, selectedSite.value.slug].filter(Boolean).map((v) => String(v).toLowerCase())
+      const filtered = (fallback.vlans || []).filter((item: any) => {
+        const siteValue = String(item.site || '').toLowerCase()
+        return tokens.some((token) => siteValue.includes(token))
+      })
+      vlanResp = { count: filtered.length, vlans: filtered }
+    }
 
     const scopedIpCount = siteName
       ? (deviceResp.devices || []).filter((item) => !!item.primary_ip).length
@@ -454,7 +485,6 @@ const loadAssetsData = async () => {
       ipCount: scopedIpCount,
       rackCount: rackResp.count || 0,
       vlanCount: vlanResp.count || 0,
-      prefixCount: prefixResp.count || 0,
       devices: deviceResp.devices || []
     }
 
@@ -508,7 +538,7 @@ const loadAllData = async () => {
   }
 }
 
-const goToAssets = (type: 'device' | 'rack' | 'ip' | 'vlan' | 'prefix', extra?: Record<string, string>) => {
+const goToAssets = (type: 'device' | 'rack' | 'ip' | 'vlan', extra?: Record<string, string>) => {
   const query: Record<string, string> = {
     type,
     ...extra
@@ -549,6 +579,23 @@ onMounted(async () => {
   await loadSites()
   if (!selectedSiteName.value) {
     await loadAllData()
+  }
+  autoRefreshTimer = window.setInterval(() => {
+    loadAllData()
+  }, AUTO_REFRESH_INTERVAL)
+})
+
+const handleManualRefresh = async () => {
+  const siteName = selectedSiteName.value || undefined
+  localStorage.removeItem(cacheKey(siteName))
+  localStorage.removeItem(syncKey(siteName))
+  await loadAllData()
+}
+
+onUnmounted(() => {
+  if (autoRefreshTimer) {
+    window.clearInterval(autoRefreshTimer)
+    autoRefreshTimer = null
   }
 })
 </script>
@@ -673,8 +720,8 @@ onMounted(async () => {
   gap: 8px;
 }
 
-.metric-grid.five-col {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+.metric-grid.four-col {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .metric-grid.two-col {
@@ -716,10 +763,6 @@ button.metric-item:hover {
 
 .metric-vlan {
   border-top: 3px solid #f59e0b;
-}
-
-.metric-prefix {
-  border-top: 3px solid #8b5cf6;
 }
 
 .metric-critical {
@@ -985,7 +1028,7 @@ button.metric-item:hover {
 }
 
 @media (max-width: 1280px) {
-  .metric-grid.five-col {
+  .metric-grid.four-col {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
@@ -1024,9 +1067,14 @@ button.metric-item:hover {
 }
 
 @media (max-width: 760px) {
-  .metric-grid.five-col,
+  .metric-grid.four-col,
   .metric-grid.two-col {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+.refresh-btn {
+  width: 100%;
+  justify-content: center;
 }
 </style>

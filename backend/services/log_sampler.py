@@ -71,6 +71,8 @@ class LogSampler:
                     replace_existing=True
                 )
                 logger.info(f"Added sampling job for {site_code} with interval {interval_minutes} minutes")
+                # 服务启动后立即采样一次，避免首轮要等待一个interval
+                asyncio.create_task(self.sample_site_logs(site_code))
 
         self.scheduler.start()
         self.is_running = True
@@ -329,16 +331,25 @@ class LogSampler:
             # 获取基地ID
             site = db.query(Site).filter(Site.site_code == site_code).first()
             if not site:
-                logger.error(f"Site not found: {site_code}")
-                return
+                # 兜底：若site表未初始化，自动创建，避免采样任务完全丢失
+                site_config = get_site_config(site_code) or {}
+                site = Site(
+                    site_code=site_code,
+                    site_name=site_config.get("site_name", site_code),
+                    description=site_config.get("description", f"{site_code} auto-created by sampler")
+                )
+                db.add(site)
+                db.flush()
+                logger.warning(f"Site not found in DB, auto-created: {site_code}")
 
             site_id = site.id
 
             # 导入异常类型管理服务
             from services.abnormal_type_service import abnormal_type_service
 
-            # 只为满足触发策略的设备创建采样记录
+            # 为每个有日志的设备都创建采样记录；异常仅作为标记字段
             abnormal_devices_count = 0
+            total_samples_count = 0
             for device_ip, stats in device_stats.items():
                 policy_decision = self._evaluate_collection_policy(
                     db=db,
@@ -348,13 +359,6 @@ class LogSampler:
                     stats=stats,
                     collection_policy=collection_policy or {}
                 )
-
-                if not policy_decision["should_trigger"]:
-                    logger.debug(
-                        "Skip sample for %s (%s): %s",
-                        site_code, device_ip, policy_decision["reason"]
-                    )
-                    continue
 
                 # 使用异常类型管理服务进行判定
                 matched_type = abnormal_type_service.match_abnormal_type(
@@ -371,7 +375,8 @@ class LogSampler:
                 )
 
                 # 策略可覆盖异常类型（例如严重日志实时触发）
-                if policy_decision.get("matched_type_override"):
+                # 仅在策略判定允许触发时使用覆盖类型
+                if policy_decision.get("should_trigger") and policy_decision.get("matched_type_override"):
                     matched_type = policy_decision["matched_type_override"]
 
                 # 如果仍未匹配到异常类型，补一个通用高错误率类型
@@ -384,11 +389,9 @@ class LogSampler:
                         "tracking_config": {}
                     }
 
-                # fallback 模式下若未命中异常类型，跳过，避免误报
-                if not matched_type:
-                    continue
-
-                abnormal_devices_count += 1
+                is_abnormal = matched_type is not None
+                if is_abnormal:
+                    abnormal_devices_count += 1
 
                 # 通过NetBox API获取设备ID
                 netbox_device_id = await self._get_device_id_from_netbox(device_ip, site_code)
@@ -412,8 +415,8 @@ class LogSampler:
                     sampled_at=datetime.now(),
                     time_window_start=time_window_start,
                     time_window_end=time_window_end,
-                    is_abnormal=True,
-                    abnormal_type=matched_type["type_code"],
+                    is_abnormal=is_abnormal,
+                    abnormal_type=matched_type["type_code"] if matched_type else None,
                     raw_data={
                         "device_ip": device_ip,
                         "log_messages": stats["log_messages"],
@@ -431,12 +434,15 @@ class LogSampler:
 
                 db.add(log_sample)
                 db.flush()  # 确保log_sample有ID
+                total_samples_count += 1
 
                 # 更新异常类型的出现次数
-                abnormal_type_service.update_occurrence(db, matched_type["type_code"])
+                should_process_abnormal = is_abnormal and policy_decision.get("should_trigger", True)
+                if should_process_abnormal:
+                    abnormal_type_service.update_occurrence(db, matched_type["type_code"])
 
                 # 如果不是已知异常，检查是否为Raw Anomaly
-                if matched_type["type_code"].startswith("UNKNOWN_") and log_fingerprint and log_count > 0:
+                if should_process_abnormal and matched_type["type_code"].startswith("UNKNOWN_") and log_fingerprint and log_count > 0:
                     # 如果没有设备ID，使用-1作为占位符
                     device_id_for_baseline = netbox_device_id if netbox_device_id else -1
                     await self._check_and_create_raw_anomaly(
@@ -445,13 +451,17 @@ class LogSampler:
                         time_window_start, time_window_end
                     )
 
-                # 调用规则引擎进行诊断
-                await self._run_rule_engine_diagnosis(
-                    db, site_id, netbox_device_id, device_ip, stats, log_sample
-                )
+                # 仅对异常采样调用规则引擎和后续自动化
+                if should_process_abnormal:
+                    await self._run_rule_engine_diagnosis(
+                        db, site_id, netbox_device_id, device_ip, stats, log_sample
+                    )
 
             db.commit()
-            logger.info(f"Found {len(device_stats)} devices, wrote {abnormal_devices_count} abnormal samples to database for {site_code}")
+            logger.info(
+                "Found %s devices, wrote %s samples (%s abnormal) to database for %s",
+                len(device_stats), total_samples_count, abnormal_devices_count, site_code
+            )
 
             # 触发研判流程（异步）
             if abnormal_devices_count > 0:
