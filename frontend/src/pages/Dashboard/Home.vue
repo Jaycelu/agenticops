@@ -254,7 +254,7 @@ const feedbackStats = ref<Record<string, any>>({})
 let autoRefreshTimer: number | null = null
 
 const normalized = (value: string) => value.toLowerCase().replace(/[\s_-]/g, '')
-const cacheKey = (siteName?: string) => `dashboard:assets:v2:${siteName || 'all'}`
+const cacheKey = (siteName?: string) => `dashboard:assets:v3:${siteName || 'all'}`
 const syncKey = (siteName?: string) => `dashboard:sync:v1:${siteName || 'all'}`
 
 const selectedSite = computed(() => sites.value.find((item) => item.name === selectedSiteName.value) || null)
@@ -476,13 +476,10 @@ const loadAssetsData = async () => {
       vlanResp = { count: filtered.length, vlans: filtered }
     }
 
-    const scopedIpCount = siteName
-      ? (deviceResp.devices || []).filter((item) => !!item.primary_ip).length
-      : (ipResp.count || 0)
-
     const nextSnapshot: AssetSnapshot = {
       deviceCount: deviceResp.count || 0,
-      ipCount: scopedIpCount,
+      // IP 数量直接使用 NetBox IP 列表总数，保持与资产页口径一致
+      ipCount: ipResp.count || 0,
       rackCount: rackResp.count || 0,
       vlanCount: vlanResp.count || 0,
       devices: deviceResp.devices || []
