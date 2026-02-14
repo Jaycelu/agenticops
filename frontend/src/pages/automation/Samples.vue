@@ -8,7 +8,7 @@
         </button>
         <div class="page-title">
           <Activity class="title-icon" :size="28" />
-          <h1>异常采样列表</h1>
+          <h1>采样列表</h1>
         </div>
         <button @click="refreshSamples" class="btn-refresh" :disabled="loading">
           <RefreshCw :size="16" :class="{ 'animate-spin': loading }" />
@@ -38,6 +38,26 @@
               <div class="base-desc">{{ site.description || '' }}</div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div class="filter-section">
+        <div class="filter-row">
+          <button
+            class="filter-btn"
+            :class="{ active: !abnormalOnly }"
+            @click="setAbnormalOnly(false)"
+          >
+            全部采样
+          </button>
+          <button
+            class="filter-btn"
+            :class="{ active: abnormalOnly }"
+            @click="setAbnormalOnly(true)"
+          >
+            仅异常采样
+          </button>
+          <span class="filter-total">总数: {{ totalSamples }}</span>
         </div>
       </div>
 
@@ -76,7 +96,7 @@
           </div>
         </div>
       </div>
-      <div v-else class="no-data">暂无异常采样数据</div>
+      <div v-else class="no-data">{{ abnormalOnly ? '暂无异常采样数据' : '暂无采样数据' }}</div>
     </div>
   </div>
 </template>
@@ -95,6 +115,8 @@ const selectedSiteId = ref<number | null>(null)
 const loading = ref(false)
 const startDate = ref<string>('')
 const endDate = ref<string>('')
+const abnormalOnly = ref(true)
+const totalSamples = ref(0)
 
 const abnormalTypeLabels: Record<string, string> = {
   LINK_QUALITY_DEGRADE: '链路质量下降',
@@ -112,7 +134,10 @@ const loadSamples = async () => {
     }
     const params: any = {
       site_id: selectedSiteId.value,
-      is_abnormal: true
+      limit: 500
+    }
+    if (abnormalOnly.value) {
+      params.is_abnormal = true
     }
     // 如果有日期参数，则添加到请求中
     if (startDate.value) {
@@ -123,6 +148,7 @@ const loadSamples = async () => {
     }
     const data = await getLogSamples(params)
     samples.value = data.samples || []
+    totalSamples.value = data.total || 0
   } catch (error) {
     console.error('Failed to load samples:', error)
   } finally {
@@ -134,11 +160,20 @@ const loadSites = async () => {
   try {
     const data = await getSites()
     sites.value = data.sites || []
-    // 默认选择第一个基地
-    if (sites.value.length > 0 && !selectedSiteId.value) {
-      const firstEnabled = sites.value.find((site: any) => site.automation_enabled)
-      selectedSiteId.value = (firstEnabled || sites.value[0]).id
+    if (sites.value.length === 0) return
+
+    // 路由带了site_id时优先使用，找不到则回退
+    if (selectedSiteId.value) {
+      const matched = sites.value.find((site: any) => site.id === selectedSiteId.value)
+      if (!matched) {
+        const firstEnabled = sites.value.find((site: any) => site.automation_enabled)
+        selectedSiteId.value = (firstEnabled || sites.value[0]).id
+      }
+      return
     }
+
+    const firstEnabled = sites.value.find((site: any) => site.automation_enabled)
+    selectedSiteId.value = (firstEnabled || sites.value[0]).id
   } catch (error) {
     console.error('Failed to load sites:', error)
   }
@@ -146,6 +181,11 @@ const loadSites = async () => {
 
 const handleSiteChange = (siteId: number) => {
   selectedSiteId.value = siteId
+}
+
+const setAbnormalOnly = (value: boolean) => {
+  if (abnormalOnly.value === value) return
+  abnormalOnly.value = value
   loadSamples()
 }
 
@@ -179,6 +219,12 @@ onMounted(() => {
   }
   if (route.query.end_date) {
     endDate.value = route.query.end_date as string
+  }
+  if (route.query.abnormal_only !== undefined) {
+    abnormalOnly.value = route.query.abnormal_only === '1'
+  }
+  if (route.query.site_id) {
+    selectedSiteId.value = Number(route.query.site_id)
   }
   loadSites()
 })
@@ -272,6 +318,42 @@ onMounted(() => {
   padding: 24px;
   margin-bottom: 24px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.filter-section {
+  background: white;
+  border-radius: 16px;
+  padding: 16px 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.filter-btn {
+  border: 1px solid #dbe4f0;
+  background: #f8fafc;
+  color: #334155;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.filter-btn.active {
+  border-color: #60a5fa;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.filter-total {
+  margin-left: auto;
+  color: #64748b;
+  font-size: 13px;
 }
 
 .section-header {

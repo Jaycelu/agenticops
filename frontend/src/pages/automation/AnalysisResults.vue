@@ -309,6 +309,7 @@ const statusFilter = ref('')
 const selectedResult = ref<any>(null)
 const startDate = ref<string>('')
 const endDate = ref<string>('')
+const querySiteId = ref<number | null>(null)
 
 const severityLabels: Record<string, string> = {
   critical: '严重',
@@ -365,8 +366,14 @@ const loadSites = async () => {
   try {
     const data = await getSites()
     sites.value = data.sites || []
-    // 默认选择第一个基地（德阳基地）
-    if (sites.value.length > 0 && !selectedSiteId.value) {
+    if (sites.value.length === 0) return
+
+    if (querySiteId.value && sites.value.some((site: any) => site.id === querySiteId.value)) {
+      selectedSiteId.value = querySiteId.value
+      return
+    }
+
+    if (!selectedSiteId.value) {
       const firstEnabled = sites.value.find((site: any) => site.automation_enabled)
       selectedSiteId.value = (firstEnabled || sites.value[0]).id
     }
@@ -422,6 +429,9 @@ watch(selectedSiteId, (newSiteId) => {
 })
 
 onMounted(async () => {
+  if (route.query.site_id) {
+    querySiteId.value = Number(route.query.site_id)
+  }
   // 从路由参数中读取日期
   if (route.query.start_date) {
     startDate.value = route.query.start_date as string

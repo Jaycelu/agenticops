@@ -64,7 +64,7 @@
         <div class="section-header">
           <BarChart3 class="section-icon" :size="20" />
           <h3>统计概览</h3>
-          <span class="date-display">{{ formatDateDisplay(selectedDate) }}</span>
+          <span class="date-display">{{ formatDateDisplay(selectedDate) }} · {{ summaryScopeLabel }}</span>
         </div>
         <div class="stats-grid">
           <div class="stat-card">
@@ -281,6 +281,7 @@ const hourlyTrends = ref<any[]>([])
 const selectedDate = ref(new Date().toISOString().split('T')[0])
 const dateInputRef = ref<HTMLInputElement | null>(null)
 const togglingSiteId = ref<number | null>(null)
+const summaryScopeLabel = ref('当日')
 
 // 计算属性
 const today = computed(() => new Date().toISOString().split('T')[0])
@@ -302,6 +303,20 @@ const getSeverityPercentage = (severity: string) => {
   if (total === 0) return 0
   const count = summary.value.analysis?.[severity] || 0
   return Math.round((count / total) * 100)
+}
+
+const formatYmd = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const isSummaryEmpty = (data: any) => {
+  const samples = data?.samples?.total || 0
+  const analysis = data?.analysis?.total || 0
+  const tasks = data?.tasks?.total || 0
+  return samples === 0 && analysis === 0 && tasks === 0
 }
 
 const loadSites = async () => {
@@ -326,12 +341,32 @@ const loadSites = async () => {
 const loadSummary = async () => {
   if (!selectedSiteId.value) return
   try {
-    const data = await getDashboardSummary({
+    const daySummary = await getDashboardSummary({
       site_id: selectedSiteId.value,
       start_date: selectedDate.value,
       end_date: selectedDate.value
     })
-    summary.value = data
+
+    summary.value = daySummary
+    summaryScopeLabel.value = '当日'
+
+    // 当天没有数据时，自动回退近7天，避免“有历史数据但看起来全是0”
+    if (isSummaryEmpty(daySummary)) {
+      const end = new Date(selectedDate.value)
+      const start = new Date(end)
+      start.setDate(end.getDate() - 6)
+      const rangeSummary = await getDashboardSummary({
+        site_id: selectedSiteId.value,
+        start_date: formatYmd(start),
+        end_date: formatYmd(end)
+      })
+
+      if (!isSummaryEmpty(rangeSummary)) {
+        summary.value = rangeSummary
+        summaryScopeLabel.value = '近7天'
+      }
+    }
+
     // 加载24小时趋势数据
     await loadHourlyTrends()
   } catch (error) {
@@ -391,7 +426,12 @@ const goToAbnormalSamples = () => {
   if (!selectedSiteId.value) return
   router.push({
     path: '/automation/samples',
-    query: { start_date: selectedDate.value, end_date: selectedDate.value }
+    query: {
+      site_id: String(selectedSiteId.value),
+      start_date: selectedDate.value,
+      end_date: selectedDate.value,
+      abnormal_only: '1'
+    }
   })
 }
 
@@ -399,7 +439,11 @@ const goToAnalysisResults = () => {
   if (!selectedSiteId.value) return
   router.push({
     path: '/automation/analysis-results',
-    query: { start_date: selectedDate.value, end_date: selectedDate.value }
+    query: {
+      site_id: String(selectedSiteId.value),
+      start_date: selectedDate.value,
+      end_date: selectedDate.value
+    }
   })
 }
 
@@ -407,7 +451,11 @@ const goToTasks = () => {
   if (!selectedSiteId.value) return
   router.push({
     path: '/automation/tasks',
-    query: { start_date: selectedDate.value, end_date: selectedDate.value }
+    query: {
+      site_id: String(selectedSiteId.value),
+      start_date: selectedDate.value,
+      end_date: selectedDate.value
+    }
   })
 }
 

@@ -41,12 +41,6 @@ def _parse_optional_date(date_str: Optional[str], field_name: str) -> Optional[d
         raise HTTPException(status_code=400, detail=f"Invalid {field_name} format, use YYYY-MM-DD")
 
 
-def _is_site_enabled(db: Session, site_id: Optional[int]) -> bool:
-    if not site_id:
-        return True
-    return site_automation_service.is_site_enabled(db, site_id=site_id)
-
-
 # ============ 基地管理 ============
 
 @router.get("/sites")
@@ -113,8 +107,6 @@ async def get_log_samples(
     db: Session = Depends(get_db)
 ):
     """获取日志采样列表"""
-    if site_id and not _is_site_enabled(db, site_id):
-        return {"total": 0, "samples": []}
     query = db.query(LogSample)
 
     if site_id:
@@ -196,8 +188,6 @@ async def get_analysis_results(
     db: Session = Depends(get_db)
 ):
     """获取分析结果列表"""
-    if site_id and not _is_site_enabled(db, site_id):
-        return {"total": 0, "results": []}
     query = db.query(LogAnalysisResult)
 
     if site_id:
@@ -281,8 +271,6 @@ async def get_automation_tasks(
     db: Session = Depends(get_db)
 ):
     """获取自动化任务列表"""
-    if site_id and not _is_site_enabled(db, site_id):
-        return {"total": 0, "tasks": []}
     query = db.query(AutomationTask)
 
     if site_id:
@@ -495,8 +483,6 @@ async def get_feedback_stats(
     db: Session = Depends(get_db)
 ):
     """获取反馈统计（按诊断类型聚合）"""
-    if site_id and not _is_site_enabled(db, site_id):
-        return {"total_types": 0, "stats": {}}
     start_datetime = _parse_optional_date(start_date, "start_date")
     end_datetime = _parse_optional_date(end_date, "end_date")
     if end_datetime:
@@ -527,8 +513,6 @@ async def get_feedback_trends(
     db: Session = Depends(get_db)
 ):
     """获取反馈趋势（按诊断类型/日期）"""
-    if site_id and not _is_site_enabled(db, site_id):
-        return {"trends": {}}
     start_datetime = _parse_optional_date(start_date, "start_date")
     end_datetime = _parse_optional_date(end_date, "end_date")
     if end_datetime:
@@ -555,8 +539,6 @@ async def get_feedback_insights(
     db: Session = Depends(get_db)
 ):
     """获取误判TopN与阈值调整建议"""
-    if site_id and not _is_site_enabled(db, site_id):
-        return {"insights": []}
     start_datetime = _parse_optional_date(start_date, "start_date")
     end_datetime = _parse_optional_date(end_date, "end_date")
     if end_datetime:
@@ -619,14 +601,6 @@ async def get_dashboard_summary(
     db: Session = Depends(get_db)
 ):
     """获取Dashboard统计摘要"""
-    if site_id and not _is_site_enabled(db, site_id):
-        return {
-            "sites": {"total": 0},
-            "samples": {"total": 0, "abnormal": 0, "abnormal_rate": 0},
-            "analysis": {"total": 0, "critical": 0, "warning": 0, "info": 0},
-            "tasks": {"total": 0, "running": 0, "success": 0, "failed": 0, "success_rate": 0},
-            "feedback": {"total": 0, "correct": 0, "incorrect": 0, "partial": 0, "correct_rate": 0, "incorrect_rate": 0},
-        }
     # 基地数量
     sites_count = db.query(Site).count()
 
@@ -751,11 +725,6 @@ async def get_dashboard_hourly_trends(
     db: Session = Depends(get_db)
 ):
     """获取Dashboard 24小时趋势数据"""
-    if site_id and not _is_site_enabled(db, site_id):
-        return {
-            "date": date or datetime.now().strftime("%Y-%m-%d"),
-            "trends": [{"hour": f"{i:02d}:00", "samples": 0, "abnormal": 0} for i in range(24)],
-        }
     # 如果没有指定日期，使用今天
     if not date:
         date = datetime.now().strftime("%Y-%m-%d")
@@ -811,11 +780,6 @@ async def get_dashboard_trends(
     db: Session = Depends(get_db)
 ):
     """获取Dashboard趋势数据"""
-    if site_id and not _is_site_enabled(db, site_id):
-        return {
-            "period": {"start": "", "end": "", "days": days},
-            "trends": [],
-        }
     # 计算时间范围
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days)
