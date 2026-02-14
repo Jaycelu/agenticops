@@ -1,6 +1,9 @@
 # NetOps AI Platform
 
 > 面向园区网络运维的 AI 驱动统一自动化平台
+>
+> 当前仓库正式运行模式为：`frontend/`（Vue 3 + Vite）+ `backend/`（FastAPI）。
+> `frontend/streamlit/` 为历史原型目录，不在当前正式启动流程内。
 
 ## 项目概述
 
@@ -180,6 +183,12 @@ netops/
 
 ## 快速开始
 
+### 启动模式说明（统一）
+
+- 正式开发模式：Vue 前端 `http://localhost:5173` + FastAPI 后端 `http://localhost:8000`
+- 不使用模式：`frontend/streamlit/`（历史原型）
+- 为避免误启动旧模式，不要使用 `start_all.sh`、`start_streamlit.sh`
+
 ## 反馈闭环接口（新增）
 
 - `POST /api/automation/tasks/{task_id}/feedback`：提交人工反馈（correct/incorrect/partial）
@@ -246,6 +255,28 @@ netops/
    ```
 
    前端服务将在 `http://localhost:5173` 启动
+
+5. **访问页面**
+   - 前端首页：`http://localhost:5173`
+   - 运维工作台：`http://localhost:5173/dashboard`
+
+### 推荐启动方式（双终端）
+
+终端 A（后端）：
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python3 main.py
+```
+
+终端 B（前端）：
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
 ### 健康检查
 
@@ -450,6 +481,17 @@ curl http://localhost:8000/health
 1. 检查 LLM API 地址是否可访问
 2. 查看后端日志中的错误信息
 3. 确认模型名称配置正确
+
+### 5173 打开后是 Streamlit 页面（非预期）
+
+现象：页面出现“对话式运维 / 模型未加载 / 使用说明”等 Streamlit 风格内容。  
+原因：5173 端口被旧的 Streamlit 进程占用。
+
+处理步骤：
+1. 查占用进程：`lsof -nP -iTCP:5173 -sTCP:LISTEN`
+2. 停止进程：`kill <PID>`
+3. 在 `frontend/` 重新启动：`npm run dev`
+4. 刷新 `http://localhost:5173`，应进入 Vue 页面（自动跳转 `/dashboard`）
 
 ## 性能优化建议
 
