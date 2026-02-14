@@ -7,6 +7,7 @@ from api.sessions import router as sessions_router
 from api.alerts import router as alerts_router
 from api.automation import router as automation_router
 from api.abnormal_types import router as abnormal_types_router
+from api.ssh_management import router as ssh_management_router
 from utils.cache import netbox_cache
 import asyncio
 
@@ -59,6 +60,19 @@ async def abnormal_tracker_cleanup_task():
             logger.error(f"Error in abnormal tracker cleanup: {e}", exc_info=True)
 
 
+async def data_retention_cleanup_task():
+    """定期执行自动化数据保留清理"""
+    logger.info("Data retention cleanup task started")
+    while True:
+        try:
+            # 每12小时执行一次
+            await asyncio.sleep(43200)
+            from services.data_retention_service import data_retention_service
+            data_retention_service.cleanup()
+        except Exception as e:
+            logger.error(f"Error in data retention cleanup: {e}", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting NetOps AI Platform...")
@@ -77,6 +91,9 @@ async def lifespan(app: FastAPI):
     # 启动异常跟踪器清理任务
     abnormal_tracker_cleanup = asyncio.create_task(abnormal_tracker_cleanup_task())
 
+    # 启动数据保留清理任务
+    retention_cleanup_task = asyncio.create_task(data_retention_cleanup_task())
+
     # 启动日志采样服务
     from services.log_sampler import log_sampler
     await log_sampler.start()
@@ -88,6 +105,7 @@ async def lifespan(app: FastAPI):
     cleanup_task.cancel()
     task_executor.cancel()
     abnormal_tracker_cleanup.cancel()
+    retention_cleanup_task.cancel()
 
     # 停止日志采样服务
     from services.log_sampler import log_sampler
@@ -119,6 +137,7 @@ app.include_router(logs_router)
 app.include_router(models_router)
 app.include_router(automation_router)
 app.include_router(abnormal_types_router)
+app.include_router(ssh_management_router)
 
 
 @app.get("/")

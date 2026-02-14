@@ -7,8 +7,9 @@ from sqlalchemy.orm import sessionmaker
 from config.settings import settings
 
 # 创建数据库引擎
+db_url = settings.automation_database_url or settings.database_url
 engine = create_engine(
-    settings.database_url,
+    db_url,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
@@ -42,6 +43,6 @@ def init_db():
         Site, DeviceState, LogSample, LogAnalysisResult,
         AutomationPolicy, AutomationTask, AutomationActionLog,
         AutomationApproval, RawAnomaly, AutomationTaskFeedback,
-        AbnormalTrackerState
+        AbnormalTrackerState, SSHCredential, SSHCredentialDeviceBinding
     )
     Base.metadata.create_all(bind=engine)

@@ -72,6 +72,28 @@ class NetworkRuleEvaluator:
         )
         self.rule_engine.add_rule(rule_flap_high)
 
+        # 规则2b: 接口状态变化（up/down）在周期内高频出现
+        rule_interface_state_burst = Rule(
+            rule_id="RULE_INTERFACE_STATE_BURST",
+            name="接口状态变化高频诊断规则",
+            condition=ThresholdCondition(
+                field="interface_state_change_count",
+                operator=">=",
+                value=30
+            ),
+            action=DiagnosisAction(
+                diagnosis_type="INTERFACE_FLAP",
+                severity="medium",
+                recommendations=[
+                    "检查接口物理层及收发光模块",
+                    "检查接口协商与双工配置",
+                    "核查最近配置变更与维护窗口",
+                    "必要时抓取端口事件时间线"
+                ]
+            )
+        )
+        self.rule_engine.add_rule(rule_interface_state_burst)
+
         # 规则3: 邻居变化频繁
         # 采样阈值：邻居=15（记录为异常）
         # 规则阈值：邻居=15（触发诊断）
@@ -151,6 +173,27 @@ class NetworkRuleEvaluator:
             )
         )
         self.rule_engine.add_rule(rule_error_high)
+
+        # 规则6: 严重日志实时触发
+        rule_critical_log = Rule(
+            rule_id="RULE_CRITICAL_LOG_IMMEDIATE",
+            name="严重日志实时触发规则",
+            condition=ThresholdCondition(
+                field="critical_event_count",
+                operator=">=",
+                value=1
+            ),
+            action=DiagnosisAction(
+                diagnosis_type="HARDWARE_ISSUE",
+                severity="high",
+                recommendations=[
+                    "立即核查设备硬件健康（电源/风扇/温度/光模块）",
+                    "核查同链路对端是否存在同步告警",
+                    "触发SSH实时采集并优先人工复核"
+                ]
+            )
+        )
+        self.rule_engine.add_rule(rule_critical_log)
 
         logger.info(f"Initialized {len(self.rule_engine.rules)} default rules")
 

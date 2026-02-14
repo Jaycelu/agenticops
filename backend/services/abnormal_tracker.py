@@ -86,6 +86,58 @@ class AbnormalTracker:
         db.commit()
         return False, f"累积次数不足 {state.count}/{self.accumulation_threshold}"
 
+    def should_trigger_with_policy(
+        self,
+        device_ip: str,
+        abnormal_type: str,
+        db: Session,
+        site_id: Optional[int] = None,
+        increment: int = 1,
+        threshold: int = 1,
+        window_minutes: int = 60,
+        dedup_window_minutes: int = 30,
+        cooldown_minutes: int = 60
+    ) -> Tuple[bool, str]:
+        """
+        基于自定义策略触发研判。
+
+        适用于“按天累计N次触发”或“严重日志实时触发”的场景。
+        """
+        now = datetime.now()
+        state = self._get_or_create_state(db, device_ip, abnormal_type, site_id)
+
+        # 窗口外重置计数，避免历史噪声长期累积
+        if state.first_abnormal_time and now - state.first_abnormal_time > timedelta(minutes=window_minutes):
+            state.count = 0
+            state.first_abnormal_time = now
+
+        if state.first_abnormal_time is None:
+            state.first_abnormal_time = now
+
+        # Dedup + cooldown
+        if state.last_trigger_time:
+            dedup_end = state.last_trigger_time + timedelta(minutes=dedup_window_minutes)
+            if now < dedup_end:
+                return False, f"去重窗口内（{dedup_window_minutes}分钟）"
+
+            cooldown_end = state.last_trigger_time + timedelta(minutes=cooldown_minutes)
+            if now < cooldown_end:
+                remaining = (cooldown_end - now).total_seconds() / 60
+                return False, f"冷却中，还需等待 {remaining:.1f} 分钟"
+
+        # 按本窗口事件量累积
+        state.count = max(0, (state.count or 0) + increment)
+        state.last_abnormal_time = now
+
+        if state.count >= threshold:
+            state.count = 0
+            state.last_trigger_time = now
+            db.commit()
+            return True, f"达到策略阈值 {threshold}/{window_minutes}min，触发研判"
+
+        db.commit()
+        return False, f"未达策略阈值 {state.count}/{threshold}"
+
     def calculate_severity_based_on_persistence(
         self,
         device_ip: str,

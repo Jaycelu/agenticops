@@ -39,6 +39,19 @@ class Settings(BaseSettings):
     database_password: str = "ljz2025"
     database_name: str = "netops"
 
+    # Automation DB / Retention
+    # 建议为自动化中心使用独立数据库（同一PostgreSQL实例）
+    # 例如：postgresql://user:pass@localhost:5432/netops_automation
+    automation_database_url: str = ""
+    retention_raw_anomaly_days: int = 30
+    retention_log_sample_days: int = 30
+    retention_analysis_days: int = 60
+    retention_automation_task_days: int = 90
+    retention_action_log_days: int = 90
+    retention_approval_days: int = 180
+    retention_feedback_days: int = 180
+    retention_tracker_state_days: int = 7
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

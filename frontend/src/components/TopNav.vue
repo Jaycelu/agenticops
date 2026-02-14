@@ -21,10 +21,9 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Network, LayoutDashboard, Server, AlertTriangle, FileText, Settings, Bot } from 'lucide-vue-next'
+import { Network, Server, AlertTriangle, FileText, Settings, Bot } from 'lucide-vue-next'
 
 const navItems = ref([
-  { path: '/dashboard', label: '运维工作台', icon: LayoutDashboard },
   { path: '/assets', label: '资产', icon: Server },
   { path: '/alerts', label: '告警', icon: AlertTriangle },
   { path: '/logs', label: '日志', icon: FileText },
@@ -41,22 +40,12 @@ const navItems = ref([
   align-items: center;
   justify-content: space-between;
   height: 64px;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  background: #0f172a;
   color: white;
   padding: 0 24px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   position: relative;
   z-index: 100;
-}
-
-.top-nav::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(74, 158, 255, 0.3), transparent);
 }
 
 .nav-logo {
@@ -65,7 +54,7 @@ const navItems = ref([
   gap: 12px;
   font-size: 22px;
   font-weight: 700;
-  color: #4a9eff;
+  color: #e2e8f0;
   letter-spacing: -0.5px;
 }
 
@@ -92,7 +81,7 @@ const navItems = ref([
   align-items: center;
   gap: 8px;
   padding: 10px 18px;
-  color: #a0a0c0;
+  color: #94a3b8;
   text-decoration: none;
   border-radius: 10px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -106,7 +95,7 @@ const navItems = ref([
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(74, 158, 255, 0.1), rgba(74, 158, 255, 0.05));
+  background: rgba(148, 163, 184, 0.08);
   opacity: 0;
   transition: opacity 0.3s;
 }
@@ -122,10 +111,10 @@ const navItems = ref([
 }
 
 .nav-item.active {
-  background: linear-gradient(135deg, rgba(74, 158, 255, 0.2), rgba(74, 158, 255, 0.1));
-  color: #4a9eff;
+  background: rgba(30, 41, 59, 0.9);
+  color: #f8fafc;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.2);
+  box-shadow: none;
 }
 
 .nav-item.active::after {
@@ -134,9 +123,9 @@ const navItems = ref([
   bottom: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 20px;
-  height: 2px;
-  background: #4a9eff;
-  border-radius: 2px;
+  width: calc(100% - 16px);
+  height: 3px;
+  background: #38bdf8;
+  border-radius: 999px;
 }
 </style>

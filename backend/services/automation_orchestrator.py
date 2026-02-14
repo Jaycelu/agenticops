@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models.automation import (
     Site, LogSample, LogAnalysisResult,
-    AutomationTask, AutomationPolicy
+    AutomationTask, AutomationPolicy, SSHCredentialDeviceBinding
 )
 from services.diagnosis_service import diagnosis_service
 from services.state_aggregator import state_aggregator
@@ -22,6 +22,7 @@ from services.approval_service import approval_service
 from services.decision_service import decision_service
 from services.feedback_learning_service import feedback_learning_service
 from services.schemas import SeverityLevel, TaskTriggerEvent, DecisionResult
+from services.context_aware_diagnosis import context_aware_diagnosis_service
 
 logger = logging.getLogger(__name__)
 
@@ -307,6 +308,23 @@ class AutomationOrchestrator:
             diagnosis_result: 诊断结果
         """
         try:
+            credential_id = None
+            if sample.netbox_device_id:
+                binding = db.query(SSHCredentialDeviceBinding).filter(
+                    SSHCredentialDeviceBinding.netbox_device_id == sample.netbox_device_id
+                ).order_by(SSHCredentialDeviceBinding.updated_at.desc()).first()
+                if binding:
+                    credential_id = binding.credential_id
+
+            context_diag = await context_aware_diagnosis_service.run(
+                db=db,
+                site_id=sample.site_id,
+                netbox_device_id=sample.netbox_device_id,
+                abnormal_type=sample.abnormal_type or "UNKNOWN",
+                source_logs=sample.raw_data or {},
+                credential_id=credential_id,
+            )
+
             # 转换diagnosis_result到schemas.DiagnosisResult格式
             converted_diagnosis = self._convert_diagnosis_result(diagnosis_result)
             converted_diagnosis = feedback_learning_service.calibrate_diagnosis_with_feedback(
@@ -314,6 +332,25 @@ class AutomationOrchestrator:
                 diagnosis=converted_diagnosis,
                 site_id=sample.site_id
             )
+
+            final_from_context = context_diag.get("final", {})
+            action_type = final_from_context.get("action_type", "")
+            recommendations = final_from_context.get("recommendations")
+            if isinstance(recommendations, list) and recommendations:
+                converted_diagnosis.recommendations = recommendations
+            if final_from_context.get("summary"):
+                converted_diagnosis.summary = final_from_context.get("summary")
+            if final_from_context.get("severity") in {"low", "medium", "high", "critical"}:
+                sev = SeverityLevel(final_from_context.get("severity"))
+                converted_diagnosis.severity = sev
+                converted_diagnosis.risk_level = sev
+            if final_from_context.get("confidence") is not None:
+                try:
+                    converted_diagnosis.confidence = float(final_from_context.get("confidence"))
+                except Exception:
+                    pass
+            if action_type in {"replace_hardware", "manual_investigation"}:
+                converted_diagnosis.require_human_confirm = True
             
             # 构建决策结果
             decision_result = DecisionResult(
@@ -324,7 +361,9 @@ class AutomationOrchestrator:
                     "site_id": sample.site_id,
                     "netbox_device_id": sample.netbox_device_id,
                     "device_ip": sample.raw_data.get("device_ip") if sample.raw_data else None,
-                    "abnormal_type": sample.abnormal_type
+                    "abnormal_type": sample.abnormal_type,
+                    "context_aware": context_diag,
+                    "recommended_action_type": action_type,
                 }
             )
 
@@ -350,6 +389,11 @@ class AutomationOrchestrator:
             )
 
             logger.info(f"Created decision task {task_id} for sample {sample.id}")
+
+            task_for_audit = db.query(AutomationTask).filter(AutomationTask.id == task_id).first()
+            if task_for_audit:
+                task_for_audit.audit_trail = context_diag.get("audit_trail", [])
+                db.commit()
 
             # 查找匹配的策略
             policy = self._find_matching_policy(db, sample.site_id, diagnosis_result)

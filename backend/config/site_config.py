@@ -57,6 +57,50 @@ DEFAULT_SAMPLING_CONFIG = {
 
         # 冷却时间（分钟）：同一台设备的同一种异常触发后需要等待多久才能再次触发
         "cooldown_minutes": 120
+    },
+
+    # 日志采集与触发策略（分层）
+    "log_collection_policy": {
+        # 严重日志：实时进入异常判定和自动化
+        "urgent_levels": ["Critical", "Alert", "Emergencies"],
+        "urgent_keywords": [
+            "kernel panic", "power fail", "fan fail", "temperature critical",
+            "optical module fault", "los", "cpu hog", "memory exhausted",
+            "bgp down", "ospf down", "isis down", "authentication failed"
+        ],
+        "message_dedup_seconds": 120,
+        "immediate_trigger": {
+            "critical_event_count": 1,
+            "hardware_alarm_count": 1,
+            "auth_failure_count": 10
+        },
+        # 普通日志：按周期累计触发（接口up/down示例已内置）
+        "periodic_trigger": {
+            "interface_state_change_count": {
+                "window_minutes": 1440,
+                "threshold": 30,
+                "abnormal_type": "INTERFACE_FLAP",
+                "risk_level": "medium"
+            },
+            "neighbor_change_count": {
+                "window_minutes": 1440,
+                "threshold": 40,
+                "abnormal_type": "NEIGHBOR_UNSTABLE",
+                "risk_level": "medium"
+            },
+            "routing_instability_count": {
+                "window_minutes": 720,
+                "threshold": 20,
+                "abnormal_type": "NEIGHBOR_UNSTABLE",
+                "risk_level": "high"
+            },
+            "error_count": {
+                "window_minutes": 60,
+                "threshold": 80,
+                "abnormal_type": "HIGH_ERROR_RATE",
+                "risk_level": "medium"
+            }
+        }
     }
 }
 
@@ -187,6 +231,16 @@ def get_sampling_thresholds(site_code: str) -> Optional[dict]:
     config = get_site_config(site_code)
     if config:
         return config.get("sampling", {}).get("thresholds")
+    return None
+
+
+def get_log_collection_policy(site_code: str) -> Optional[dict]:
+    """
+    获取指定基地的日志采集策略
+    """
+    config = get_site_config(site_code)
+    if config:
+        return config.get("sampling", {}).get("log_collection_policy", {})
     return None
 
 

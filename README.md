@@ -201,10 +201,22 @@ netops/
 
 - Python 3.10+
 - Node.js 16+
+- PostgreSQL 14+（推荐）
 - NetBox（已配置）
 - Zabbix（已配置）
 - ELK（已配置）
 - 本地大模型 API（已配置）
+
+### 自动化数据库（推荐独立库）
+
+建议将自动化中心数据（日志采样、异常、任务、审计、反馈）放在独立 PostgreSQL 数据库中：
+
+- 主应用库：`netops`
+- 自动化库：`netops_automation`
+
+后端优先读取 `AUTOMATION_DATABASE_URL`，未配置时回退到 `DATABASE_URL`。
+
+完整设计见：`/Users/jayce/Desktop/Jayce/netops_bs/docs/AUTOMATION_DATABASE_DESIGN.md`
 
 ### 安装步骤
 
@@ -229,8 +241,34 @@ netops/
    - `ZABBIX_PASSWORD`: Zabbix 密码
    - `LLM_API_URL`: 本地大模型 API 地址
    - `LLM_MODEL_NAME`: 模型名称
+   - `DATABASE_URL`: 主数据库连接串
+   - `AUTOMATION_DATABASE_URL`: 自动化数据库连接串（推荐）
+   - `RETENTION_*_DAYS`: 自动化数据保留天数（见 `deploy/env.example`）
 
-3. **启动后端服务**
+3. **初始化 PostgreSQL 与自动化数据库**
+   ```bash
+   # 1) 进入 postgres
+   psql -U postgres
+
+   # 2) 创建用户和数据库（示例）
+   CREATE USER netops WITH PASSWORD 'netops';
+   CREATE DATABASE netops OWNER netops;
+   CREATE DATABASE netops_automation OWNER netops;
+
+   # 3) 退出
+   \\q
+   ```
+
+4. **初始化自动化表结构与默认异常类型**
+   ```bash
+   cd backend
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   python3 scripts/init_automation_db.py
+   ```
+
+5. **启动后端服务**
    ```bash
    cd deploy
    ./start.sh
@@ -247,7 +285,7 @@ netops/
 
    后端服务将在 `http://localhost:8000` 启动
 
-4. **启动前端服务**
+6. **启动前端服务**
    ```bash
    cd frontend
    npm install
@@ -256,7 +294,7 @@ netops/
 
    前端服务将在 `http://localhost:5173` 启动
 
-5. **访问页面**
+7. **访问页面**
    - 前端首页：`http://localhost:5173`
    - 运维工作台：`http://localhost:5173/dashboard`
 
@@ -287,6 +325,16 @@ curl http://localhost:8000/health
 ### API 文档
 
 启动后端服务后，访问 `http://localhost:8000/docs` 查看交互式 API 文档
+
+### 自动化数据清理
+
+- 后端内置定时清理任务：每 12 小时执行一次
+- 手动清理命令：
+  ```bash
+  cd backend
+  source venv/bin/activate
+  python3 scripts/cleanup_automation_data.py
+  ```
 
 ## 已实现功能
 

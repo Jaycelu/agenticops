@@ -42,8 +42,8 @@ class AbnormalTypeService:
                 "status": AbnormalTypeStatus.ENABLED,
                 "keywords": ["CRC", "error"],
                 "threshold_config": {
-                    "crc_error_count": 100,
-                    "time_window_minutes": 30
+                    "crc_error_count": 10,
+                    "time_window_minutes": 15
                 },
                 "risk_level": "high",
                 "enable_tracking": True,
@@ -60,8 +60,8 @@ class AbnormalTypeService:
                 "status": AbnormalTypeStatus.ENABLED,
                 "keywords": ["flap", "linkDown", "linkUp"],
                 "threshold_config": {
-                    "flap_count": 50,
-                    "time_window_minutes": 30
+                    "flap_count": 30,
+                    "time_window_minutes": 1440
                 },
                 "risk_level": "high",
                 "enable_tracking": True,
@@ -78,8 +78,8 @@ class AbnormalTypeService:
                 "status": AbnormalTypeStatus.ENABLED,
                 "keywords": ["neighbor", "change", "down"],
                 "threshold_config": {
-                    "neighbor_change_count": 50,
-                    "time_window_minutes": 30
+                    "neighbor_change_count": 40,
+                    "time_window_minutes": 1440
                 },
                 "risk_level": "medium",
                 "enable_tracking": True,
@@ -96,8 +96,8 @@ class AbnormalTypeService:
                 "status": AbnormalTypeStatus.ENABLED,
                 "keywords": ["error", "critical", "alert"],
                 "threshold_config": {
-                    "error_count": 1000,
-                    "time_window_minutes": 30
+                    "error_count": 80,
+                    "time_window_minutes": 60
                 },
                 "risk_level": "medium",
                 "enable_tracking": True,
@@ -139,7 +139,10 @@ class AbnormalTypeService:
         flap_count: int,
         neighbor_change_count: int,
         other_error_count: int,
-        other_error_fingerprints: List[str]
+        other_error_fingerprints: List[str],
+        interface_state_change_count: int = 0,
+        critical_event_count: int = 0,
+        hardware_alarm_count: int = 0
     ) -> Optional[Dict]:
         """
         匹配异常类型
@@ -158,6 +161,20 @@ class AbnormalTypeService:
         """
         enabled_types = self.get_enabled_types(db)
 
+        # 优先处理严重事件
+        if critical_event_count >= 1 or hardware_alarm_count >= 1:
+            return {
+                "type_code": "CRITICAL_LOG_ALERT",
+                "type_name": "严重日志告警",
+                "risk_level": "critical",
+                "enable_tracking": True,
+                "tracking_config": {
+                    "accumulation_threshold": 1,
+                    "dedup_window_minutes": 10,
+                    "cooldown_minutes": 20
+                }
+            }
+
         # 按优先级匹配
         for abnormal_type in enabled_types:
             threshold_config = abnormal_type.threshold_config
@@ -174,8 +191,9 @@ class AbnormalTypeService:
                         "tracking_config": abnormal_type.tracking_config
                     }
             elif abnormal_type.type_code == "INTERFACE_FLAP":
-                threshold = threshold_config.get("flap_count", threshold_config.get("count", 10))
-                if flap_count >= threshold:
+                threshold = threshold_config.get("flap_count", threshold_config.get("count", 30))
+                metric = max(flap_count, interface_state_change_count)
+                if metric >= threshold:
                     return {
                         "type_code": abnormal_type.type_code,
                         "type_name": abnormal_type.type_name,

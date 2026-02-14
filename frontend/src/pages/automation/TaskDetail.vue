@@ -106,6 +106,35 @@
         <pre class="execution-result">{{ JSON.stringify(task.execution_result, null, 2) }}</pre>
       </div>
 
+      <div v-if="task.audit_trail && task.audit_trail.length > 0" class="section">
+        <h2>审计追踪</h2>
+        <div class="audit-timeline">
+          <div v-for="(entry, idx) in task.audit_trail" :key="idx" class="audit-item">
+            <div class="audit-stage">[{{ entry.stage }}]</div>
+            <div class="audit-title">{{ entry.title }}</div>
+            <pre class="audit-payload">{{ JSON.stringify(entry.payload, null, 2) }}</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>人工干预工作流</h2>
+        <div class="workflow-actions">
+          <button
+            v-if="task.recommended_action_type === 'config_optimization'"
+            class="dispatch-btn"
+            :disabled="dispatching"
+            @click="handleDispatch"
+          >
+            {{ dispatching ? '执行中...' : '一键下发' }}
+          </button>
+          <div v-else-if="task.manual_intervention_required" class="manual-warning">
+            人工干预提示：建议现场检查或硬件更换流程。
+          </div>
+          <div v-else class="manual-info">当前任务无需人工动作。</div>
+        </div>
+      </div>
+
       <!-- 人工反馈 -->
       <div class="section">
         <h2>人工反馈闭环</h2>
@@ -145,7 +174,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft } from 'lucide-vue-next'
-import { getAutomationTask, submitTaskFeedback } from '@/api/automation'
+import { dispatchTaskConfig, getAutomationTask, submitTaskFeedback } from '@/api/automation'
 
 const route = useRoute()
 const router = useRouter()
@@ -155,6 +184,7 @@ const loading = ref(false)
 const feedbackVerdict = ref<'correct' | 'incorrect' | 'partial'>('correct')
 const feedbackComment = ref('')
 const submittingFeedback = ref(false)
+const dispatching = ref(false)
 
 const statusLabels: Record<string, string> = {
   pending: '待处理',
@@ -253,6 +283,19 @@ const handleSubmitFeedback = async () => {
   }
 }
 
+const handleDispatch = async () => {
+  if (!task.value) return
+  dispatching.value = true
+  try {
+    await dispatchTaskConfig(Number(taskId.value))
+    await loadTask()
+  } catch (error) {
+    console.error('Failed to dispatch config:', error)
+  } finally {
+    dispatching.value = false
+  }
+}
+
 onMounted(() => {
   loadTask()
 })
@@ -315,9 +358,62 @@ onMounted(() => {
 
 .section {
   background: white;
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.audit-timeline {
+  display: grid;
+  gap: 10px;
+}
+
+.audit-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.audit-stage {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.audit-title {
+  font-size: 13px;
+  color: #334155;
+  margin: 4px 0;
+}
+
+.audit-payload {
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  padding: 10px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.dispatch-btn {
+  background: #0f766e;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+
+.manual-warning {
+  border: 1px solid #ef4444;
+  color: #b91c1c;
+  background: #fef2f2;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.manual-info {
+  color: #475569;
 }
 
 .section h2 {

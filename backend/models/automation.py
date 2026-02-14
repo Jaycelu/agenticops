@@ -187,6 +187,7 @@ class AutomationTask(Base):
     # 决策与执行结果
     decision_result = Column(JSON)
     execution_result = Column(JSON)
+    audit_trail = Column(JSON, default=list)
     need_human_confirm = Column(Boolean, default=False)
 
     # 时间记录
@@ -307,6 +308,51 @@ class AbnormalTrackerState(Base):
             unique=True
         ),
         Index('idx_abnormal_tracker_last_abnormal', 'last_abnormal_time'),
+    )
+
+
+class SSHCredential(Base):
+    """SSH凭据表"""
+    __tablename__ = "ssh_credential"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(120), unique=True, nullable=False, index=True)
+    username = Column(String(120), nullable=False)
+    auth_type = Column(String(20), nullable=False, default="password")  # password / private_key
+    encrypted_password = Column(Text)
+    encrypted_private_key = Column(Text)
+    encrypted_passphrase = Column(Text)
+    port = Column(Integer, nullable=False, default=22)
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    device_bindings = relationship("SSHCredentialDeviceBinding", back_populates="credential")
+
+
+class SSHCredentialDeviceBinding(Base):
+    """SSH凭据与设备关联表"""
+    __tablename__ = "ssh_credential_device_binding"
+
+    id = Column(Integer, primary_key=True, index=True)
+    credential_id = Column(Integer, ForeignKey("ssh_credential.id"), nullable=False, index=True)
+    netbox_device_id = Column(Integer, nullable=False, index=True)
+    device_name = Column(String(120))
+    site_name = Column(String(120))
+    platform = Column(String(120))
+    role = Column(String(120))
+    tags = Column(JSON, default=list)
+    last_connectivity_status = Column(String(30), default="unknown")  # unknown/success/failed/auth_failed
+    last_connectivity_error = Column(Text)
+    last_checked_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    credential = relationship("SSHCredential", back_populates="device_bindings")
+
+    __table_args__ = (
+        Index("uniq_credential_device", "credential_id", "netbox_device_id", unique=True),
+        Index("idx_binding_site_status", "site_name", "last_connectivity_status"),
     )
 
 

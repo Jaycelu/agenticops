@@ -4,23 +4,41 @@
       <button @click="goBack" class="back-btn">返回</button>
       <h1>反馈统计详情</h1>
       <div class="filters">
-        <select v-model="selectedDiagnosisTypeForTrend" @change="noop">
-          <option value="">全部诊断类型</option>
-          <option v-for="t in diagnosisTypes" :key="t" :value="t">{{ t }}</option>
-        </select>
-        <select v-model="windowDays" @change="loadAll">
-          <option :value="7">近7天</option>
-          <option :value="30">近30天</option>
-        </select>
-        <input type="date" v-model="startDate" @change="loadAll" />
-        <input type="date" v-model="endDate" @change="loadAll" />
-        <select v-model="selectedSiteId" @change="loadAll">
-          <option :value="0">全部基地</option>
-          <option v-for="site in sites" :key="site.id" :value="site.id">
-            {{ site.site_name }}
-          </option>
-        </select>
-        <button class="export-btn" @click="exportCsv">导出CSV</button>
+        <div class="filter-chip">
+          <Filter :size="14" />
+          <select v-model="selectedDiagnosisTypeForTrend" @change="noop">
+            <option value="">全部诊断类型</option>
+            <option v-for="t in diagnosisTypes" :key="t" :value="t">{{ t }}</option>
+          </select>
+        </div>
+        <div class="filter-chip">
+          <Calendar :size="14" />
+          <select v-model="windowDays" @change="loadAll">
+            <option :value="7">近7天</option>
+            <option :value="30">近30天</option>
+          </select>
+        </div>
+        <div class="filter-chip">
+          <Calendar :size="14" />
+          <input type="date" v-model="startDate" @change="loadAll" />
+        </div>
+        <div class="filter-chip">
+          <Calendar :size="14" />
+          <input type="date" v-model="endDate" @change="loadAll" />
+        </div>
+        <div class="filter-chip">
+          <Building2 :size="14" />
+          <select v-model="selectedSiteId" @change="loadAll">
+            <option :value="0">全部基地</option>
+            <option v-for="site in sites" :key="site.id" :value="site.id">
+              {{ site.site_name }}
+            </option>
+          </select>
+        </div>
+        <button class="export-btn" @click="exportCsv">
+          <Download :size="14" />
+          导出CSV
+        </button>
       </div>
     </div>
 
@@ -37,7 +55,10 @@
 
     <div class="section">
       <h2>按诊断类型统计</h2>
-      <div v-if="typeRows.length === 0" class="no-data">暂无反馈数据</div>
+      <div v-if="typeRows.length === 0" class="no-data">
+        <CircleOff :size="20" />
+        暂无反馈数据
+      </div>
       <table v-else class="stats-table">
         <thead>
           <tr>
@@ -92,7 +113,10 @@
           />
         </svg>
       </div>
-      <div v-if="trendRows.length === 0" class="no-data">暂无趋势数据</div>
+      <div v-if="trendRows.length === 0" class="no-data">
+        <CircleOff :size="20" />
+        暂无趋势数据
+      </div>
       <div v-else class="trend-list">
         <div v-for="point in trendRows" :key="`${point.type}-${point.date}`" class="trend-row">
           <span class="trend-date">{{ point.date }}</span>
@@ -111,7 +135,10 @@
 
     <div class="section">
       <h2>误判 TopN 与建议</h2>
-      <div v-if="!insightsData.insights || insightsData.insights.length === 0" class="no-data">暂无洞察数据</div>
+      <div v-if="!insightsData.insights || insightsData.insights.length === 0" class="no-data">
+        <CircleOff :size="20" />
+        暂无洞察数据
+      </div>
       <div v-else class="insight-list">
         <div v-for="item in insightsData.insights" :key="item.diagnosis_type" class="insight-item">
           <div class="insight-title">{{ item.diagnosis_type }}</div>
@@ -130,6 +157,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Building2, Calendar, CircleOff, Download, Filter } from 'lucide-vue-next'
 import { getFeedbackStats, getFeedbackTrends, getFeedbackInsights, getSites } from '@/api/automation'
 
 const router = useRouter()
@@ -313,6 +341,26 @@ onMounted(async () => {
   margin-left: auto;
   display: flex;
   gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #dbe2ea;
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px 10px;
+}
+
+.filter-chip select,
+.filter-chip input {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
 }
 
 .export-btn {
@@ -321,6 +369,9 @@ onMounted(async () => {
   border-radius: 8px;
   padding: 6px 10px;
   cursor: pointer;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
 }
 
 .cards {
@@ -333,8 +384,9 @@ onMounted(async () => {
 .card {
   background: #fff;
   border: 1px solid #e8edf3;
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 12px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
 }
 
 .label {
@@ -350,9 +402,10 @@ onMounted(async () => {
 .section {
   background: #fff;
   border: 1px solid #e8edf3;
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 16px;
   margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
 }
 
 .stats-table {
@@ -418,6 +471,9 @@ onMounted(async () => {
 
 .no-data {
   color: #98a2b3;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .insight-list {

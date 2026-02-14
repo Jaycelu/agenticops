@@ -15,6 +15,7 @@ from models.automation import (
 from services.automation_orchestrator import automation_orchestrator
 from services.alert_service import alert_service
 from services.feedback_learning_service import feedback_learning_service
+from services.ssh_service import ssh_service
 from api.schemas.automation import (
     TaskFeedbackRequest,
     TriggerDiagnosisRequest,
@@ -284,6 +285,7 @@ async def get_automation_tasks(
             "trigger_event": task.trigger_event,
             "decision_result": task.decision_result,
             "execution_result": task.execution_result,
+            "audit_trail": task.audit_trail or [],
             "need_human_confirm": task.need_human_confirm,
             "started_at": task.started_at,
             "finished_at": task.finished_at,
@@ -297,6 +299,10 @@ async def get_automation_tasks(
                 "created_at": latest_feedback.created_at
             } if latest_feedback else None
         }
+
+        action_type = (task.decision_result or {}).get("context", {}).get("recommended_action_type")
+        task_dict["recommended_action_type"] = action_type
+        task_dict["manual_intervention_required"] = action_type in {"replace_hardware", "manual_investigation"}
         
         # 从context中获取设备IP
         if task.decision_result and "context" in task.decision_result:
@@ -335,6 +341,7 @@ async def get_automation_task(task_id: int, db: Session = Depends(get_db)):
         "trigger_event": task.trigger_event,
         "decision_result": task.decision_result,
         "execution_result": task.execution_result,
+        "audit_trail": task.audit_trail or [],
         "need_human_confirm": task.need_human_confirm,
         "started_at": task.started_at,
         "finished_at": task.finished_at,
@@ -352,6 +359,10 @@ async def get_automation_task(task_id: int, db: Session = Depends(get_db)):
             for feedback in feedbacks
         ]
     }
+
+    action_type = (task.decision_result or {}).get("context", {}).get("recommended_action_type")
+    task_dict["recommended_action_type"] = action_type
+    task_dict["manual_intervention_required"] = action_type in {"replace_hardware", "manual_investigation"}
     
     # 从context中获取设备IP
     if task.decision_result and "context" in task.decision_result:
@@ -775,6 +786,60 @@ async def get_dashboard_trends(
             "days": days
         },
         "trends": daily_stats
+    }
+
+
+# ============ 人机协同动作 ============
+
+@router.post("/tasks/{task_id}/dispatch-config", response_model=ManualActionResponse)
+async def dispatch_config_to_device(task_id: int, db: Session = Depends(get_db)):
+    """一键下发配置（示例动作，按厂商下发查看命令前置验证）"""
+    task = db.query(AutomationTask).filter(AutomationTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    context = (task.decision_result or {}).get("context", {})
+    device_id = context.get("netbox_device_id")
+    if not device_id:
+        raise HTTPException(status_code=400, detail="task has no netbox device")
+
+    from models.automation import SSHCredentialDeviceBinding
+
+    binding = db.query(SSHCredentialDeviceBinding).filter(
+        SSHCredentialDeviceBinding.netbox_device_id == device_id
+    ).order_by(SSHCredentialDeviceBinding.updated_at.desc()).first()
+    if not binding:
+        raise HTTPException(status_code=400, detail="no ssh credential binding found for this device")
+
+    try:
+        dry_run_result = ssh_service.execute_commands(
+            db=db,
+            credential_id=binding.credential_id,
+            netbox_device_id=device_id,
+            commands=["display current-configuration", "show running-config"],
+            timeout=20,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"dispatch pre-check failed: {exc}")
+
+    trail = task.audit_trail or []
+    trail.append(
+        {
+            "stage": "Inspection",
+            "title": "人工触发一键下发前置检查",
+            "payload": {
+                "operator_action": "dispatch_config",
+                "dry_run": dry_run_result,
+            },
+        }
+    )
+    task.audit_trail = trail
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "已执行下发前置检查，后续可按变更流程执行正式配置下发",
+        "data": dry_run_result,
     }
 
 

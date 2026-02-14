@@ -4,6 +4,8 @@
 """
 import asyncio
 import logging
+import re
+from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from sqlalchemy.orm import Session
@@ -12,7 +14,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from database import SessionLocal
 from models.automation import Site, LogSample, RawAnomaly
 from mcp.elk_mcp import ELKMCP
-from config.site_config import get_site_config, get_elk_query_for_site, get_sampling_thresholds
+from config.site_config import get_site_config, get_log_collection_policy
 from services.fingerprint_generator import fingerprint_generator
 from services.baseline_calculator import baseline_calculator
 
@@ -106,6 +108,7 @@ class LogSampler:
             # 获取采样配置
             sampling_config = site_config.get("sampling", {})
             time_window_minutes = sampling_config.get("time_window_minutes", 5)
+            collection_policy = get_log_collection_policy(site_code) or {}
 
             # 计算时间窗口
             time_window_end = datetime.now()
@@ -133,14 +136,15 @@ class LogSampler:
             logger.info(f"Retrieved {len(logs)} logs from ELK for {site_code}")
 
             # 按设备分组统计日志
-            device_stats = self._aggregate_logs_by_device(logs)
+            device_stats = self._aggregate_logs_by_device(logs, collection_policy)
 
             # 写入数据库
             await self._write_samples_to_db(
                 site_code=site_code,
                 device_stats=device_stats,
                 time_window_start=time_window_start,
-                time_window_end=time_window_end
+                time_window_end=time_window_end,
+                collection_policy=collection_policy
             )
 
             logger.info(f"Completed log sampling for {site_code}")
@@ -148,7 +152,7 @@ class LogSampler:
         except Exception as e:
             logger.error(f"Error sampling logs for {site_code}: {e}", exc_info=True)
 
-    def _aggregate_logs_by_device(self, logs: List[Dict]) -> Dict[str, Dict]:
+    def _aggregate_logs_by_device(self, logs: List[Dict], collection_policy: Optional[Dict] = None) -> Dict[str, Dict]:
         """
         按设备聚合日志统计
 
@@ -158,12 +162,20 @@ class LogSampler:
         Returns:
             设备统计字典 {device_ip: stats}
         """
-        device_stats = {}
+        collection_policy = collection_policy or {}
+        urgent_levels = set(collection_policy.get("urgent_levels", []))
+        urgent_keywords = [k.lower() for k in collection_policy.get("urgent_keywords", [])]
+        dedup_seconds = int(collection_policy.get("message_dedup_seconds", 120))
+
+        device_stats: Dict[str, Dict[str, Any]] = {}
+        dedup_index: Dict[str, Dict[str, datetime]] = defaultdict(dict)
 
         for log in logs:
             device_ip = log.get("device_ip", "Unknown")
             message = log.get("message", "")
-            level = log.get("level", "")
+            level = str(log.get("level", "unknown"))
+            ts_str = log.get("timestamp")
+            event_time = self._safe_parse_time(ts_str)
 
             if device_ip not in device_stats:
                 device_stats[device_ip] = {
@@ -171,12 +183,27 @@ class LogSampler:
                     "crc_error_count": 0,
                     "flap_count": 0,
                     "neighbor_change_count": 0,
+                    "interface_state_change_count": 0,
+                    "critical_event_count": 0,
+                    "hardware_alarm_count": 0,
+                    "auth_failure_count": 0,
+                    "routing_instability_count": 0,
                     "other_error_count": 0,  # 其他错误日志数量
                     "log_messages": [],
+                    "critical_messages": [],
                     "other_error_fingerprints": set()  # 其他错误日志的指纹集合
                 }
 
             stats = device_stats[device_ip]
+            normalized_message = message.lower()
+
+            # 同设备同类消息在短时间去重，降低重复刷屏影响
+            dedup_key = fingerprint_generator.generate_fingerprint(message) or normalized_message[:200]
+            last_seen = dedup_index[device_ip].get(dedup_key)
+            if last_seen and event_time and (event_time - last_seen).total_seconds() <= dedup_seconds:
+                continue
+            if event_time:
+                dedup_index[device_ip][dedup_key] = event_time
 
             # 统计错误数量
             if level in ["Error", "Critical", "Emergencies", "Alert"]:
@@ -190,17 +217,37 @@ class LogSampler:
             if "flap" in message.lower():
                 stats["flap_count"] += 1
 
+            if self._is_interface_state_change(normalized_message):
+                stats["interface_state_change_count"] += 1
+
             # 统计邻居变化
-            if "neighbor" in message.lower() and ("change" in message.lower() or "down" in message.lower()):
+            if "neighbor" in normalized_message and ("change" in normalized_message or "down" in normalized_message):
                 stats["neighbor_change_count"] += 1
+
+            if self._is_hardware_alarm(normalized_message):
+                stats["hardware_alarm_count"] += 1
+
+            if self._is_auth_failure(normalized_message):
+                stats["auth_failure_count"] += 1
+
+            if self._is_routing_instability(normalized_message):
+                stats["routing_instability_count"] += 1
+
+            if level in urgent_levels or any(k in normalized_message for k in urgent_keywords):
+                stats["critical_event_count"] += 1
+                if len(stats["critical_messages"]) < 50:
+                    stats["critical_messages"].append(message)
 
             # 统计其他错误日志（不属于已知四类的错误日志）
             if level in ["Error", "Critical", "Emergencies", "Alert"]:
                 # 检查是否属于已知的四类
                 is_known_type = (
                     "CRC" in message.upper() or
-                    "flap" in message.lower() or
-                    ("neighbor" in message.lower() and ("change" in message.lower() or "down" in message.lower()))
+                    "flap" in normalized_message or
+                    ("neighbor" in normalized_message and ("change" in normalized_message or "down" in normalized_message)) or
+                    self._is_interface_state_change(normalized_message) or
+                    self._is_hardware_alarm(normalized_message) or
+                    self._is_auth_failure(normalized_message)
                 )
 
                 if not is_known_type:
@@ -221,12 +268,50 @@ class LogSampler:
 
         return device_stats
 
+    def _safe_parse_time(self, time_str: Optional[str]) -> Optional[datetime]:
+        if not time_str:
+            return None
+        try:
+            return datetime.fromisoformat(time_str.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    def _is_interface_state_change(self, msg: str) -> bool:
+        patterns = [
+            r"interface .* (up|down)",
+            r"line protocol .* (up|down)",
+            r"link(up|down)",
+            r"changed state to (up|down)",
+            r"port .* (up|down)",
+        ]
+        return any(re.search(p, msg) for p in patterns)
+
+    def _is_hardware_alarm(self, msg: str) -> bool:
+        keywords = [
+            "fan fail", "power fail", "temperature", "overheat", "sfp fault",
+            "transceiver fault", "optical module fault", "hardware fault", "los"
+        ]
+        return any(k in msg for k in keywords)
+
+    def _is_auth_failure(self, msg: str) -> bool:
+        keywords = [
+            "authentication failed", "login failed", "bad password", "invalid user",
+            "failed password", "ssh auth fail"
+        ]
+        return any(k in msg for k in keywords)
+
+    def _is_routing_instability(self, msg: str) -> bool:
+        routing_tokens = ["bgp", "ospf", "isis", "eigrp", "route"]
+        unstable_tokens = ["down", "reset", "flap", "change", "timeout"]
+        return any(r in msg for r in routing_tokens) and any(u in msg for u in unstable_tokens)
+
     async def _write_samples_to_db(
         self,
         site_code: str,
         device_stats: Dict[str, Dict],
         time_window_start: datetime,
-        time_window_end: datetime
+        time_window_end: datetime,
+        collection_policy: Optional[Dict] = None
     ):
         """
         将采样数据写入数据库
@@ -252,9 +337,25 @@ class LogSampler:
             # 导入异常类型管理服务
             from services.abnormal_type_service import abnormal_type_service
 
-            # 只为有异常的设备创建采样记录
+            # 只为满足触发策略的设备创建采样记录
             abnormal_devices_count = 0
             for device_ip, stats in device_stats.items():
+                policy_decision = self._evaluate_collection_policy(
+                    db=db,
+                    site_id=site_id,
+                    site_code=site_code,
+                    device_ip=device_ip,
+                    stats=stats,
+                    collection_policy=collection_policy or {}
+                )
+
+                if not policy_decision["should_trigger"]:
+                    logger.debug(
+                        "Skip sample for %s (%s): %s",
+                        site_code, device_ip, policy_decision["reason"]
+                    )
+                    continue
+
                 # 使用异常类型管理服务进行判定
                 matched_type = abnormal_type_service.match_abnormal_type(
                     db,
@@ -263,10 +364,27 @@ class LogSampler:
                     flap_count=stats["flap_count"],
                     neighbor_change_count=stats["neighbor_change_count"],
                     other_error_count=stats.get("other_error_count", 0),
-                    other_error_fingerprints=stats.get("other_error_fingerprints", [])
+                    other_error_fingerprints=stats.get("other_error_fingerprints", []),
+                    interface_state_change_count=stats.get("interface_state_change_count", 0),
+                    critical_event_count=stats.get("critical_event_count", 0),
+                    hardware_alarm_count=stats.get("hardware_alarm_count", 0),
                 )
 
-                # 如果没有匹配到异常类型，跳过
+                # 策略可覆盖异常类型（例如严重日志实时触发）
+                if policy_decision.get("matched_type_override"):
+                    matched_type = policy_decision["matched_type_override"]
+
+                # 如果仍未匹配到异常类型，补一个通用高错误率类型
+                if not matched_type and policy_decision.get("trigger_mode") in {"immediate", "periodic"}:
+                    matched_type = {
+                        "type_code": "HIGH_ERROR_RATE",
+                        "type_name": "高错误率",
+                        "risk_level": "medium",
+                        "enable_tracking": True,
+                        "tracking_config": {}
+                    }
+
+                # fallback 模式下若未命中异常类型，跳过，避免误报
                 if not matched_type:
                     continue
 
@@ -301,7 +419,8 @@ class LogSampler:
                         "log_messages": stats["log_messages"],
                         "other_error_count": stats.get("other_error_count", 0),
                         "other_error_fingerprints": stats.get("other_error_fingerprints", []),
-                        "matched_type": matched_type
+                        "matched_type": matched_type,
+                        "collection_policy_decision": policy_decision
                     }
                 )
 
@@ -441,6 +560,106 @@ class LogSampler:
 
         except Exception as e:
             logger.error(f"Error in _trigger_diagnosis_for_abnormal_samples: {e}", exc_info=True)
+
+    def _evaluate_collection_policy(
+        self,
+        db: Session,
+        site_id: int,
+        site_code: str,
+        device_ip: str,
+        stats: Dict[str, Any],
+        collection_policy: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        评估日志采集策略。
+        优先级：
+        1) 严重事件实时触发；
+        2) 普通事件按周期累计触发；
+        3) 其余交给原有异常类型阈值匹配。
+        """
+        from services.abnormal_tracker import abnormal_tracker
+
+        immediate_cfg = collection_policy.get("immediate_trigger", {})
+        periodic_cfg = collection_policy.get("periodic_trigger", {})
+
+        # 1) 严重事件实时触发
+        immediate_checks = [
+            ("critical_event_count", "CRITICAL_LOG_ALERT", "critical"),
+            ("hardware_alarm_count", "HARDWARE_ISSUE", "critical"),
+            ("auth_failure_count", "SECURITY_AUTH_FAILURE", "high"),
+        ]
+        for field, abnormal_type, risk_level in immediate_checks:
+            val = int(stats.get(field, 0) or 0)
+            threshold = int(immediate_cfg.get(field, 0) or 0)
+            if threshold > 0 and val >= threshold:
+                should, reason = abnormal_tracker.should_trigger_with_policy(
+                    device_ip=device_ip,
+                    abnormal_type=abnormal_type,
+                    db=db,
+                    site_id=site_id,
+                    increment=val,
+                    threshold=1,
+                    window_minutes=60,
+                    dedup_window_minutes=10,
+                    cooldown_minutes=20
+                )
+                return {
+                    "should_trigger": should,
+                    "reason": f"[immediate] {reason}",
+                    "trigger_mode": "immediate",
+                    "matched_type_override": {
+                        "type_code": abnormal_type,
+                        "type_name": abnormal_type,
+                        "risk_level": risk_level,
+                        "enable_tracking": True,
+                        "tracking_config": {}
+                    } if should else None
+                }
+
+        # 2) 周期累计触发（例如接口up/down 30次/天）
+        for field, cfg in periodic_cfg.items():
+            val = int(stats.get(field, 0) or 0)
+            if val <= 0:
+                continue
+
+            threshold = int(cfg.get("threshold", 0) or 0)
+            window_minutes = int(cfg.get("window_minutes", 1440) or 1440)
+            abnormal_type = cfg.get("abnormal_type", field.upper())
+            if threshold <= 0:
+                continue
+
+            should, reason = abnormal_tracker.should_trigger_with_policy(
+                device_ip=device_ip,
+                abnormal_type=abnormal_type,
+                db=db,
+                site_id=site_id,
+                increment=val,
+                threshold=threshold,
+                window_minutes=window_minutes,
+                dedup_window_minutes=min(120, max(15, int(window_minutes / 12))),
+                cooldown_minutes=min(240, max(30, int(window_minutes / 6)))
+            )
+            if should:
+                return {
+                    "should_trigger": True,
+                    "reason": f"[periodic:{field}] {reason}",
+                    "trigger_mode": "periodic",
+                    "matched_type_override": {
+                        "type_code": abnormal_type,
+                        "type_name": abnormal_type,
+                        "risk_level": cfg.get("risk_level", "medium"),
+                        "enable_tracking": True,
+                        "tracking_config": {}
+                    }
+                }
+
+        # 3) 不拦截，让后续阈值匹配继续判断
+        return {
+            "should_trigger": True,
+            "reason": "fallthrough_to_threshold_match",
+            "trigger_mode": "fallback",
+            "matched_type_override": None
+        }
     
     async def _get_device_id_from_netbox(self, device_ip: str, site_code: str) -> Optional[int]:
         """

@@ -110,6 +110,11 @@ export const submitTaskFeedback = async (
   return response.data
 }
 
+export const dispatchTaskConfig = async (taskId: number) => {
+  const response = await api.post(`/api/automation/tasks/${taskId}/dispatch-config`)
+  return response.data
+}
+
 export const getFeedbackStats = async (params?: {
   diagnosis_type?: string
   site_id?: number

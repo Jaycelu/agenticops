@@ -27,7 +27,9 @@ class NetBoxMCP(BaseMCP):
                 "query_prefixes",
                 "query_manufacturers",
                 "get_device_config",
-                "get_device_config_by_id"
+                "get_device_config_by_id",
+                "get_device_topology",
+                "get_device_by_id"
             ]
         }
 
@@ -55,6 +57,10 @@ class NetBoxMCP(BaseMCP):
                 return await self._get_device_config_by_id(params)
             elif action == "fetch_and_save_device_config":
                 return await self._fetch_and_save_device_config(params)
+            elif action == "get_device_topology":
+                return await self._get_device_topology(params)
+            elif action == "get_device_by_id":
+                return await self._get_device_by_id(params)
             else:
                 return self._error(f"Unknown action: {action}")
         except Exception as e:
@@ -542,3 +548,89 @@ class NetBoxMCP(BaseMCP):
                 ssh.close()
             except:
                 pass
+
+    async def _get_device_by_id(self, params: Dict[str, Any]) -> MCPResult:
+        device_id = params.get("device_id")
+        if not device_id:
+            return self._error("device_id is required")
+
+        device = self.nb.dcim.devices.get(device_id)
+        if not device:
+            return self._error(f"Device not found: {device_id}")
+
+        return self._success(
+            {
+                "id": device.id,
+                "name": device.name,
+                "role": device.role.name if device.role else None,
+                "platform": device.platform.name if device.platform else None,
+                "manufacturer": (
+                    device.device_type.manufacturer.name
+                    if device.device_type and device.device_type.manufacturer
+                    else None
+                ),
+                "site": device.site.name if device.site else None,
+                "primary_ip": str(device.primary_ip).split("/")[0] if device.primary_ip else None,
+                "status": device.status.label if device.status else None,
+            },
+            {"action": "get_device_by_id", "device_id": device_id},
+        )
+
+    async def _get_device_topology(self, params: Dict[str, Any]) -> MCPResult:
+        device_id = params.get("device_id")
+        if not device_id:
+            return self._error("device_id is required")
+
+        device = self.nb.dcim.devices.get(device_id)
+        if not device:
+            return self._error(f"Device not found: {device_id}")
+
+        links = []
+        interfaces = self.nb.dcim.interfaces.filter(device_id=device_id)
+        for interface in interfaces:
+            if not getattr(interface, "cable", None):
+                continue
+
+            peer_device = None
+            peer_interface = None
+            try:
+                trace = interface.trace()
+                if trace and len(trace) > 0 and len(trace[0]) > 0:
+                    endpoint = trace[0][-1]
+                    if isinstance(endpoint, dict):
+                        peer_device = endpoint.get("name")
+                        peer_interface = endpoint.get("interface")
+            except Exception:
+                pass
+
+            links.append(
+                {
+                    "interface": interface.name,
+                    "enabled": interface.enabled,
+                    "description": interface.description,
+                    "peer_device": peer_device,
+                    "peer_interface": peer_interface,
+                    "has_cable": True,
+                }
+            )
+
+        return self._success(
+            {
+                "device": {
+                    "id": device.id,
+                    "name": device.name,
+                    "role": device.role.name if device.role else None,
+                    "platform": device.platform.name if device.platform else None,
+                    "manufacturer": (
+                        device.device_type.manufacturer.name
+                        if device.device_type and device.device_type.manufacturer
+                        else None
+                    ),
+                    "site": device.site.name if device.site else None,
+                    "primary_ip": str(device.primary_ip).split("/")[0] if device.primary_ip else None,
+                },
+                "link_count": len(links),
+                "links": links,
+            },
+            {"action": "get_device_topology", "device_id": device_id},
+        )

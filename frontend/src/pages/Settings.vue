@@ -149,6 +149,83 @@
           </div>
         </div>
 
+        <!-- SSH 管理 -->
+        <div v-if="currentTab === 'ssh'" class="settings-content">
+          <div class="section-header">
+            <div class="section-title">
+              <ShieldCheck class="section-icon" :size="20" />
+              <h2>SSH 资产管理</h2>
+            </div>
+          </div>
+          <div class="ssh-layout">
+            <div class="ssh-credentials-panel">
+              <h3>凭据列表</h3>
+              <div class="ssh-form">
+                <input v-model="sshForm.name" placeholder="凭据名称" />
+                <input v-model="sshForm.username" placeholder="用户名" />
+                <select v-model="sshForm.auth_type">
+                  <option value="password">密码</option>
+                  <option value="private_key">私钥</option>
+                </select>
+                <input v-model.number="sshForm.port" type="number" placeholder="端口" />
+                <input v-if="sshForm.auth_type === 'password'" v-model="sshForm.password" type="password" placeholder="密码" />
+                <textarea v-else v-model="sshForm.private_key" rows="5" placeholder="粘贴私钥"></textarea>
+                <input v-if="sshForm.auth_type === 'private_key'" v-model="sshForm.passphrase" type="password" placeholder="密钥口令(可选)" />
+                <button class="btn-primary" @click="createCredential" :disabled="creatingCredential">
+                  {{ creatingCredential ? '创建中...' : '新增凭据' }}
+                </button>
+              </div>
+              <div class="credential-list">
+                <button
+                  v-for="cred in sshCredentials"
+                  :key="cred.id"
+                  class="credential-item"
+                  :class="{ active: selectedCredentialId === cred.id }"
+                  @click="selectCredential(cred.id)"
+                >
+                  <div>
+                    <strong>{{ cred.name }}</strong>
+                    <div class="credential-meta">{{ cred.username }}@{{ cred.port }} ({{ cred.auth_type }})</div>
+                  </div>
+                  <Trash2 :size="14" class="delete-credential-icon" @click.stop="removeCredential(cred.id)" />
+                </button>
+              </div>
+            </div>
+
+            <div class="ssh-bindings-panel">
+              <h3>设备关联看板</h3>
+              <div class="device-filter-bar">
+                <input v-model="siteFilter" placeholder="按站点过滤" />
+                <input v-model="tagFilter" placeholder="按Tag过滤" />
+                <button class="btn-secondary" @click="loadNetBoxDeviceCandidates">同步NetBox设备</button>
+              </div>
+              <div class="candidate-list">
+                <label v-for="device in candidateDevices" :key="device.id" class="candidate-item">
+                  <input v-model="selectedDeviceIds" type="checkbox" :value="device.id" />
+                  <span>{{ device.name }} ({{ device.primary_ip || '无IP' }})</span>
+                  <small>{{ device.site }} / {{ device.role || '-' }} / {{ device.platform || '-' }}</small>
+                </label>
+              </div>
+              <button class="btn-primary" @click="bindSelectedDevices">批量关联到选中凭据</button>
+
+              <div class="binding-list">
+                <div v-for="binding in sshBindings" :key="binding.id" class="binding-item">
+                  <div class="binding-main">
+                    <div class="binding-title">{{ binding.device_name || binding.netbox_device_id }}</div>
+                    <div class="binding-meta">{{ binding.site_name }} / {{ binding.platform || '-' }}</div>
+                  </div>
+                  <div class="binding-status" :class="binding.last_connectivity_status">
+                    {{ statusText(binding.last_connectivity_status) }}
+                  </div>
+                  <button class="btn-secondary" @click="testBinding(binding)" :disabled="testingBindingId === binding.netbox_device_id">
+                    {{ testingBindingId === binding.netbox_device_id ? '检查中...' : '连通性检查' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 巡检模板设置 -->
         <div v-if="currentTab === 'templates'" class="settings-content">
           <div class="section-header">
@@ -604,13 +681,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 
 import axios from 'axios'
 import {
+  bindCredentialDevices,
+  createSSHCredential,
+  deleteSSHCredential,
+  listCredentialBindings,
+  listSSHCredentials,
+  queryNetBoxDevices,
+  testSSHConnectivity,
+} from '@/api/ssh'
+import {
   Settings, Cpu, Plus, Server, Globe, Box, Sliders, CheckCircle2, Zap,
   Power, Pencil, Trash2, Building2, Key, Thermometer, Hash, X, Info,
-  Loader2, Check, PlusCircle, FileText
+  Loader2, Check, PlusCircle, FileText, ShieldCheck, User, XCircle
 } from 'lucide-vue-next'
 
 // 使用相对路径，让 Vite 代理处理
@@ -640,6 +726,7 @@ interface Provider {
 
 const tabs = [
   { id: 'models', name: '模型设置', icon: Cpu },
+  { id: 'ssh', name: 'SSH 管理', icon: ShieldCheck },
   { id: 'templates', name: '巡检模板', icon: FileText }
 ]
 
@@ -725,6 +812,36 @@ const templateForm = ref({
 })
 const editingTemplateItem = ref<number | null>(null)
 
+interface SSHCredential {
+  id: number
+  name: string
+  username: string
+  auth_type: 'password' | 'private_key'
+  port: number
+  enabled: boolean
+  has_password: boolean
+  has_private_key: boolean
+}
+
+const sshCredentials = ref<SSHCredential[]>([])
+const selectedCredentialId = ref<number | null>(null)
+const sshBindings = ref<any[]>([])
+const candidateDevices = ref<any[]>([])
+const selectedDeviceIds = ref<number[]>([])
+const siteFilter = ref('')
+const tagFilter = ref('')
+const creatingCredential = ref(false)
+const testingBindingId = ref<number | null>(null)
+const sshForm = ref({
+  name: '',
+  username: '',
+  auth_type: 'password',
+  password: '',
+  private_key: '',
+  passphrase: '',
+  port: 22
+})
+
 async function loadModels() {
   try {
     const response = await axios.get(`${API_BASE_URL}/settings/models`)
@@ -740,10 +857,128 @@ async function loadModels() {
   }
 }
 
+async function loadSSHCredentials() {
+  const response = await listSSHCredentials()
+  sshCredentials.value = response.data || []
+  if (!selectedCredentialId.value && sshCredentials.value.length > 0) {
+    selectedCredentialId.value = sshCredentials.value[0].id
+    await loadCredentialBindings()
+  }
+}
+
+async function loadNetBoxDeviceCandidates() {
+  const response = await queryNetBoxDevices({
+    site: siteFilter.value || undefined,
+    tag: tagFilter.value || undefined
+  })
+  candidateDevices.value = response.data || []
+}
+
+async function createCredential() {
+  if (!sshForm.value.name || !sshForm.value.username) {
+    alert('请填写凭据名称和用户名')
+    return
+  }
+  if (sshForm.value.auth_type === 'password' && !sshForm.value.password) {
+    alert('请选择密码模式并填写密码')
+    return
+  }
+  if (sshForm.value.auth_type === 'private_key' && !sshForm.value.private_key) {
+    alert('请选择密钥模式并填写私钥')
+    return
+  }
+
+  creatingCredential.value = true
+  try {
+    await createSSHCredential({ ...sshForm.value })
+    sshForm.value = {
+      name: '',
+      username: '',
+      auth_type: 'password',
+      password: '',
+      private_key: '',
+      passphrase: '',
+      port: 22
+    }
+    await loadSSHCredentials()
+  } catch (error: any) {
+    alert(error?.response?.data?.detail || '创建凭据失败')
+  } finally {
+    creatingCredential.value = false
+  }
+}
+
+async function removeCredential(credentialId: number) {
+  if (!confirm('确认删除该凭据及所有关联关系吗？')) return
+  await deleteSSHCredential(credentialId)
+  if (selectedCredentialId.value === credentialId) {
+    selectedCredentialId.value = null
+    sshBindings.value = []
+  }
+  await loadSSHCredentials()
+}
+
+async function loadCredentialBindings() {
+  if (!selectedCredentialId.value) {
+    sshBindings.value = []
+    return
+  }
+  const response = await listCredentialBindings(selectedCredentialId.value)
+  sshBindings.value = response.data || []
+}
+
+async function bindSelectedDevices() {
+  if (!selectedCredentialId.value) {
+    alert('请先选择左侧凭据')
+    return
+  }
+  if (selectedDeviceIds.value.length === 0) {
+    alert('请至少勾选一个设备')
+    return
+  }
+  await bindCredentialDevices(selectedCredentialId.value, selectedDeviceIds.value)
+  selectedDeviceIds.value = []
+  await loadCredentialBindings()
+}
+
+function selectCredential(credentialId: number) {
+  selectedCredentialId.value = credentialId
+  loadCredentialBindings()
+}
+
+async function testBinding(binding: any) {
+  if (!selectedCredentialId.value) return
+  testingBindingId.value = binding.netbox_device_id
+  try {
+    const response = await testSSHConnectivity({
+      credential_id: selectedCredentialId.value,
+      netbox_device_id: binding.netbox_device_id
+    })
+    const result = response.data || {}
+    binding.last_connectivity_status = result.status
+    binding.last_connectivity_error = result.error
+    binding.last_checked_at = result.checked_at
+  } catch (error: any) {
+    alert(error?.response?.data?.detail || '连通性检查失败')
+  } finally {
+    testingBindingId.value = null
+  }
+}
+
+function statusText(status: string) {
+  const map: Record<string, string> = {
+    success: '成功',
+    failed: '失败',
+    auth_failed: '认证失败',
+    unknown: '未检查'
+  }
+  return map[status] || status
+}
+
 async function loadProviders() {
   try {
     const response = await axios.get(`${API_BASE_URL}/settings/models/providers`)
-    providers.value = response.data.data.providers || []
+    providers.value = response.data.providers || []
   } catch (error) {
     console.error('Error loading providers:', error)
   }
@@ -1128,6 +1363,8 @@ onMounted(() => {
   loadModels()
   loadProviders()
   loadTemplates()
+  loadSSHCredentials()
+  loadNetBoxDeviceCandidates()
 })
 </script>
 
@@ -2073,6 +2310,153 @@ onMounted(() => {
 
 .btn-secondary:hover {
   background: #e8eef5;
+}
+
+.ssh-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+}
+
+.ssh-credentials-panel,
+.ssh-bindings-panel {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  padding: 16px;
+}
+
+.ssh-form {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ssh-form input,
+.ssh-form select,
+.ssh-form textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.credential-list {
+  display: grid;
+  gap: 8px;
+}
+
+.credential-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  padding: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-align: left;
+}
+
+.credential-item.active {
+  border-color: #0f766e;
+  background: #f0fdfa;
+}
+
+.credential-meta {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.delete-credential-icon {
+  color: #b91c1c;
+}
+
+.device-filter-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.device-filter-bar input {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.candidate-list {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 10px;
+}
+
+.candidate-item {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 6px;
+  border-radius: 6px;
+}
+
+.candidate-item small {
+  grid-column: 2;
+  color: #64748b;
+}
+
+.binding-list {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.binding-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.binding-title {
+  font-weight: 600;
+}
+
+.binding-meta {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.binding-status {
+  font-size: 12px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  border: 1px solid #cbd5e1;
+}
+
+.binding-status.success {
+  color: #166534;
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.binding-status.failed,
+.binding-status.auth_failed {
+  color: #991b1b;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+@media (max-width: 1024px) {
+  .ssh-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .animate-spin {
