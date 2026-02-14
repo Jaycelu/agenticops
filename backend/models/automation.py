@@ -35,6 +35,20 @@ class Site(Base):
     analysis_results = relationship("LogAnalysisResult", back_populates="site")
     automation_policies = relationship("AutomationPolicy", back_populates="site")
     automation_tasks = relationship("AutomationTask", back_populates="site")
+    automation_switch = relationship("SiteAutomationSwitch", back_populates="site", uselist=False)
+
+
+class SiteAutomationSwitch(Base):
+    """基地自动化开关"""
+    __tablename__ = "site_automation_switch"
+
+    id = Column(Integer, primary_key=True, index=True)
+    site_id = Column(Integer, ForeignKey("site.id"), nullable=False, unique=True, index=True)
+    enabled = Column(Boolean, default=False, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    site = relationship("Site", back_populates="automation_switch")
 
 
 class DeviceState(Base):

@@ -136,7 +136,8 @@ const loadSites = async () => {
     sites.value = data.sites || []
     // 默认选择第一个基地
     if (sites.value.length > 0 && !selectedSiteId.value) {
-      selectedSiteId.value = sites.value[0].id
+      const firstEnabled = sites.value.find((site: any) => site.automation_enabled)
+      selectedSiteId.value = (firstEnabled || sites.value[0]).id
     }
   } catch (error) {
     console.error('Failed to load sites:', error)

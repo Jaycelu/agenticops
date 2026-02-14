@@ -42,7 +42,17 @@
               <Building2 :size="28" />
             </div>
             <div class="base-info">
-              <div class="base-name">{{ site.site_name }}</div>
+              <div class="base-name-row">
+                <div class="base-name">{{ site.site_name }}</div>
+                <button
+                  class="site-toggle"
+                  :class="{ enabled: site.automation_enabled }"
+                  :disabled="togglingSiteId === site.id"
+                  @click.stop="toggleSiteAutomation(site)"
+                >
+                  {{ togglingSiteId === site.id ? '更新中...' : site.automation_enabled ? '自动化:开' : '自动化:关' }}
+                </button>
+              </div>
               <div class="base-desc">{{ site.description || '' }}</div>
             </div>
           </div>
@@ -255,7 +265,8 @@ import {
 import {
   getSites,
   getDashboardSummary,
-  getDashboardHourlyTrends
+  getDashboardHourlyTrends,
+  updateSiteAutomationToggle
 } from '@/api/automation'
 
 const router = useRouter()
@@ -269,6 +280,7 @@ const summary = ref<any>({})
 const hourlyTrends = ref<any[]>([])
 const selectedDate = ref(new Date().toISOString().split('T')[0])
 const dateInputRef = ref<HTMLInputElement | null>(null)
+const togglingSiteId = ref<number | null>(null)
 
 // 计算属性
 const today = computed(() => new Date().toISOString().split('T')[0])
@@ -299,7 +311,8 @@ const loadSites = async () => {
     sites.value = data.sites || []
     // 默认选择第一个基地
     if (sites.value.length > 0 && !selectedSiteId.value) {
-      selectedSiteId.value = sites.value[0].id
+      const firstEnabled = sites.value.find((site: any) => site.automation_enabled)
+      selectedSiteId.value = (firstEnabled || sites.value[0]).id
       // 基地选择完成后，加载其他数据
       await loadSummary()
     }
@@ -345,6 +358,21 @@ const loadHourlyTrends = async () => {
 const handleSiteChange = (siteId: number) => {
   selectedSiteId.value = siteId
   loadSummary()
+}
+
+const toggleSiteAutomation = async (site: any) => {
+  togglingSiteId.value = site.id
+  try {
+    await updateSiteAutomationToggle(site.id, !site.automation_enabled)
+    site.automation_enabled = !site.automation_enabled
+    if (selectedSiteId.value === site.id) {
+      await loadSummary()
+    }
+  } catch (error) {
+    console.error('Failed to toggle site automation:', error)
+  } finally {
+    togglingSiteId.value = null
+  }
 }
 
 const handleDateChange = () => {
@@ -547,9 +575,32 @@ h1 {
   margin-bottom: 4px;
 }
 
+.base-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .base-desc {
   font-size: 13px;
   color: #6b7280;
+}
+
+.site-toggle {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.site-toggle.enabled {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #166534;
 }
 
 .stats-grid {

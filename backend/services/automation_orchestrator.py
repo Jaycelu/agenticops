@@ -23,6 +23,7 @@ from services.decision_service import decision_service
 from services.feedback_learning_service import feedback_learning_service
 from services.schemas import SeverityLevel, TaskTriggerEvent, DecisionResult
 from services.context_aware_diagnosis import context_aware_diagnosis_service
+from services.site_automation_service import site_automation_service
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,10 @@ class AutomationOrchestrator:
             sample = db.query(LogSample).filter(LogSample.id == sample_id).first()
             if not sample:
                 logger.error(f"Sample not found: {sample_id}")
+                return
+
+            if not site_automation_service.is_site_enabled(db, site_id=sample.site_id):
+                logger.info(f"Automation disabled for site_id={sample.site_id}, skipping sample {sample_id}")
                 return
 
             if not sample.is_abnormal:
@@ -388,6 +393,9 @@ class AutomationOrchestrator:
                 decision_result=decision_result,
                 trigger_event=trigger_event
             )
+            if not task_id:
+                logger.info(f"Decision task skipped for sample {sample.id} (site automation disabled)")
+                return
 
             logger.info(f"Created decision task {task_id} for sample {sample.id}")
 
@@ -626,6 +634,14 @@ class AutomationOrchestrator:
 
             for task in tasks:
                 try:
+                    db = SessionLocal()
+                    try:
+                        if not site_automation_service.is_site_enabled(db, site_id=task.site_id):
+                            logger.info(f"Skip task {task.id} because automation is disabled for site_id={task.site_id}")
+                            continue
+                    finally:
+                        db.close()
+
                     # 重新加载策略并执行
                     db = SessionLocal()
                     try:

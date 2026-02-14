@@ -34,6 +34,13 @@ export const getSite = async (siteId: number) => {
   return response.data
 }
 
+export const updateSiteAutomationToggle = async (siteId: number, enabled: boolean) => {
+  const response = await api.put(`/api/automation/sites/${siteId}/automation-toggle`, null, {
+    params: { enabled }
+  })
+  return response.data
+}
+
 // ============ 日志采样 ============
 
 export const getLogSamples = async (params?: {

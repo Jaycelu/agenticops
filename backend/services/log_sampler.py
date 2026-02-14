@@ -17,6 +17,7 @@ from mcp.elk_mcp import ELKMCP
 from config.site_config import get_site_config, get_log_collection_policy
 from services.fingerprint_generator import fingerprint_generator
 from services.baseline_calculator import baseline_calculator
+from services.site_automation_service import site_automation_service
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,13 @@ class LogSampler:
 
         for site_code in site_codes:
             logger.info(f"Processing site: {site_code}")
+            db = SessionLocal()
+            try:
+                if not site_automation_service.is_site_enabled(db, site_code=site_code):
+                    logger.info(f"Skip scheduler registration for disabled site: {site_code}")
+                    continue
+            finally:
+                db.close()
             config = get_site_config(site_code)
             if config:
                 logger.info(f"Config found for {site_code}")
@@ -91,6 +99,12 @@ class LogSampler:
         self.is_running = False
         logger.info("Log sampler stopped")
 
+    async def refresh_jobs(self):
+        """根据最新基地开关刷新采样任务"""
+        if self.is_running:
+            await self.stop()
+        await self.start()
+
     async def sample_site_logs(self, site_code: str):
         """
         采样指定基地的日志
@@ -99,6 +113,13 @@ class LogSampler:
             site_code: 基地代码（大写，如DEYANG）
         """
         logger.info(f"Starting log sampling for {site_code}")
+        check_db = SessionLocal()
+        try:
+            if not site_automation_service.is_site_enabled(check_db, site_code=site_code):
+                logger.info(f"Automation disabled for {site_code}, skip sampling")
+                return
+        finally:
+            check_db.close()
 
         try:
             # 获取基地配置

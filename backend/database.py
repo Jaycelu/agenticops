@@ -40,7 +40,7 @@ def init_db():
     初始化数据库，创建所有表
     """
     from models.automation import (
-        Site, DeviceState, LogSample, LogAnalysisResult,
+        Site, SiteAutomationSwitch, DeviceState, LogSample, LogAnalysisResult,
         AutomationPolicy, AutomationTask, AutomationActionLog,
         AutomationApproval, RawAnomaly, AutomationTaskFeedback,
         AbnormalTrackerState, SSHCredential, SSHCredentialDeviceBinding,

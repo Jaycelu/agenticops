@@ -14,6 +14,7 @@ from models.automation import (
 from services.schemas import (
     DecisionResult, DiagnosisResult, ExecutionResult, TaskTriggerEvent
 )
+from services.site_automation_service import site_automation_service
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ class DecisionService:
         decision_result: DecisionResult,
         trigger_event: TaskTriggerEvent,
         policy_id: Optional[int] = None
-    ) -> AutomationTask:
+    ) -> Optional[int]:
         """
         创建决策任务
 
@@ -42,11 +43,15 @@ class DecisionService:
             policy_id: 策略ID（可选）
 
         Returns:
-            创建的自动化任务
+            创建的自动化任务ID，若基地自动化关闭则返回None
         """
         db = SessionLocal()
 
         try:
+            if not site_automation_service.is_site_enabled(db, site_id=site_id):
+                logger.info(f"Automation disabled for site_id={site_id}, skip decision task creation")
+                return None
+
             # 生成任务代码
             task_code = f"TASK_{site_id}_{device_ip.replace('.', '_')}_{int(datetime.now().timestamp())}"
 
