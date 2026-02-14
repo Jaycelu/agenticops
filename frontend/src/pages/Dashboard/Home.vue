@@ -3,23 +3,37 @@
     <div class="dashboard-content">
       <section class="card section-top">
         <div class="section-title-row">
-          <h1>AI 运维驾驶舱</h1>
+          <h1>运维驾驶舱</h1>
           <p>统一站点视角，支持从报表到详情一键穿透</p>
         </div>
-        <div class="site-selector-row">
-          <label for="site-select">站点选择</label>
-          <select id="site-select" v-model="selectedSiteName" :disabled="loading.sites">
-            <option value="">全部站点</option>
-            <option v-for="site in sites" :key="site.id" :value="site.name">
-              {{ site.name }}
-            </option>
-          </select>
+        <div class="top-actions">
           <span class="sync-hint" :class="{ running: syncState.running }">
             {{ syncState.running ? '资产数据预热中...' : `上次预热：${syncState.lastLabel}` }}
           </span>
           <button class="btn-secondary refresh-btn" :disabled="loading.data || syncState.running" @click="handleManualRefresh">
             {{ loading.data || syncState.running ? '刷新中...' : '手动刷新' }}
           </button>
+        </div>
+      </section>
+      <section class="card base-section">
+        <div class="base-section-header">
+          <h3>选择基地</h3>
+        </div>
+        <div v-if="loading.sites" class="empty">加载基地列表中...</div>
+        <div v-else-if="sites.length === 0" class="empty">暂无基地数据</div>
+        <div v-else class="base-grid">
+          <div
+            v-for="site in sites"
+            :key="site.id"
+            class="base-card"
+            :class="{ active: selectedSiteName === site.name }"
+            @click="handleSiteSelect(site.name)"
+          >
+            <div class="base-icon">基</div>
+            <div class="base-info">
+              <div class="base-name">{{ site.name }}</div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -568,6 +582,11 @@ const goToAutomationAbnormal = () => {
   })
 }
 
+const handleSiteSelect = (siteName: string) => {
+  if (selectedSiteName.value === siteName) return
+  selectedSiteName.value = siteName
+}
+
 watch(selectedSiteName, () => {
   loadAllData()
 })
@@ -624,7 +643,7 @@ onUnmounted(() => {
 .section-top {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: center;
   gap: 12px;
 }
 
@@ -639,30 +658,17 @@ onUnmounted(() => {
   color: #64748b;
 }
 
-.site-selector-row {
-  min-width: 320px;
+.top-actions {
+  min-width: 200px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
   gap: 6px;
 }
 
-.site-selector-row label {
-  font-size: 13px;
-  color: #475569;
-  font-weight: 600;
-}
-
-.site-selector-row select {
-  border: 1px solid #c7dbff;
-  border-radius: 8px;
-  height: 38px;
-  padding: 0 10px;
-  color: #0f172a;
-  background: #fff;
-}
-
 .sync-hint {
-  font-size: 11px;
+  font-size: 12px;
   color: #64748b;
 }
 
@@ -675,6 +681,72 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+}
+
+.base-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.base-section-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #1e293b;
+}
+
+.base-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.base-card {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border: 2px solid transparent;
+  border-radius: 12px;
+  padding: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.base-card:hover {
+  border-color: #93c5fd;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(59, 130, 246, 0.12);
+}
+
+.base-card.active {
+  border-color: #3b82f6;
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.22);
+}
+
+.base-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #4a9eff 0%, #2196f3 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.base-info {
+  flex: 1;
+}
+
+.base-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #334155;
 }
 
 .panel {
@@ -1041,8 +1113,9 @@ button.metric-item:hover {
     align-items: stretch;
   }
 
-  .site-selector-row {
+  .top-actions {
     min-width: 0;
+    justify-content: space-between;
   }
 
   .pie-grid {
@@ -1071,7 +1144,8 @@ button.metric-item:hover {
 }
 
 .refresh-btn {
-  width: 100%;
+  width: auto;
+  min-width: 96px;
   justify-content: center;
 }
 </style>
