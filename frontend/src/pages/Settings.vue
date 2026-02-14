@@ -194,16 +194,39 @@
 
             <div class="ssh-bindings-panel">
               <h3>设备关联看板</h3>
-              <div class="device-filter-bar">
-                <input v-model="siteFilter" placeholder="按站点过滤" />
-                <input v-model="tagFilter" placeholder="按Tag过滤" />
-                <button class="btn-secondary" @click="loadNetBoxDeviceCandidates">同步NetBox设备</button>
+              <div class="device-filter-grid">
+                <input v-model="deviceNameFilter" placeholder="按设备名称搜索" />
+                <select v-model="siteFilter">
+                  <option value="">全部站点</option>
+                  <option v-for="site in sshFilterOptions.sites" :key="site" :value="site">{{ site }}</option>
+                </select>
+                <select v-model="deviceTypeFilter">
+                  <option value="">全部设备类型</option>
+                  <option v-for="item in sshFilterOptions.types" :key="item" :value="item">{{ item }}</option>
+                </select>
+                <select v-model="deviceVendorFilter">
+                  <option value="">全部厂商</option>
+                  <option v-for="item in sshFilterOptions.vendors" :key="item" :value="item">{{ item }}</option>
+                </select>
+                <select v-model="deviceRoleFilter">
+                  <option value="">全部角色</option>
+                  <option v-for="item in sshFilterOptions.roles" :key="item" :value="item">{{ item }}</option>
+                </select>
+                <input v-model="tagFilter" placeholder="Tag过滤(可选)" />
+                <button class="btn-secondary" @click="loadNetBoxDeviceCandidates">加载设备</button>
+              </div>
+              <div class="candidate-toolbar">
+                <label class="select-all">
+                  <input type="checkbox" :checked="allCandidateSelected" @change="toggleAllCandidateDevices" />
+                  <span>全选当前列表</span>
+                </label>
+                <span class="selected-count">已选 {{ selectedDeviceIds.length }} / {{ candidateDevices.length }}</span>
               </div>
               <div class="candidate-list">
                 <label v-for="device in candidateDevices" :key="device.id" class="candidate-item">
                   <input v-model="selectedDeviceIds" type="checkbox" :value="device.id" />
                   <span>{{ device.name }} ({{ device.primary_ip || '无IP' }})</span>
-                  <small>{{ device.site }} / {{ device.role || '-' }} / {{ device.platform || '-' }}</small>
+                  <small>{{ device.site }} / {{ device.role || '-' }} / {{ device.vendor || '-' }} / {{ device.device_type || '-' }}</small>
                 </label>
               </div>
               <button class="btn-primary" @click="bindSelectedDevices">批量关联到选中凭据</button>
@@ -268,16 +291,39 @@
               </div>
 
               <h3 style="margin-top: 12px;">批量下发校验</h3>
-              <div class="device-filter-bar">
-                <input v-model="cmdDeviceSiteFilter" placeholder="按站点过滤设备" />
-                <input v-model="cmdDeviceTagFilter" placeholder="按Tag过滤设备" />
+              <div class="device-filter-grid">
+                <input v-model="cmdDeviceNameFilter" placeholder="按设备名称搜索" />
+                <select v-model="cmdDeviceSiteFilter">
+                  <option value="">全部站点</option>
+                  <option v-for="site in cmdFilterOptions.sites" :key="site" :value="site">{{ site }}</option>
+                </select>
+                <select v-model="cmdDeviceTypeFilter">
+                  <option value="">全部设备类型</option>
+                  <option v-for="item in cmdFilterOptions.types" :key="item" :value="item">{{ item }}</option>
+                </select>
+                <select v-model="cmdDeviceVendorFilter">
+                  <option value="">全部厂商</option>
+                  <option v-for="item in cmdFilterOptions.vendors" :key="item" :value="item">{{ item }}</option>
+                </select>
+                <select v-model="cmdDeviceRoleFilter">
+                  <option value="">全部角色</option>
+                  <option v-for="item in cmdFilterOptions.roles" :key="item" :value="item">{{ item }}</option>
+                </select>
+                <input v-model="cmdDeviceTagFilter" placeholder="Tag过滤(可选)" />
                 <button class="btn-secondary" @click="loadCommandTemplateDevices">加载设备</button>
+              </div>
+              <div class="candidate-toolbar">
+                <label class="select-all">
+                  <input type="checkbox" :checked="allCmdCandidateSelected" @change="toggleAllCommandTemplateDevices" />
+                  <span>全选当前列表</span>
+                </label>
+                <span class="selected-count">已选 {{ selectedCommandTemplateDeviceIds.length }} / {{ commandTemplateDevices.length }}</span>
               </div>
               <div class="candidate-list">
                 <label v-for="device in commandTemplateDevices" :key="device.id" class="candidate-item">
                   <input v-model="selectedCommandTemplateDeviceIds" type="checkbox" :value="device.id" />
                   <span>{{ device.name }} ({{ device.vendor || '-' }})</span>
-                  <small>{{ device.primary_ip || '-' }} / {{ device.site || '-' }}</small>
+                  <small>{{ device.primary_ip || '-' }} / {{ device.site || '-' }} / {{ device.role || '-' }} / {{ device.device_type || '-' }}</small>
                 </label>
               </div>
               <button class="btn-primary" @click="runCommandTemplateValidation">校验模板与设备厂商匹配</button>
@@ -744,7 +790,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 
 import axios from 'axios'
 import {
@@ -901,6 +947,10 @@ const candidateDevices = ref<any[]>([])
 const selectedDeviceIds = ref<number[]>([])
 const siteFilter = ref('')
 const tagFilter = ref('')
+const deviceNameFilter = ref('')
+const deviceRoleFilter = ref('')
+const deviceVendorFilter = ref('')
+const deviceTypeFilter = ref('')
 const creatingCredential = ref(false)
 const testingBindingId = ref<number | null>(null)
 const sshForm = ref({
@@ -935,8 +985,46 @@ const commandTemplateForm = ref({
 const commandTemplateDevices = ref<any[]>([])
 const cmdDeviceSiteFilter = ref('')
 const cmdDeviceTagFilter = ref('')
+const cmdDeviceNameFilter = ref('')
+const cmdDeviceRoleFilter = ref('')
+const cmdDeviceVendorFilter = ref('')
+const cmdDeviceTypeFilter = ref('')
 const selectedCommandTemplateDeviceIds = ref<number[]>([])
 const commandTemplateValidationResult = ref<any>(null)
+
+const sshFilterOptions = computed(() => {
+  const sites = [...new Set(candidateDevices.value.map((d: any) => d.site).filter(Boolean))] as string[]
+  const roles = [...new Set(candidateDevices.value.map((d: any) => d.role).filter(Boolean))] as string[]
+  const vendors = [...new Set(candidateDevices.value.map((d: any) => d.vendor).filter(Boolean))] as string[]
+  const types = [...new Set(candidateDevices.value.map((d: any) => d.device_type).filter(Boolean))] as string[]
+  return {
+    sites: sites.sort((a, b) => a.localeCompare(b)),
+    roles: roles.sort((a, b) => a.localeCompare(b)),
+    vendors: vendors.sort((a, b) => a.localeCompare(b)),
+    types: types.sort((a, b) => a.localeCompare(b))
+  }
+})
+
+const cmdFilterOptions = computed(() => {
+  const sites = [...new Set(commandTemplateDevices.value.map((d: any) => d.site).filter(Boolean))] as string[]
+  const roles = [...new Set(commandTemplateDevices.value.map((d: any) => d.role).filter(Boolean))] as string[]
+  const vendors = [...new Set(commandTemplateDevices.value.map((d: any) => d.vendor).filter(Boolean))] as string[]
+  const types = [...new Set(commandTemplateDevices.value.map((d: any) => d.device_type).filter(Boolean))] as string[]
+  return {
+    sites: sites.sort((a, b) => a.localeCompare(b)),
+    roles: roles.sort((a, b) => a.localeCompare(b)),
+    vendors: vendors.sort((a, b) => a.localeCompare(b)),
+    types: types.sort((a, b) => a.localeCompare(b))
+  }
+})
+
+const allCandidateSelected = computed(() => {
+  return candidateDevices.value.length > 0 && selectedDeviceIds.value.length === candidateDevices.value.length
+})
+
+const allCmdCandidateSelected = computed(() => {
+  return commandTemplateDevices.value.length > 0 && selectedCommandTemplateDeviceIds.value.length === commandTemplateDevices.value.length
+})
 
 async function loadModels() {
   try {
@@ -965,9 +1053,24 @@ async function loadSSHCredentials() {
 async function loadNetBoxDeviceCandidates() {
   const response = await queryNetBoxDevices({
     site: siteFilter.value || undefined,
-    tag: tagFilter.value || undefined
+    tag: tagFilter.value || undefined,
+    name: deviceNameFilter.value || undefined,
+    role: deviceRoleFilter.value || undefined,
+    vendor: deviceVendorFilter.value || undefined,
+    device_type: deviceTypeFilter.value || undefined
   })
   candidateDevices.value = response.data || []
+  selectedDeviceIds.value = selectedDeviceIds.value.filter((id) =>
+    candidateDevices.value.some((device: any) => device.id === id)
+  )
+}
+
+function toggleAllCandidateDevices() {
+  if (allCandidateSelected.value) {
+    selectedDeviceIds.value = []
+    return
+  }
+  selectedDeviceIds.value = candidateDevices.value.map((item: any) => item.id)
 }
 
 async function createCredential() {
@@ -1137,9 +1240,24 @@ async function removeCommandTemplate(id: number) {
 async function loadCommandTemplateDevices() {
   const response = await queryNetBoxDevices({
     site: cmdDeviceSiteFilter.value || undefined,
-    tag: cmdDeviceTagFilter.value || undefined
+    tag: cmdDeviceTagFilter.value || undefined,
+    name: cmdDeviceNameFilter.value || undefined,
+    role: cmdDeviceRoleFilter.value || undefined,
+    vendor: cmdDeviceVendorFilter.value || undefined,
+    device_type: cmdDeviceTypeFilter.value || undefined
   })
   commandTemplateDevices.value = response.data || []
+  selectedCommandTemplateDeviceIds.value = selectedCommandTemplateDeviceIds.value.filter((id) =>
+    commandTemplateDevices.value.some((device: any) => device.id === id)
+  )
+}
+
+function toggleAllCommandTemplateDevices() {
+  if (allCmdCandidateSelected.value) {
+    selectedCommandTemplateDeviceIds.value = []
+    return
+  }
+  selectedCommandTemplateDeviceIds.value = commandTemplateDevices.value.map((item: any) => item.id)
 }
 
 async function runCommandTemplateValidation() {
@@ -2508,11 +2626,17 @@ onMounted(() => {
 
 .ssh-credentials-panel,
 .ssh-bindings-panel {
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border: 1px solid #dbe8ff;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
   padding: 16px;
+}
+
+.ssh-credentials-panel h3,
+.ssh-bindings-panel h3 {
+  margin-bottom: 10px;
+  color: #0f172a;
 }
 
 .ssh-form {
@@ -2538,7 +2662,7 @@ onMounted(() => {
 .credential-item {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  background: #fff;
+  background: #f8fbff;
   cursor: pointer;
   padding: 10px;
   display: flex;
@@ -2548,8 +2672,8 @@ onMounted(() => {
 }
 
 .credential-item.active {
-  border-color: #0f766e;
-  background: #f0fdfa;
+  border-color: #2563eb;
+  background: #eff6ff;
 }
 
 .credential-meta {
@@ -2561,16 +2685,40 @@ onMounted(() => {
   color: #b91c1c;
 }
 
-.device-filter-bar {
-  display: flex;
+.device-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 10px;
 }
 
-.device-filter-bar input {
+.device-filter-grid input,
+.device-filter-grid select {
   border: 1px solid #cbd5e1;
   border-radius: 8px;
-  padding: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  background: #fff;
+}
+
+.candidate-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #334155;
+}
+
+.selected-count {
+  font-size: 12px;
+  color: #64748b;
 }
 
 .candidate-list {
@@ -2589,6 +2737,12 @@ onMounted(() => {
   align-items: center;
   padding: 6px;
   border-radius: 6px;
+  border: 1px solid transparent;
+}
+
+.candidate-item:hover {
+  border-color: #dbe8ff;
+  background: #f8fbff;
 }
 
 .candidate-item small {
@@ -2603,13 +2757,14 @@ onMounted(() => {
 }
 
 .binding-item {
-  border: 1px solid #e2e8f0;
+  border: 1px solid #dbe8ff;
   border-radius: 8px;
-  padding: 10px;
+  padding: 10px 12px;
   display: grid;
   grid-template-columns: 1fr auto auto;
   gap: 8px;
   align-items: center;
+  background: #fff;
 }
 
 .binding-title {
@@ -2643,6 +2798,10 @@ onMounted(() => {
 
 @media (max-width: 1024px) {
   .ssh-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .device-filter-grid {
     grid-template-columns: 1fr;
   }
 }

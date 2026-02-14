@@ -50,9 +50,20 @@ async def delete_credential(credential_id: int, db: Session = Depends(get_db)):
 async def query_netbox_devices(
     site: str | None = Query(default=None),
     tag: str | None = Query(default=None),
+    name: str | None = Query(default=None),
+    role: str | None = Query(default=None),
+    vendor: str | None = Query(default=None),
+    device_type: str | None = Query(default=None),
 ):
     try:
-        devices = ssh_service.query_netbox_devices(site=site, tag=tag)
+        devices = ssh_service.query_netbox_devices(
+            site=site,
+            tag=tag,
+            name=name,
+            role=role,
+            vendor=vendor,
+            device_type=device_type,
+        )
         return {"success": True, "data": devices}
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc))

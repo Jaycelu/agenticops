@@ -14,92 +14,103 @@
               {{ site.name }}
             </option>
           </select>
+          <span class="sync-hint" :class="{ running: syncState.running }">
+            {{ syncState.running ? '资产数据预热中...' : `上次预热：${syncState.lastLabel}` }}
+          </span>
         </div>
       </section>
 
       <section class="middle-grid">
-        <article class="card panel">
+        <article class="card panel assets-panel">
           <div class="panel-header">
             <h2>资产统计</h2>
-            <span class="muted">按站点聚合设备 / 机柜 / 厂商</span>
+            <span class="muted">按站点聚合（含缓存与实时刷新）</span>
           </div>
 
-          <div class="metric-grid">
-            <button class="metric-item" @click="goToAssets('device')">
-              <span class="metric-value">{{ assetStats.totalDevices }}</span>
+          <div class="metric-grid five-col">
+            <button class="metric-item metric-device" @click="goToAssets('device')">
+              <span class="metric-value">{{ assetSnapshot.deviceCount }}</span>
               <span class="metric-label">设备总数</span>
             </button>
-            <button class="metric-item" @click="goToAssets('rack')">
-              <span class="metric-value">{{ assetStats.totalRacks }}</span>
-              <span class="metric-label">机柜</span>
+            <button class="metric-item metric-ip" @click="goToAssets('ip')">
+              <span class="metric-value">{{ assetSnapshot.ipCount }}</span>
+              <span class="metric-label">IP地址数量</span>
             </button>
-            <button class="metric-item" @click="goToAssets('device', { role: switchRoleLabel })">
-              <span class="metric-value">{{ assetStats.switchCount }}</span>
-              <span class="metric-label">交换机</span>
+            <button class="metric-item metric-rack" @click="goToAssets('rack')">
+              <span class="metric-value">{{ assetSnapshot.rackCount }}</span>
+              <span class="metric-label">机柜数量</span>
             </button>
-            <button class="metric-item" @click="goToAssets('device', { role: controllerRoleLabel })">
-              <span class="metric-value">{{ assetStats.controllerCount }}</span>
-              <span class="metric-label">控制器</span>
+            <button class="metric-item metric-vlan" @click="goToAssets('vlan')">
+              <span class="metric-value">{{ assetSnapshot.vlanCount }}</span>
+              <span class="metric-label">VLAN数量</span>
+            </button>
+            <button class="metric-item metric-prefix" @click="goToAssets('prefix')">
+              <span class="metric-value">{{ assetSnapshot.prefixCount }}</span>
+              <span class="metric-label">前缀数量</span>
             </button>
           </div>
 
-          <div class="subsection">
-            <h3>设备角色分布</h3>
-            <div v-if="topRoleDistribution.length === 0" class="empty">暂无数据</div>
-            <div v-else class="bars-list">
-              <button
-                v-for="item in topRoleDistribution"
-                :key="item.label"
-                class="bar-item"
-                @click="goToAssets('device', { role: item.label })"
-              >
-                <span class="bar-label">{{ item.label }}</span>
-                <div class="bar-track">
-                  <div class="bar-fill" :style="{ width: item.percent + '%' }"></div>
+          <div class="pie-grid">
+            <div class="pie-card">
+              <h3>设备角色分布</h3>
+              <div v-if="rolePie.segments.length === 0" class="empty">暂无数据</div>
+              <div v-else class="pie-layout">
+                <div class="pie-shell" :style="{ background: rolePie.gradient }"></div>
+                <div class="pie-legend">
+                  <button
+                    v-for="segment in rolePie.segments"
+                    :key="segment.label"
+                    class="legend-row"
+                    @click="goToAssets('device', { role: segment.label })"
+                  >
+                    <span class="dot" :style="{ background: segment.color }"></span>
+                    <span class="legend-label">{{ segment.label }}</span>
+                    <span class="legend-val">{{ segment.count }} / {{ segment.percent }}%</span>
+                  </button>
                 </div>
-                <span class="bar-count">{{ item.count }}</span>
-              </button>
+              </div>
             </div>
-          </div>
 
-          <div class="subsection">
-            <h3>厂商分布（NetBox manufacturer）</h3>
-            <div v-if="topVendorDistribution.length === 0" class="empty">暂无数据</div>
-            <div v-else class="bars-list">
-              <button
-                v-for="item in topVendorDistribution"
-                :key="item.label"
-                class="bar-item"
-                @click="goToAssets('device', { vendor: item.label, keyword: item.label })"
-              >
-                <span class="bar-label">{{ item.label }}</span>
-                <div class="bar-track">
-                  <div class="bar-fill vendor" :style="{ width: item.percent + '%' }"></div>
+            <div class="pie-card">
+              <h3>厂商分布（NetBox manufacturer）</h3>
+              <div v-if="vendorPie.segments.length === 0" class="empty">暂无数据</div>
+              <div v-else class="pie-layout">
+                <div class="pie-shell" :style="{ background: vendorPie.gradient }"></div>
+                <div class="pie-legend">
+                  <button
+                    v-for="segment in vendorPie.segments"
+                    :key="segment.label"
+                    class="legend-row"
+                    @click="goToAssets('device', { vendor: segment.label, keyword: segment.label })"
+                  >
+                    <span class="dot" :style="{ background: segment.color }"></span>
+                    <span class="legend-label">{{ segment.label }}</span>
+                    <span class="legend-val">{{ segment.count }} / {{ segment.percent }}%</span>
+                  </button>
                 </div>
-                <span class="bar-count">{{ item.count }}</span>
-              </button>
+              </div>
             </div>
           </div>
         </article>
 
-        <article class="card panel">
+        <article class="card panel alerts-panel">
           <div class="panel-header">
             <h2>Zabbix 告警统计</h2>
             <span class="muted">按严重等级聚合</span>
           </div>
 
           <div class="metric-grid two-col">
-            <button class="metric-item" @click="goToAlerts('critical')">
+            <button class="metric-item metric-critical" @click="goToAlerts('critical')">
               <span class="metric-value critical">{{ alarmStats.critical }}</span>
               <span class="metric-label">严重</span>
             </button>
-            <button class="metric-item" @click="goToAlerts('warning')">
+            <button class="metric-item metric-warning" @click="goToAlerts('warning')">
               <span class="metric-value warning">{{ alarmStats.warning }}</span>
               <span class="metric-label">警告</span>
             </button>
           </div>
 
-          <button class="metric-item full-width" @click="goToAlerts('all')">
+          <button class="metric-item full-width metric-total" @click="goToAlerts('all')">
             <span class="metric-value">{{ alarmStats.total }}</span>
             <span class="metric-label">实时告警总数</span>
           </button>
@@ -188,20 +199,33 @@ import {
   getSites as getAutomationSites
 } from '@/api/automation'
 
-interface DistributionItem {
-  label: string
-  count: number
-  percent: number
-}
-
 interface HourTrend {
   hour: string
   samples: number
   abnormal: number
 }
 
-const router = useRouter()
+interface AssetSnapshot {
+  deviceCount: number
+  ipCount: number
+  rackCount: number
+  vlanCount: number
+  prefixCount: number
+  devices: Device[]
+}
 
+interface PieSegment {
+  label: string
+  count: number
+  percent: number
+  color: string
+}
+
+const ASSET_CACHE_TTL = 5 * 60 * 1000
+const SYNC_THROTTLE = 90 * 1000
+const PIE_COLORS = ['#3b82f6', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
+
+const router = useRouter()
 const sites = ref<Site[]>([])
 const selectedSiteName = ref<string>('')
 const automationSites = ref<any[]>([])
@@ -211,17 +235,28 @@ const loading = ref({
   data: false
 })
 
-const devices = ref<Device[]>([])
-const rackCount = ref(0)
+const syncState = ref({
+  running: false,
+  lastLabel: '未执行'
+})
+
+const assetSnapshot = ref<AssetSnapshot>({
+  deviceCount: 0,
+  ipCount: 0,
+  rackCount: 0,
+  vlanCount: 0,
+  prefixCount: 0,
+  devices: []
+})
+
 const alerts = ref<any[]>([])
 const automationSummary = ref<any>({ tasks: { failed: 0 } })
 const hourlyTrends = ref<HourTrend[]>([])
 const feedbackStats = ref<Record<string, any>>({})
 
-const switchRoleLabel = '交换机'
-const controllerRoleLabel = '控制器'
-
 const normalized = (value: string) => value.toLowerCase().replace(/[\s_-]/g, '')
+const cacheKey = (siteName?: string) => `dashboard:assets:v2:${siteName || 'all'}`
+const syncKey = (siteName?: string) => `dashboard:sync:v1:${siteName || 'all'}`
 
 const selectedSite = computed(() => sites.value.find((item) => item.name === selectedSiteName.value) || null)
 
@@ -237,63 +272,14 @@ const selectedAutomationSiteId = computed<number | undefined>(() => {
 
 const maxHourlySamples = computed(() => {
   const values = hourlyTrends.value.map((item) => Math.max(item.samples || 0, item.abnormal || 0))
-  const max = Math.max(...values, 1)
-  return max
+  return Math.max(...values, 1)
 })
 
-const assetStats = computed(() => {
-  const byRole = devices.value.reduce((acc: Record<string, number>, item) => {
-    const key = item.role || '未标注'
-    acc[key] = (acc[key] || 0) + 1
-    return acc
-  }, {})
+const roleDistribution = computed(() => buildDistribution(assetSnapshot.value.devices.map((d) => d.role || '未标注')))
+const vendorDistribution = computed(() => buildDistribution(assetSnapshot.value.devices.map((d) => d.vendor || '未标注')))
 
-  const switchCount = Object.entries(byRole)
-    .filter(([role]) => /交换|switch/i.test(role))
-    .reduce((sum, [, count]) => sum + count, 0)
-
-  const controllerCount = Object.entries(byRole)
-    .filter(([role]) => /控制|controller/i.test(role))
-    .reduce((sum, [, count]) => sum + count, 0)
-
-  return {
-    totalDevices: devices.value.length,
-    totalRacks: rackCount.value,
-    switchCount,
-    controllerCount,
-    byRole
-  }
-})
-
-const topRoleDistribution = computed<DistributionItem[]>(() => {
-  const total = devices.value.length || 1
-  return Object.entries(assetStats.value.byRole)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-    .map(([label, count]) => ({
-      label,
-      count,
-      percent: Math.round((count / total) * 100)
-    }))
-})
-
-const topVendorDistribution = computed<DistributionItem[]>(() => {
-  const total = devices.value.length || 1
-  const byVendor = devices.value.reduce((acc: Record<string, number>, item) => {
-    const key = item.vendor || '未标注'
-    acc[key] = (acc[key] || 0) + 1
-    return acc
-  }, {})
-
-  return Object.entries(byVendor)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-    .map(([label, count]) => ({
-      label,
-      count,
-      percent: Math.round((count / total) * 100)
-    }))
-})
+const rolePie = computed(() => buildPie(roleDistribution.value, PIE_COLORS))
+const vendorPie = computed(() => buildPie(vendorDistribution.value, PIE_COLORS))
 
 const alarmStats = computed(() => {
   const all = alerts.value || []
@@ -313,7 +299,6 @@ const feedbackSummary = computed(() => {
   const correct = rows.reduce((sum, row) => sum + Number(row.correct || 0), 0)
   const incorrect = rows.reduce((sum, row) => sum + Number(row.incorrect || 0), 0)
   const partial = rows.reduce((sum, row) => sum + Number(row.partial || 0), 0)
-
   const divide = (value: number) => (total > 0 ? Math.round((value / total) * 100) : 0)
 
   return {
@@ -326,6 +311,102 @@ const feedbackSummary = computed(() => {
     partialRate: divide(partial)
   }
 })
+
+function buildDistribution(values: string[]): Array<{ label: string; count: number; percent: number }> {
+  const counter = values.reduce((acc: Record<string, number>, label) => {
+    acc[label] = (acc[label] || 0) + 1
+    return acc
+  }, {})
+
+  const total = values.length || 1
+  const sorted = Object.entries(counter)
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, count]) => ({ label, count, percent: Math.round((count / total) * 100) }))
+
+  if (sorted.length <= 5) {
+    return sorted
+  }
+
+  const head = sorted.slice(0, 5)
+  const tailCount = sorted.slice(5).reduce((sum, item) => sum + item.count, 0)
+  head.push({ label: '其他', count: tailCount, percent: Math.round((tailCount / total) * 100) })
+  return head
+}
+
+function buildPie(items: Array<{ label: string; count: number; percent: number }>, palette: string[]) {
+  if (items.length === 0) {
+    return { gradient: '', segments: [] as PieSegment[] }
+  }
+
+  const total = items.reduce((sum, item) => sum + item.count, 0)
+  let cursor = 0
+  const gradientParts: string[] = []
+
+  const segments: PieSegment[] = items.map((item, index) => {
+    const color = palette[index % palette.length]
+    const start = cursor
+    const angle = total > 0 ? (item.count / total) * 360 : 0
+    const end = cursor + angle
+    cursor = end
+    gradientParts.push(`${color} ${start}deg ${end}deg`)
+
+    return {
+      ...item,
+      color
+    }
+  })
+
+  return {
+    gradient: `conic-gradient(${gradientParts.join(', ')})`,
+    segments
+  }
+}
+
+function applySnapshot(snapshot: AssetSnapshot) {
+  assetSnapshot.value = snapshot
+}
+
+function readAssetCache(siteName?: string): AssetSnapshot | null {
+  try {
+    const raw = localStorage.getItem(cacheKey(siteName))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed?.data || !parsed?.timestamp) return null
+    if (Date.now() - Number(parsed.timestamp) > ASSET_CACHE_TTL) return null
+    return parsed.data as AssetSnapshot
+  } catch {
+    return null
+  }
+}
+
+function writeAssetCache(siteName: string | undefined, data: AssetSnapshot) {
+  localStorage.setItem(
+    cacheKey(siteName),
+    JSON.stringify({
+      timestamp: Date.now(),
+      data
+    })
+  )
+}
+
+function shouldTriggerSync(siteName?: string) {
+  const last = Number(localStorage.getItem(syncKey(siteName)) || 0)
+  return Date.now() - last > SYNC_THROTTLE
+}
+
+async function prewarmAssets(siteName?: string) {
+  if (!shouldTriggerSync(siteName)) return
+  syncState.value.running = true
+  try {
+    await assetsApi.syncDevices(siteName)
+    localStorage.setItem(syncKey(siteName), String(Date.now()))
+    syncState.value.lastLabel = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  } catch (error) {
+    console.error('Failed to prewarm assets:', error)
+  } finally {
+    syncState.value.running = false
+  }
+}
 
 const calcHourlyPercent = (value: number) => Math.round((value / maxHourlySamples.value) * 100)
 
@@ -348,13 +429,40 @@ const loadSites = async () => {
 
 const loadAssetsData = async () => {
   const siteName = selectedSiteName.value || undefined
-  const [deviceResp, rackResp] = await Promise.all([
-    assetsApi.getDevices(siteName ? { site: siteName } : undefined),
-    assetsApi.getRacks(siteName ? { site: siteName } : undefined)
-  ])
+  const cache = readAssetCache(siteName)
+  if (cache) {
+    applySnapshot(cache)
+  }
 
-  devices.value = deviceResp.devices || []
-  rackCount.value = rackResp.count || 0
+  await prewarmAssets(siteName)
+
+  try {
+    const [deviceResp, ipResp, rackResp, vlanResp, prefixResp] = await Promise.all([
+      assetsApi.getDevices(siteName ? { site: siteName } : undefined),
+      assetsApi.getIPs(),
+      assetsApi.getRacks(siteName ? { site: siteName } : undefined),
+      assetsApi.getVLANs(siteName ? { site: siteName } : undefined),
+      assetsApi.getPrefixes(siteName ? { site: siteName } : undefined)
+    ])
+
+    const scopedIpCount = siteName
+      ? (deviceResp.devices || []).filter((item) => !!item.primary_ip).length
+      : (ipResp.count || 0)
+
+    const nextSnapshot: AssetSnapshot = {
+      deviceCount: deviceResp.count || 0,
+      ipCount: scopedIpCount,
+      rackCount: rackResp.count || 0,
+      vlanCount: vlanResp.count || 0,
+      prefixCount: prefixResp.count || 0,
+      devices: deviceResp.devices || []
+    }
+
+    applySnapshot(nextSnapshot)
+    writeAssetCache(siteName, nextSnapshot)
+  } catch (error) {
+    console.error('Failed to load assets data:', error)
+  }
 }
 
 const loadAlertsData = async () => {
@@ -400,13 +508,13 @@ const loadAllData = async () => {
   }
 }
 
-const goToAssets = (type: 'device' | 'rack', extra?: Record<string, string>) => {
+const goToAssets = (type: 'device' | 'rack' | 'ip' | 'vlan' | 'prefix', extra?: Record<string, string>) => {
   const query: Record<string, string> = {
     type,
     ...extra
   }
 
-  if (selectedSiteName.value) {
+  if (selectedSiteName.value && type !== 'ip') {
     query.site = selectedSiteName.value
   }
 
@@ -439,14 +547,19 @@ watch(selectedSiteName, () => {
 
 onMounted(async () => {
   await loadSites()
-  await loadAllData()
+  if (!selectedSiteName.value) {
+    await loadAllData()
+  }
 })
 </script>
 
 <style scoped>
 .dashboard-page {
   min-height: calc(100vh - 64px);
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8eef5 100%);
+  background:
+    radial-gradient(circle at 4% 0%, rgba(56, 189, 248, 0.09), transparent 35%),
+    radial-gradient(circle at 96% 4%, rgba(20, 184, 166, 0.08), transparent 35%),
+    linear-gradient(135deg, #f6f9ff 0%, #eef4ff 100%);
 }
 
 .dashboard-content {
@@ -457,10 +570,11 @@ onMounted(async () => {
 }
 
 .card {
-  background: #fff;
+  background: rgba(255, 255, 255, 0.9);
   border-radius: 8px;
   padding: 16px;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  border: 1px solid #dbe8ff;
 }
 
 .section-top {
@@ -482,7 +596,7 @@ onMounted(async () => {
 }
 
 .site-selector-row {
-  min-width: 280px;
+  min-width: 320px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -495,12 +609,21 @@ onMounted(async () => {
 }
 
 .site-selector-row select {
-  border: 1px solid #cbd5e1;
+  border: 1px solid #c7dbff;
   border-radius: 8px;
-  height: 36px;
+  height: 38px;
   padding: 0 10px;
   color: #0f172a;
   background: #fff;
+}
+
+.sync-hint {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.sync-hint.running {
+  color: #2563eb;
 }
 
 .middle-grid,
@@ -514,7 +637,15 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-height: 320px;
+  min-height: 360px;
+}
+
+.assets-panel {
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.78) 0%, rgba(255, 255, 255, 0.9) 30%);
+}
+
+.alerts-panel {
+  background: linear-gradient(180deg, rgba(255, 247, 237, 0.7) 0%, rgba(255, 255, 255, 0.9) 35%);
 }
 
 .panel-header {
@@ -539,8 +670,11 @@ onMounted(async () => {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+}
+
+.metric-grid.five-col {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .metric-grid.two-col {
@@ -548,7 +682,7 @@ onMounted(async () => {
 }
 
 .metric-item {
-  border: 1px solid #e2e8f0;
+  border: 1px solid #dbe5f5;
   border-radius: 8px;
   padding: 10px;
   background: #fff;
@@ -564,8 +698,40 @@ button.metric-item {
 }
 
 button.metric-item:hover {
-  border-color: #93c5fd;
-  background: #eff6ff;
+  border-color: #86b8ff;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.11);
+}
+
+.metric-device {
+  border-top: 3px solid #3b82f6;
+}
+
+.metric-ip {
+  border-top: 3px solid #06b6d4;
+}
+
+.metric-rack {
+  border-top: 3px solid #14b8a6;
+}
+
+.metric-vlan {
+  border-top: 3px solid #f59e0b;
+}
+
+.metric-prefix {
+  border-top: 3px solid #8b5cf6;
+}
+
+.metric-critical {
+  border-top: 3px solid #ef4444;
+}
+
+.metric-warning {
+  border-top: 3px solid #f59e0b;
+}
+
+.metric-total {
+  border-top: 3px solid #3b82f6;
 }
 
 .metric-item.full-width {
@@ -573,9 +739,10 @@ button.metric-item:hover {
 }
 
 .metric-value {
-  font-size: 24px;
+  font-size: 30px;
   font-weight: 700;
   line-height: 1;
+  color: #0f172a;
 }
 
 .metric-value.critical,
@@ -596,15 +763,96 @@ button.metric-item:hover {
   color: #475569;
 }
 
+.pie-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.pie-card {
+  border: 1px solid #dbe5f5;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+
+.pie-card h3 {
+  font-size: 14px;
+  color: #1e293b;
+  margin-bottom: 8px;
+}
+
+.pie-layout {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.pie-shell {
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  position: relative;
+  border: 1px solid #dbe5f5;
+}
+
+.pie-shell::after {
+  content: '';
+  position: absolute;
+  inset: 28px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px #e2e8f0;
+}
+
+.pie-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.legend-row {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  padding: 4px 6px;
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  gap: 6px;
+  align-items: center;
+  text-align: left;
+  cursor: pointer;
+}
+
+.legend-row:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.legend-label {
+  font-size: 12px;
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.legend-val {
+  font-size: 11px;
+  color: #64748b;
+}
+
 .subsection {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.subsection h3 {
-  font-size: 14px;
-  color: #1e293b;
 }
 
 .bars-list {
@@ -623,15 +871,6 @@ button.metric-item:hover {
   align-items: center;
   gap: 8px;
   text-align: left;
-}
-
-button.bar-item {
-  cursor: pointer;
-}
-
-button.bar-item:hover {
-  border-color: #93c5fd;
-  background: #eff6ff;
 }
 
 .bar-item.static {
@@ -657,10 +896,6 @@ button.bar-item:hover {
 .bar-fill {
   height: 100%;
   background: linear-gradient(90deg, #60a5fa 0%, #2563eb 100%);
-}
-
-.bar-fill.vendor {
-  background: linear-gradient(90deg, #34d399 0%, #10b981 100%);
 }
 
 .bar-fill.success {
@@ -749,14 +984,16 @@ button.bar-item:hover {
   background: #dbeafe;
 }
 
+@media (max-width: 1280px) {
+  .metric-grid.five-col {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 1024px) {
   .middle-grid,
   .bottom-grid {
     grid-template-columns: 1fr;
-  }
-
-  .metric-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .section-top {
@@ -766,6 +1003,30 @@ button.bar-item:hover {
 
   .site-selector-row {
     min-width: 0;
+  }
+
+  .pie-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pie-layout {
+    grid-template-columns: 96px 1fr;
+  }
+
+  .pie-shell {
+    width: 96px;
+    height: 96px;
+  }
+
+  .pie-shell::after {
+    inset: 24px;
+  }
+}
+
+@media (max-width: 760px) {
+  .metric-grid.five-col,
+  .metric-grid.two-col {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

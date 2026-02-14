@@ -30,7 +30,14 @@ export const deleteSSHCredential = async (id: number) => {
   return response.data
 }
 
-export const queryNetBoxDevices = async (params?: { site?: string; tag?: string }) => {
+export const queryNetBoxDevices = async (params?: {
+  site?: string
+  tag?: string
+  name?: string
+  role?: string
+  vendor?: string
+  device_type?: string
+}) => {
   const response = await api.get('/api/ssh/netbox/devices', { params })
   return response.data
 }

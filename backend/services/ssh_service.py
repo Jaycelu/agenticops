@@ -117,33 +117,52 @@ class SSHService:
             return None
         return primary_ip.split("/")[0]
 
-    def query_netbox_devices(self, site: Optional[str] = None, tag: Optional[str] = None) -> List[Dict[str, Any]]:
+    def query_netbox_devices(
+        self,
+        site: Optional[str] = None,
+        tag: Optional[str] = None,
+        name: Optional[str] = None,
+        role: Optional[str] = None,
+        vendor: Optional[str] = None,
+        device_type: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         filters: Dict[str, Any] = {}
         if site:
             filters["site"] = site
         if tag:
             filters["tag"] = tag
+        if name:
+            filters["q"] = name
 
         devices = self.nb.dcim.devices.filter(**filters)
         results: List[Dict[str, Any]] = []
         for device in devices:
+            device_vendor = (
+                device.device_type.manufacturer.name
+                if device.device_type and device.device_type.manufacturer
+                else None
+            )
+            device_role = device.role.name if device.role else None
+            model_name = device.device_type.model if device.device_type else None
+            device_type_name = device.device_type.display if device.device_type else model_name
+
+            if role and (not device_role or role.lower() not in str(device_role).lower()):
+                continue
+            if vendor and (not device_vendor or vendor.lower() not in str(device_vendor).lower()):
+                continue
+            if device_type and (not device_type_name or device_type.lower() not in str(device_type_name).lower()):
+                continue
+
             results.append(
                 {
                     "id": device.id,
                     "name": device.name,
                     "site": device.site.name if device.site else None,
-                    "role": device.role.name if device.role else None,
+                    "role": device_role,
                     "platform": device.platform.name if device.platform else None,
-                    "vendor": (
-                        device.device_type.manufacturer.name
-                        if device.device_type and device.device_type.manufacturer
-                        else None
-                    ),
-                    "manufacturer": (
-                        device.device_type.manufacturer.name
-                        if device.device_type and device.device_type.manufacturer
-                        else None
-                    ),
+                    "vendor": device_vendor,
+                    "manufacturer": device_vendor,
+                    "device_type": device_type_name,
                     "primary_ip": self._extract_primary_ip(device),
                     "tags": [item.name for item in device.tags] if getattr(device, "tags", None) else [],
                     "status": device.status.label if device.status else None,
