@@ -1,14 +1,24 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
+from sqlalchemy.orm import Session
 from mcp.netbox_mcp import NetBoxMCP
 from utils.cache import netbox_cache
+from database import get_db
+from services.asset_sync_service import asset_sync_service
+from models.automation import AssetDevice
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 netbox_mcp = NetBoxMCP()
 
 
 @router.get("/devices")
-async def get_devices(name: str = None, site: str = None, role: str = None):
+async def get_devices(
+    name: str = None,
+    site: str = None,
+    role: str = None,
+    vendor: str = None,
+    db: Session = Depends(get_db),
+):
     params = {"action": "query_devices"}
     if name:
         params["name"] = name
@@ -16,6 +26,8 @@ async def get_devices(name: str = None, site: str = None, role: str = None):
         params["site"] = site
     if role:
         params["role"] = role
+    if vendor:
+        params["vendor"] = vendor
 
     # 尝试从缓存获取
     cached_data = netbox_cache.get("devices", params)
@@ -25,6 +37,9 @@ async def get_devices(name: str = None, site: str = None, role: str = None):
     # 缓存未命中，请求NetBox
     result = await netbox_mcp.execute(params)
     if result.success:
+        devices = result.data.get("devices", []) if isinstance(result.data, dict) else []
+        if devices:
+            asset_sync_service.sync_devices(db, devices)
         # 缓存结果
         netbox_cache.set("devices", params, result.data)
         return result.data
@@ -225,6 +240,37 @@ async def get_device_config(device_id: int):
         raise HTTPException(status_code=500, detail=result.error)
 
 
+@router.get("/devices/{device_id}")
+async def get_device_detail(device_id: int, db: Session = Depends(get_db)):
+    params = {"action": "get_device_by_id", "device_id": device_id}
+    result = await netbox_mcp.execute(params)
+    if not result.success:
+        raise HTTPException(status_code=500, detail=result.error)
+
+    data = result.data or {}
+    vendor = data.get("manufacturer") or data.get("vendor")
+    # 更新本地镜像
+    payload = {
+        "id": data.get("id"),
+        "name": data.get("name"),
+        "device_type": data.get("device_type"),
+        "site": data.get("site"),
+        "role": data.get("role"),
+        "vendor": vendor,
+        "manufacturer": vendor,
+        "status": data.get("status"),
+        "serial": data.get("serial"),
+        "primary_ip": data.get("primary_ip"),
+        "rack": data.get("rack"),
+        "position": data.get("position"),
+        "face": data.get("face"),
+        "tags": data.get("tags", []),
+    }
+    asset_sync_service.sync_devices(db, [payload])
+    data["vendor"] = vendor
+    return data
+
+
 @router.post("/devices/{device_id}/fetch-config")
 async def fetch_and_save_device_config(device_id: int, credentials: Dict[str, Any]):
     """从设备获取配置并写入NetBox"""
@@ -248,7 +294,9 @@ async def fetch_and_save_device_config(device_id: int, credentials: Dict[str, An
 async def get_devices_with_ip(
     site: str = None,
     role: str = None,
-    status: str = None
+    status: str = None,
+    vendor: str = None,
+    db: Session = Depends(get_db),
 ):
     """获取有IP地址的设备（用于自动化模块选择）"""
     params = {"action": "query_devices"}
@@ -259,6 +307,8 @@ async def get_devices_with_ip(
         params["role"] = role
     if status:
         params["status"] = status
+    if vendor:
+        params["vendor"] = vendor
 
     # 尝试从缓存获取
     cached_data = netbox_cache.get("devices_with_ip", params)
@@ -273,6 +323,8 @@ async def get_devices_with_ip(
             device for device in result.data.get("devices", [])
             if device.get("primary_ip")
         ]
+        if devices_with_ip:
+            asset_sync_service.sync_devices(db, devices_with_ip)
         
         filtered_result = {
             "count": len(devices_with_ip),
@@ -284,3 +336,27 @@ async def get_devices_with_ip(
         return filtered_result
     else:
         raise HTTPException(status_code=500, detail=result.error)
+
+
+@router.post("/sync/devices")
+async def sync_devices(site: str = None, vendor: str = None, db: Session = Depends(get_db)):
+    params = {"action": "query_devices"}
+    if site:
+        params["site"] = site
+    if vendor:
+        params["vendor"] = vendor
+    result = await netbox_mcp.execute(params)
+    if not result.success:
+        raise HTTPException(status_code=500, detail=result.error)
+    devices = result.data.get("devices", []) if isinstance(result.data, dict) else []
+    summary = asset_sync_service.sync_devices(db, devices)
+    return {"success": True, "data": summary}
+
+
+@router.get("/vendors")
+async def list_vendors(db: Session = Depends(get_db)):
+    vendors = db.query(AssetDevice.vendor).filter(
+        AssetDevice.vendor.isnot(None),
+        AssetDevice.vendor != ""
+    ).distinct().order_by(AssetDevice.vendor.asc()).all()
+    return {"success": True, "data": [v[0] for v in vendors]}

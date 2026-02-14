@@ -206,4 +206,9 @@ export const triggerAlerts = async (params?: { site_id?: number }) => {
   return response.data
 }
 
+export const resolveVendorCommands = async (params: { device_id: number; template_type?: string }) => {
+  const response = await api.get('/api/automation/resolve-commands', { params })
+  return response.data
+}
+
 export default api

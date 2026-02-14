@@ -9,6 +9,7 @@ export interface Device {
   device_type: string
   site: string
   role: string
+  vendor?: string
   status: string
   serial: string
   primary_ip: string
@@ -21,6 +22,7 @@ export interface DeviceQuery {
   name?: string
   site?: string
   role?: string
+  vendor?: string
 }
 
 export interface DeviceListResponse {
@@ -138,6 +140,12 @@ export const assetsApi = {
     return response.data
   },
 
+  async getDeviceDetail(deviceId: number): Promise<Device> {
+    const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/assets/devices/${deviceId}` : `${API_BASE_URL}/assets/devices/${deviceId}`
+    const response = await axios.get(apiUrl)
+    return response.data
+  },
+
   async getIPs(address?: string, deviceId?: number, status?: string): Promise<IPListResponse> {
     const params: any = {}
     if (address) params.address = address
@@ -206,15 +214,28 @@ export const assetsApi = {
     return response.data
   },
 
-  async getDevicesWithIP(site?: string, role?: string, status?: string): Promise<DeviceListResponse> {
+  async getDevicesWithIP(site?: string, role?: string, status?: string, vendor?: string): Promise<DeviceListResponse> {
     const params: any = {}
     if (site) params.site = site
     if (role) params.role = role
     if (status) params.status = status
+    if (vendor) params.vendor = vendor
 
     // 如果使用VITE_API_BASE_URL环境变量，则API路径应包含/api前缀
     const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/assets/devices/with-ip` : `${API_BASE_URL}/assets/devices/with-ip`
     const response = await axios.get(apiUrl, { params })
+    return response.data
+  },
+
+  async getVendors(): Promise<{ success: boolean; data: string[] }> {
+    const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/assets/vendors` : `${API_BASE_URL}/assets/vendors`
+    const response = await axios.get(apiUrl)
+    return response.data
+  },
+
+  async syncDevices(site?: string, vendor?: string): Promise<any> {
+    const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/assets/sync/devices` : `${API_BASE_URL}/assets/sync/devices`
+    const response = await axios.post(apiUrl, null, { params: { site, vendor } })
     return response.data
   }
 }

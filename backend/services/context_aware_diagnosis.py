@@ -11,6 +11,7 @@ from config.settings import settings
 from mcp.netbox_mcp import NetBoxMCP
 from models.llm_client import LLMClient
 from services.ssh_service import ssh_service
+from services.command_template_service import command_template_service
 
 logger = logging.getLogger(__name__)
 
@@ -47,32 +48,52 @@ class ContextAwareDiagnosisService:
             "outputs": [],
             "status": "skipped",
             "error": "no_credential_bound",
+            "template_match": None,
         }
         if credential_id and netbox_device_id:
-            commands = step1.get("recommended_commands") or ssh_service.build_diagnostic_commands(
-                topology_context.get("device", {}).get("platform"),
-                topology_context.get("device", {}).get("manufacturer"),
+            template_type = self._select_template_type(step1)
+            resolved = await command_template_service.resolve_commands_for_device(
+                db,
+                device_id=netbox_device_id,
+                template_type=template_type,
             )
-            try:
-                result = ssh_service.execute_commands(
-                    db,
-                    credential_id=credential_id,
-                    netbox_device_id=netbox_device_id,
-                    commands=commands,
-                )
+            inspection["template_match"] = resolved
+            if resolved.get("found"):
+                commands = resolved.get("commands") or []
+            else:
+                commands = []
+
+            if not commands:
                 inspection = {
-                    "commands": commands,
-                    "outputs": result.get("results", []),
-                    "status": "success",
-                    "error": None,
-                }
-            except Exception as exc:  # noqa: BLE001
-                inspection = {
-                    "commands": commands,
+                    "commands": [],
                     "outputs": [],
-                    "status": "failed",
-                    "error": str(exc),
+                    "status": "manual_required",
+                    "error": resolved.get("reason") or "missing_vendor_template",
+                    "template_match": resolved,
                 }
+            else:
+                try:
+                    result = ssh_service.execute_commands(
+                        db,
+                        credential_id=credential_id,
+                        netbox_device_id=netbox_device_id,
+                        commands=commands,
+                    )
+                    inspection = {
+                        "commands": commands,
+                        "outputs": result.get("results", []),
+                        "status": "success",
+                        "error": None,
+                        "template_match": resolved,
+                    }
+                except Exception as exc:  # noqa: BLE001
+                    inspection = {
+                        "commands": commands,
+                        "outputs": [],
+                        "status": "failed",
+                        "error": str(exc),
+                        "template_match": resolved,
+                    }
 
         step3 = await self._step3_final_conclusion(
             site_id=site_id,
@@ -97,7 +118,10 @@ class ContextAwareDiagnosisService:
             {
                 "stage": "Inspection",
                 "title": "SSH现场检查",
-                "payload": inspection,
+                "payload": {
+                    **inspection,
+                    "adaptation_message": self._build_adaptation_message(inspection),
+                },
             },
             {
                 "stage": "Reasoning",
@@ -121,6 +145,20 @@ class ContextAwareDiagnosisService:
             "final": step3,
             "audit_trail": audit_trail,
         }
+
+    def _select_template_type(self, initial_hypothesis: Dict[str, Any]) -> str:
+        text = f"{initial_hypothesis.get('hypothesis', '')} {initial_hypothesis.get('reasoning', '')}".lower()
+        if any(k in text for k in ["optic", "transceiver", "光模块", "los"]):
+            return "optics_diagnosis"
+        return "diagnosis_default"
+
+    def _build_adaptation_message(self, inspection: Dict[str, Any]) -> str:
+        template_match = inspection.get("template_match") or {}
+        if template_match.get("found"):
+            vendor = template_match.get("vendor")
+            tpl = (template_match.get("template") or {}).get("name")
+            return f"由于设备厂商为 [{vendor}]，已自动加载 [{tpl}] 执行命令采集。"
+        return f"缺少厂商指令集，已转人工处理：{inspection.get('error')}"
 
     async def _build_topology_context(self, netbox_device_id: Optional[int]) -> Dict[str, Any]:
         if not netbox_device_id:

@@ -8,6 +8,7 @@ from api.alerts import router as alerts_router
 from api.automation import router as automation_router
 from api.abnormal_types import router as abnormal_types_router
 from api.ssh_management import router as ssh_management_router
+from api.command_templates import router as command_templates_router
 from utils.cache import netbox_cache
 import asyncio
 
@@ -138,6 +139,7 @@ app.include_router(models_router)
 app.include_router(automation_router)
 app.include_router(abnormal_types_router)
 app.include_router(ssh_management_router)
+app.include_router(command_templates_router)
 
 
 @app.get("/")

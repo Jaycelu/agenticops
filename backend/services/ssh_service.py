@@ -134,6 +134,11 @@ class SSHService:
                     "site": device.site.name if device.site else None,
                     "role": device.role.name if device.role else None,
                     "platform": device.platform.name if device.platform else None,
+                    "vendor": (
+                        device.device_type.manufacturer.name
+                        if device.device_type and device.device_type.manufacturer
+                        else None
+                    ),
                     "manufacturer": (
                         device.device_type.manufacturer.name
                         if device.device_type and device.device_type.manufacturer
@@ -375,6 +380,7 @@ class SSHService:
             connect_params = self._build_connect_params(credential, device_ip, timeout=timeout)
             client.connect(**connect_params)
             shell = client.invoke_shell()
+            shell.settimeout(timeout)
             time.sleep(1)
             if shell.recv_ready():
                 shell.recv(65535)
@@ -383,15 +389,24 @@ class SSHService:
                 shell.send(f"{command}\n")
                 time.sleep(1.2)
                 output = ""
+                command_deadline = time.time() + timeout
                 wait_rounds = 0
-                while wait_rounds < 6:
+                timed_out = False
+                while wait_rounds < 6 and time.time() < command_deadline:
                     time.sleep(0.5)
                     if shell.recv_ready():
                         output += shell.recv(65535).decode("utf-8", errors="ignore")
                         wait_rounds = 0
                     else:
                         wait_rounds += 1
-                results.append({"command": command, "output": output.strip()})
+                if time.time() >= command_deadline:
+                    timed_out = True
+                    try:
+                        # 尝试中断当前命令，避免采集卡死
+                        shell.send("\x03")
+                    except Exception:
+                        pass
+                results.append({"command": command, "output": output.strip(), "timed_out": timed_out})
 
             return {"success": True, "results": results}
         finally:

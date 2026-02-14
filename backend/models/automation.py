@@ -60,6 +60,33 @@ class DeviceState(Base):
     )
 
 
+class AssetDevice(Base):
+    """本地资产镜像（来自NetBox）"""
+    __tablename__ = "asset_device"
+
+    id = Column(Integer, primary_key=True, index=True)
+    netbox_device_id = Column(Integer, unique=True, nullable=False, index=True)
+    name = Column(String(120), index=True)
+    device_type = Column(String(120))
+    site = Column(String(120), index=True)
+    role = Column(String(120), index=True)
+    vendor = Column(String(120), index=True)
+    status = Column(String(50), index=True)
+    serial = Column(String(120))
+    primary_ip = Column(String(64), index=True)
+    rack = Column(String(120))
+    position = Column(String(32))
+    face = Column(String(32))
+    tags = Column(JSON, default=list)
+    last_synced_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    __table_args__ = (
+        Index("idx_asset_device_vendor_site", "vendor", "site"),
+    )
+
+
 class LogSample(Base):
     """日志采样表"""
     __tablename__ = "log_sample"
@@ -353,6 +380,26 @@ class SSHCredentialDeviceBinding(Base):
     __table_args__ = (
         Index("uniq_credential_device", "credential_id", "netbox_device_id", unique=True),
         Index("idx_binding_site_status", "site_name", "last_connectivity_status"),
+    )
+
+
+class CommandTemplate(Base):
+    """厂商命令模板"""
+    __tablename__ = "command_template"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(120), nullable=False, index=True)
+    template_type = Column(String(80), nullable=False, default="diagnosis_default", index=True)
+    vendor = Column(String(120), nullable=False, index=True)
+    commands = Column(JSON, nullable=False, default=list)
+    description = Column(Text)
+    is_builtin = Column(Boolean, default=False)
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    __table_args__ = (
+        Index("idx_command_template_vendor_type", "vendor", "template_type"),
     )
 
 

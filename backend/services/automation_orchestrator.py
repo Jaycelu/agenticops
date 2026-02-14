@@ -335,6 +335,7 @@ class AutomationOrchestrator:
 
             final_from_context = context_diag.get("final", {})
             action_type = final_from_context.get("action_type", "")
+            inspection_status = (context_diag.get("inspection") or {}).get("status")
             recommendations = final_from_context.get("recommendations")
             if isinstance(recommendations, list) and recommendations:
                 converted_diagnosis.recommendations = recommendations
@@ -349,7 +350,7 @@ class AutomationOrchestrator:
                     converted_diagnosis.confidence = float(final_from_context.get("confidence"))
                 except Exception:
                     pass
-            if action_type in {"replace_hardware", "manual_investigation"}:
+            if action_type in {"replace_hardware", "manual_investigation"} or inspection_status == "manual_required":
                 converted_diagnosis.require_human_confirm = True
             
             # 构建决策结果

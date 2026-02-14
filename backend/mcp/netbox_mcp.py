@@ -85,6 +85,13 @@ class NetBoxMCP(BaseMCP):
         if "role" in params and params["role"]:
             role_filter = params["role"]
             devices = [d for d in devices if d.role and role_filter in str(d.role.name)]
+        if "vendor" in params and params["vendor"]:
+            vendor_filter = str(params["vendor"]).lower()
+            devices = [
+                d for d in devices
+                if d.device_type and d.device_type.manufacturer
+                and vendor_filter in str(d.device_type.manufacturer.name).lower()
+            ]
 
         result = {
             "count": len(devices),
@@ -95,6 +102,16 @@ class NetBoxMCP(BaseMCP):
                     "device_type": device.device_type.display if device.device_type else None,
                     "site": device.site.name if device.site else None,
                     "role": device.role.name if device.role else None,
+                    "vendor": (
+                        device.device_type.manufacturer.name
+                        if device.device_type and device.device_type.manufacturer
+                        else None
+                    ),
+                    "manufacturer": (
+                        device.device_type.manufacturer.name
+                        if device.device_type and device.device_type.manufacturer
+                        else None
+                    ),
                     "status": device.status.label if device.status else None,
                     "serial": device.serial,
                     "primary_ip": str(device.primary_ip) if device.primary_ip else None,
@@ -562,6 +579,7 @@ class NetBoxMCP(BaseMCP):
             {
                 "id": device.id,
                 "name": device.name,
+                "device_type": device.device_type.display if device.device_type else None,
                 "role": device.role.name if device.role else None,
                 "platform": device.platform.name if device.platform else None,
                 "manufacturer": (
@@ -572,6 +590,11 @@ class NetBoxMCP(BaseMCP):
                 "site": device.site.name if device.site else None,
                 "primary_ip": str(device.primary_ip).split("/")[0] if device.primary_ip else None,
                 "status": device.status.label if device.status else None,
+                "serial": device.serial,
+                "rack": device.rack.name if device.rack else None,
+                "position": device.position,
+                "face": device.face.label if device.face else None,
+                "tags": [tag.name for tag in device.tags] if device.tags else [],
             },
             {"action": "get_device_by_id", "device_id": device_id},
         )

@@ -6,5 +6,6 @@ from .alerts import router as alerts_router
 from .sessions import router as sessions_router
 from .automation import router as automation_router
 from .ssh_management import router as ssh_management_router
+from .command_templates import router as command_templates_router
 
-__all__ = ["chat_router", "assets_router", "logs_router", "models_router", "alerts_router", "sessions_router", "automation_router", "ssh_management_router"]
+__all__ = ["chat_router", "assets_router", "logs_router", "models_router", "alerts_router", "sessions_router", "automation_router", "ssh_management_router", "command_templates_router"]

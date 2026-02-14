@@ -90,6 +90,12 @@
                   <option value="汇聚交换机">汇聚交换机</option>
                   <option value="防火墙">防火墙</option>
                 </select>
+                <select v-model="deviceFilters.vendor" class="filter-input" @change="loadDevices">
+                  <option value="">所有厂商</option>
+                  <option v-for="vendor in vendors" :key="vendor" :value="vendor">
+                    {{ vendor }}
+                  </option>
+                </select>
                 <button @click="loadDevices" class="btn-search">
                   <Search :size="16" />
                   搜索
@@ -130,6 +136,10 @@
                           <Eye :size="14" />
                           详情
                         </button>
+                      </span>
+                      <span v-else-if="col.key === 'vendor'" :class="['vendor-badge', getVendorClass(device.vendor)]">
+                        <span class="vendor-dot"></span>
+                        {{ device.vendor || '-' }}
                       </span>
                       <span v-else-if="col.key === 'name'">
                         <a @click="openDeviceDetail(device)" class="link-text">{{ device[col.key] || '-' }}</a>
@@ -173,6 +183,13 @@
                 <div class="info-item">
                   <span class="info-label">设备角色:</span>
                   <span class="info-value">{{ selectedDevice.role || '-' }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">厂商:</span>
+                  <span :class="['vendor-badge', getVendorClass(selectedDevice.vendor)]">
+                    <span class="vendor-dot"></span>
+                    {{ selectedDevice.vendor || '-' }}
+                  </span>
                 </div>
                 <div class="info-item">
                   <span class="info-label">状态:</span>
@@ -960,6 +977,7 @@ const fetchingConfig = ref(false)
 const defaultDeviceColumns: ColumnConfig[] = [
   { key: 'name', label: '设备名称', visible: true },
   { key: 'device_type', label: '设备类型', visible: true },
+  { key: 'vendor', label: '厂商', visible: true },
   { key: 'site', label: '所属站点', visible: true },
   { key: 'role', label: '设备角色', visible: true },
   { key: 'status', label: '状态', visible: true },
@@ -1047,8 +1065,10 @@ const deviceCount = ref(0)
 const deviceFilters = ref({
   name: '',
   site: '',
-  role: ''
+  role: '',
+  vendor: ''
 })
+const vendors = ref<string[]>([])
 
 const ips = ref<IP[]>([])
 const ipCount = ref(0)
@@ -1113,6 +1133,7 @@ function formatLabel(key: string): string {
     device_type: '设备类型',
     site: '站点',
     role: '角色',
+    vendor: '厂商',
     status: '状态',
     serial: '序列号',
     primary_ip: '主IP地址',
@@ -1228,10 +1249,11 @@ async function loadDevices() {
     if (deviceFilters.value.name) params.name = deviceFilters.value.name
     if (deviceFilters.value.site) params.site = deviceFilters.value.site
     if (deviceFilters.value.role) params.role = deviceFilters.value.role
+    if (deviceFilters.value.vendor) params.vendor = deviceFilters.value.vendor
 
     const cacheKey = `devices_${JSON.stringify(params)}`
 
-    const hasFilters = deviceFilters.value.name || deviceFilters.value.site || deviceFilters.value.role
+    const hasFilters = deviceFilters.value.name || deviceFilters.value.site || deviceFilters.value.role || deviceFilters.value.vendor
 
     if (!hasFilters) {
       try {
@@ -1256,6 +1278,11 @@ async function loadDevices() {
     const response = await assetsApi.getDevices(params)
     devices.value = response.devices
     deviceCount.value = response.count
+    const vendorSet = new Set((response.devices || []).map(d => d.vendor).filter(Boolean) as string[])
+    if (vendorSet.size > 0) {
+      const merged = new Set([...(vendors.value || []), ...Array.from(vendorSet)])
+      vendors.value = Array.from(merged).sort((a, b) => a.localeCompare(b))
+    }
 
     sessionStorage.setItem(cacheKey, JSON.stringify(response))
     sessionStorage.setItem(cacheKey + '_time', Date.now().toString())
@@ -1480,11 +1507,21 @@ async function loadSites() {
   }
 }
 
+async function loadVendors() {
+  try {
+    const resp = await assetsApi.getVendors()
+    vendors.value = resp.data || []
+  } catch (error) {
+    console.error('Error loading vendors:', error)
+  }
+}
+
 function resetDeviceFilters() {
   deviceFilters.value = {
     name: '',
     site: '',
-    role: ''
+    role: '',
+    vendor: ''
   }
   loadDevices()
 }
@@ -1620,6 +1657,16 @@ function getTagClass(tag: string): string {
   return 'tag-default'
 }
 
+function getVendorClass(vendor?: string): string {
+  if (!vendor) return 'vendor-default'
+  const v = vendor.toLowerCase()
+  if (v.includes('huawei')) return 'vendor-huawei'
+  if (v.includes('cisco')) return 'vendor-cisco'
+  if (v.includes('h3c')) return 'vendor-h3c'
+  if (v.includes('juniper')) return 'vendor-juniper'
+  return 'vendor-default'
+}
+
 function formatConfig(config: any): string {
   return JSON.stringify(config, null, 2)
 }
@@ -1657,6 +1704,7 @@ async function handleFetchAndSaveConfig() {
 onMounted(() => {
   loadColumnConfig()
   loadSites()
+  loadVendors()
   loadDevices()
   loadIPs()
 })
@@ -1720,6 +1768,51 @@ onMounted(() => {
 .btn-column-settings:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(108, 117, 125, 0.4);
+}
+
+.vendor-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+}
+
+.vendor-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+  background: currentColor;
+}
+
+.vendor-huawei {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.vendor-cisco {
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.vendor-h3c {
+  color: #0f766e;
+  border-color: #99f6e4;
+  background: #f0fdfa;
+}
+
+.vendor-juniper {
+  color: #065f46;
+  border-color: #a7f3d0;
+  background: #ecfdf5;
 }
 
 .content-layout {
