@@ -313,6 +313,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 
 import { alertsApi, Alert, AlertStatistics, Host } from '@/api/alerts'
 import { 
@@ -337,6 +338,7 @@ import {
 } from 'lucide-vue-next'
 
 const loading = ref(false)
+const route = useRoute()
 const alerts = ref<Alert[]>([])
 const hosts = ref<Host[]>([])
 const enabledHostsList = ref<Host[]>([])
@@ -357,6 +359,7 @@ const filters = ref({
 })
 
 const filterStatus = ref<'all' | 'unacknowledged' | 'acknowledged'>('all')
+const levelFilter = ref<'all' | 'critical' | 'warning'>('all')
 const showHostsModalDialog = ref(false)
 
 const selectedAlert = ref<Alert | null>(null)
@@ -376,7 +379,12 @@ async function loadAlerts() {
     }
 
     const response = await alertsApi.getAlerts(params)
-    alerts.value = response.alerts
+    const allAlerts = response.alerts || []
+    if (levelFilter.value === 'all') {
+      alerts.value = allAlerts
+      return
+    }
+    alerts.value = allAlerts.filter((item) => matchesLevel(item.severity, levelFilter.value))
   } catch (error) {
     console.error('Error loading alerts:', error)
   } finally {
@@ -471,6 +479,14 @@ function getSeverityClass(severity: string): string {
   return `severity-${severity}`
 }
 
+function matchesLevel(severity: string, level: 'critical' | 'warning') {
+  const text = String(severity || '')
+  if (level === 'critical') {
+    return /灾难|严重|critical|high/i.test(text)
+  }
+  return /一般严重|警告|warning|medium/i.test(text)
+}
+
 function openAlertDetail(alert: Alert) {
   selectedAlert.value = alert
 }
@@ -500,6 +516,16 @@ async function acknowledgeAlert(alert: Alert) {
 }
 
 onMounted(() => {
+  const queryStatus = route.query.status ? String(route.query.status) : ''
+  const queryLevel = route.query.level ? String(route.query.level) : ''
+
+  if (queryStatus === 'acknowledged' || queryStatus === 'unacknowledged') {
+    filterStatus.value = queryStatus
+  }
+  if (queryLevel === 'critical' || queryLevel === 'warning') {
+    levelFilter.value = queryLevel
+  }
+
   loadAlerts()
   loadHosts()
   loadStatistics()

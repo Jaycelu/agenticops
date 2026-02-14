@@ -10,7 +10,7 @@
         :key="item.path"
         :to="item.path"
         class="nav-item"
-        active-class="active"
+        exact-active-class="active"
       >
         <component :is="item.icon" :size="18" />
         <span>{{ item.label }}</span>
@@ -21,14 +21,14 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Network, Server, AlertTriangle, FileText, Settings, Bot } from 'lucide-vue-next'
+import { Network, House, Server, AlertTriangle, FileText, Settings, Bot } from 'lucide-vue-next'
 
 const navItems = ref([
+  { path: '/', label: '驾驶舱', icon: House },
   { path: '/assets', label: '资产', icon: Server },
   { path: '/alerts', label: '告警', icon: AlertTriangle },
   { path: '/logs', label: '日志', icon: FileText },
   { path: '/automation/dashboard', label: '自动化中心', icon: Bot },
-  { path: '/automation/feedback-stats', label: '反馈统计', icon: Bot },
   { path: '/automation/abnormal-types', label: '异常类型管理', icon: Settings },
   { path: '/settings', label: '设置', icon: Settings }
 ])

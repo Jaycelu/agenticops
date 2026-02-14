@@ -231,34 +231,6 @@
         </div>
       </div>
 
-      <!-- 反馈质量 -->
-      <div v-if="selectedSiteId" class="tasks-section">
-        <div class="section-header">
-          <Brain class="section-icon" :size="20" />
-          <h3>研判反馈质量</h3>
-          <button class="btn-link" @click="goToFeedbackStats">查看详情</button>
-        </div>
-        <div class="tasks-grid">
-          <div class="task-card success">
-            <div class="task-content">
-              <div class="task-value">{{ summary.feedback?.correct_rate || 0 }}%</div>
-              <div class="task-label">正确率</div>
-            </div>
-          </div>
-          <div class="task-card failed">
-            <div class="task-content">
-              <div class="task-value">{{ summary.feedback?.incorrect_rate || 0 }}%</div>
-              <div class="task-label">误判率</div>
-            </div>
-          </div>
-          <div class="task-card pending">
-            <div class="task-content">
-              <div class="task-value">{{ summary.feedback?.total || 0 }}</div>
-              <div class="task-label">反馈总数</div>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -408,14 +380,6 @@ const goToTasks = () => {
   router.push({
     path: '/automation/tasks',
     query: { start_date: selectedDate.value, end_date: selectedDate.value }
-  })
-}
-
-const goToFeedbackStats = () => {
-  if (!selectedSiteId.value) return
-  router.push({
-    path: '/automation/feedback-stats',
-    query: { site_id: selectedSiteId.value.toString() }
   })
 }
 

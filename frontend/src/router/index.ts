@@ -8,12 +8,12 @@ const routes: RouteRecordRaw[] = [
     children: [
       {
         path: '',
-        redirect: '/dashboard'
+        name: 'Dashboard',
+        component: () => import('@/pages/Dashboard')
       },
       {
         path: 'dashboard',
-        name: 'Dashboard',
-        component: () => import('@/pages/Dashboard.vue')
+        redirect: '/'
       },
       {
         path: 'assets',
@@ -79,11 +79,6 @@ const routes: RouteRecordRaw[] = [
         path: 'automation/abnormal-types',
         name: 'AutomationAbnormalTypes',
         component: () => import('@/pages/automation/AbnormalTypes.vue')
-      },
-      {
-        path: 'automation/feedback-stats',
-        name: 'AutomationFeedbackStats',
-        component: () => import('@/pages/automation/FeedbackStats.vue')
       }
     ]
   }

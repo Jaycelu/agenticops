@@ -84,6 +84,8 @@ const selectedSiteId = ref<number | null>(null)
 const loading = ref(false)
 const startDate = ref<string>('')
 const endDate = ref<string>('')
+const statusFilter = ref<string>('')
+const querySiteId = ref<number | null>(null)
 
 const statusLabels: Record<string, string> = {
   pending: '待处理',
@@ -120,6 +122,9 @@ const loadTasks = async () => {
     if (endDate.value) {
       params.end_date = endDate.value
     }
+    if (statusFilter.value) {
+      params.status = statusFilter.value
+    }
     const data = await getAutomationTasks(params)
     tasks.value = data.tasks || []
   } catch (error) {
@@ -133,7 +138,10 @@ const loadSites = async () => {
   try {
     const data = await getSites()
     sites.value = data.sites || []
-    // 默认选择第一个基地（德阳基地）
+    if (querySiteId.value && sites.value.some((site) => site.id === querySiteId.value)) {
+      selectedSiteId.value = querySiteId.value
+      return
+    }
     if (sites.value.length > 0 && !selectedSiteId.value) {
       selectedSiteId.value = sites.value[0].id
     }
@@ -181,6 +189,12 @@ onMounted(async () => {
   }
   if (route.query.end_date) {
     endDate.value = route.query.end_date as string
+  }
+  if (route.query.status) {
+    statusFilter.value = String(route.query.status)
+  }
+  if (route.query.site_id) {
+    querySiteId.value = Number(route.query.site_id)
   }
   // 先加载基地列表
   await loadSites()

@@ -917,6 +917,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 
 import { assetsApi, Device, IP, Rack, Site, VLAN, Prefix } from '@/api/assets'
 import { 
@@ -933,6 +934,7 @@ const debounce = (func: Function, wait: number): Function => {
     timeout = setTimeout(() => func.apply(this, args), wait)
   }
 }
+const route = useRoute()
 
 interface ColumnConfig {
   key: string
@@ -1667,6 +1669,47 @@ function getVendorClass(vendor?: string): string {
   return 'vendor-default'
 }
 
+function applyDeepLinkFilters() {
+  const queryType = String(route.query.type || 'device').toLowerCase()
+  const site = route.query.site ? String(route.query.site) : ''
+  const role = route.query.role ? String(route.query.role) : ''
+  const vendor = route.query.vendor ? String(route.query.vendor) : ''
+  const keyword = route.query.keyword ? String(route.query.keyword) : ''
+
+  if (queryType === 'rack') {
+    activeTab.value = 'racks'
+    rackFilters.value.site = site
+    rackFilters.value.name = keyword
+    return
+  }
+
+  if (queryType === 'ip') {
+    activeTab.value = 'ips'
+    ipFilters.value.address = keyword
+    return
+  }
+
+  if (queryType === 'vlan') {
+    activeTab.value = 'vlans'
+    vlanFilters.value.site = site
+    vlanFilters.value.name = keyword
+    return
+  }
+
+  if (queryType === 'prefix') {
+    activeTab.value = 'prefixes'
+    prefixFilters.value.site = site
+    prefixFilters.value.prefix = keyword
+    return
+  }
+
+  activeTab.value = 'devices'
+  deviceFilters.value.site = site
+  deviceFilters.value.role = role
+  deviceFilters.value.vendor = vendor
+  deviceFilters.value.name = keyword
+}
+
 function formatConfig(config: any): string {
   return JSON.stringify(config, null, 2)
 }
@@ -1703,10 +1746,15 @@ async function handleFetchAndSaveConfig() {
 
 onMounted(() => {
   loadColumnConfig()
+  applyDeepLinkFilters()
   loadSites()
   loadVendors()
-  loadDevices()
-  loadIPs()
+  if (activeTab.value === 'devices') {
+    loadDevices()
+    loadIPs()
+    return
+  }
+  switchTab(activeTab.value)
 })
 </script>
 
