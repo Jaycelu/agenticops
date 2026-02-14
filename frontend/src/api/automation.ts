@@ -113,8 +113,35 @@ export const submitTaskFeedback = async (
 export const getFeedbackStats = async (params?: {
   diagnosis_type?: string
   site_id?: number
+  window_days?: number
+  min_samples?: number
+  start_date?: string
+  end_date?: string
 }) => {
   const response = await api.get('/api/automation/feedback/stats', { params })
+  return response.data
+}
+
+export const getFeedbackTrends = async (params?: {
+  diagnosis_type?: string
+  site_id?: number
+  window_days?: number
+  start_date?: string
+  end_date?: string
+}) => {
+  const response = await api.get('/api/automation/feedback/trends', { params })
+  return response.data
+}
+
+export const getFeedbackInsights = async (params?: {
+  site_id?: number
+  window_days?: number
+  min_samples?: number
+  top_n?: number
+  start_date?: string
+  end_date?: string
+}) => {
+  const response = await api.get('/api/automation/feedback/insights', { params })
   return response.data
 }
 

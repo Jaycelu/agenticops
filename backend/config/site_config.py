@@ -89,6 +89,28 @@ DEFAULT_DIAGNOSIS_POLICY = {
     }
 }
 
+# 反馈学习策略（默认）
+DEFAULT_FEEDBACK_LEARNING_POLICY = {
+    "window_days": 30,
+    "min_samples": 5,
+    "incorrect_rate_threshold": 0.4,
+    "correct_rate_threshold": 0.8,
+    "confidence_decrease_factor": 0.7,
+    "confidence_increase_value": 0.1
+}
+
+# 可选：按基地/诊断类型覆盖反馈学习策略
+# 结构示例：
+# {
+#   "DEYANG": {
+#     "default": {"window_days": 30, "min_samples": 8},
+#     "by_diagnosis_type": {
+#       "LINK_QUALITY_DEGRADE": {"min_samples": 10}
+#     }
+#   }
+# }
+FEEDBACK_LEARNING_OVERRIDES: Dict[str, Dict] = {}
+
 
 def get_site_config(site_code: str) -> Optional[dict]:
     """
@@ -166,3 +188,29 @@ def get_sampling_thresholds(site_code: str) -> Optional[dict]:
     if config:
         return config.get("sampling", {}).get("thresholds")
     return None
+
+
+def get_feedback_learning_policy(site_code: Optional[str], diagnosis_type: Optional[str] = None) -> dict:
+    """
+    获取反馈学习策略，支持按基地/诊断类型覆盖。
+
+    Args:
+        site_code: 基地代码（如 DEYANG）
+        diagnosis_type: 诊断类型（可选）
+
+    Returns:
+        策略字典
+    """
+    policy = dict(DEFAULT_FEEDBACK_LEARNING_POLICY)
+    if not site_code:
+        return policy
+
+    override = FEEDBACK_LEARNING_OVERRIDES.get(site_code.upper(), {})
+    if not override:
+        return policy
+
+    policy.update(override.get("default", {}))
+    if diagnosis_type:
+        by_type = override.get("by_diagnosis_type", {})
+        policy.update(by_type.get(diagnosis_type, {}))
+    return policy

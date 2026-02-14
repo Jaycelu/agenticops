@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, timedelta
-from pydantic import BaseModel, Field
 
 from database import get_db
 from models.automation import (
@@ -16,23 +15,27 @@ from models.automation import (
 from services.automation_orchestrator import automation_orchestrator
 from services.alert_service import alert_service
 from services.feedback_learning_service import feedback_learning_service
+from api.schemas.automation import (
+    TaskFeedbackRequest,
+    TriggerDiagnosisRequest,
+    TriggerAlertsRequest,
+    TaskFeedbackListResponse,
+    FeedbackStatsResponse,
+    FeedbackTrendsResponse,
+    FeedbackInsightsResponse,
+    ManualActionResponse
+)
 
 router = APIRouter(prefix="/api/automation", tags=["自动化中心"])
 
 
-class TaskFeedbackRequest(BaseModel):
-    verdict: str = Field(..., description="correct|incorrect|partial")
-    comment: Optional[str] = None
-    reviewer: Optional[str] = "operator"
-    tags: Optional[List[str]] = Field(default_factory=list)
-
-
-class TriggerDiagnosisRequest(BaseModel):
-    sample_id: int
-
-
-class TriggerAlertsRequest(BaseModel):
-    site_id: Optional[int] = None
+def _parse_optional_date(date_str: Optional[str], field_name: str) -> Optional[datetime]:
+    if not date_str:
+        return None
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid {field_name} format, use YYYY-MM-DD")
 
 
 # ============ 基地管理 ============
@@ -359,7 +362,7 @@ async def get_automation_task(task_id: int, db: Session = Depends(get_db)):
     return task_dict
 
 
-@router.get("/tasks/{task_id}/feedback")
+@router.get("/tasks/{task_id}/feedback", response_model=TaskFeedbackListResponse)
 async def get_task_feedback(task_id: int, db: Session = Depends(get_db)):
     """获取任务反馈列表"""
     task = db.query(AutomationTask).filter(AutomationTask.id == task_id).first()
@@ -428,22 +431,87 @@ async def submit_task_feedback(
     }
 
 
-@router.get("/feedback/stats")
+@router.get("/feedback/stats", response_model=FeedbackStatsResponse)
 async def get_feedback_stats(
     diagnosis_type: Optional[str] = None,
     site_id: Optional[int] = None,
+    window_days: int = Query(30, ge=1, le=365),
+    min_samples: int = Query(5, ge=1, le=200),
+    start_date: Optional[str] = Query(None, description="开始日期，格式：YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="结束日期，格式：YYYY-MM-DD"),
     db: Session = Depends(get_db)
 ):
     """获取反馈统计（按诊断类型聚合）"""
+    start_datetime = _parse_optional_date(start_date, "start_date")
+    end_datetime = _parse_optional_date(end_date, "end_date")
+    if end_datetime:
+        end_datetime = end_datetime + timedelta(days=1)
+
     stats = feedback_learning_service.get_feedback_stats(
         db=db,
         diagnosis_type=diagnosis_type,
-        site_id=site_id
+        site_id=site_id,
+        window_days=window_days,
+        min_samples=min_samples,
+        start_date=start_datetime,
+        end_date=end_datetime
     )
     return {
         "total_types": len(stats),
         "stats": stats
     }
+
+
+@router.get("/feedback/trends", response_model=FeedbackTrendsResponse)
+async def get_feedback_trends(
+    diagnosis_type: Optional[str] = None,
+    site_id: Optional[int] = None,
+    window_days: int = Query(30, ge=1, le=365),
+    start_date: Optional[str] = Query(None, description="开始日期，格式：YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="结束日期，格式：YYYY-MM-DD"),
+    db: Session = Depends(get_db)
+):
+    """获取反馈趋势（按诊断类型/日期）"""
+    start_datetime = _parse_optional_date(start_date, "start_date")
+    end_datetime = _parse_optional_date(end_date, "end_date")
+    if end_datetime:
+        end_datetime = end_datetime + timedelta(days=1)
+
+    return feedback_learning_service.get_feedback_trends(
+        db=db,
+        site_id=site_id,
+        diagnosis_type=diagnosis_type,
+        window_days=window_days,
+        start_date=start_datetime,
+        end_date=end_datetime
+    )
+
+
+@router.get("/feedback/insights", response_model=FeedbackInsightsResponse)
+async def get_feedback_insights(
+    site_id: Optional[int] = None,
+    window_days: int = Query(30, ge=1, le=365),
+    min_samples: int = Query(5, ge=1, le=200),
+    top_n: int = Query(5, ge=1, le=20),
+    start_date: Optional[str] = Query(None, description="开始日期，格式：YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="结束日期，格式：YYYY-MM-DD"),
+    db: Session = Depends(get_db)
+):
+    """获取误判TopN与阈值调整建议"""
+    start_datetime = _parse_optional_date(start_date, "start_date")
+    end_datetime = _parse_optional_date(end_date, "end_date")
+    if end_datetime:
+        end_datetime = end_datetime + timedelta(days=1)
+
+    return feedback_learning_service.get_feedback_insights(
+        db=db,
+        site_id=site_id,
+        window_days=window_days,
+        min_samples=min_samples,
+        start_date=start_datetime,
+        end_date=end_datetime,
+        top_n=top_n
+    )
 
 
 # ============ 策略管理 ============
@@ -712,7 +780,7 @@ async def get_dashboard_trends(
 
 # ============ 手动触发 ============
 
-@router.post("/trigger-diagnosis")
+@router.post("/trigger-diagnosis", response_model=ManualActionResponse)
 async def trigger_diagnosis(
     payload: TriggerDiagnosisRequest,
     db: Session = Depends(get_db)
@@ -733,7 +801,7 @@ async def trigger_diagnosis(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/trigger-alerts")
+@router.post("/trigger-alerts", response_model=ManualActionResponse)
 async def trigger_alerts(
     payload: TriggerAlertsRequest,
     db: Session = Depends(get_db)

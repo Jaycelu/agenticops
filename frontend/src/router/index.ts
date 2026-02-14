@@ -79,6 +79,11 @@ const routes: RouteRecordRaw[] = [
         path: 'automation/abnormal-types',
         name: 'AutomationAbnormalTypes',
         component: () => import('@/pages/automation/AbnormalTypes.vue')
+      },
+      {
+        path: 'automation/feedback-stats',
+        name: 'AutomationFeedbackStats',
+        component: () => import('@/pages/automation/FeedbackStats.vue')
       }
     ]
   }

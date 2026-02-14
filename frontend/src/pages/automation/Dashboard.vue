@@ -236,6 +236,7 @@
         <div class="section-header">
           <Brain class="section-icon" :size="20" />
           <h3>研判反馈质量</h3>
+          <button class="btn-link" @click="goToFeedbackStats">查看详情</button>
         </div>
         <div class="tasks-grid">
           <div class="task-card success">
@@ -410,6 +411,14 @@ const goToTasks = () => {
   })
 }
 
+const goToFeedbackStats = () => {
+  if (!selectedSiteId.value) return
+  router.push({
+    path: '/automation/feedback-stats',
+    query: { site_id: selectedSiteId.value.toString() }
+  })
+}
+
 // 生命周期
 onMounted(() => {
   loadSites()
@@ -503,6 +512,16 @@ h1 {
   color: #1f2937;
   margin: 0;
   flex: 1;
+}
+
+.btn-link {
+  border: 1px solid #dbe4f0;
+  background: #fff;
+  color: #2563eb;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .date-display {

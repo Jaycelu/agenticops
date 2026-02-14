@@ -1,37 +1,8 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any
+from api.schemas.settings import ModelUpdateRequest, ModelCreateRequest
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
-
-
-class ModelConfig(BaseModel):
-    id: str
-    name: str
-    provider: str  # vllm, aihubmix, openrouter
-    api_key: str
-    api_url: str
-    model: str
-    is_active: bool = False
-    parameters: Dict[str, Any] = {}
-
-
-class ModelUpdateRequest(BaseModel):
-    model_id: str
-    name: Optional[str] = None
-    api_key: Optional[str] = None
-    api_url: Optional[str] = None
-    model: Optional[str] = None
-    parameters: Optional[Dict[str, Any]] = None
-
-
-class ModelCreateRequest(BaseModel):
-    name: str
-    provider: str
-    api_key: str
-    api_url: str
-    model: str
-    parameters: Optional[Dict[str, Any]] = {}
 
 
 # 模拟的模型存储（实际应该使用数据库）

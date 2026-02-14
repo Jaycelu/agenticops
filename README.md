@@ -9,10 +9,13 @@ NetOps AI Platform 是一个基于 AI 技术的网络运维自动化平台，通
 ### 核心特性
 
 - **AI 对话调度**：通过自然语言对话，AI 自动识别意图、调度工具、执行任务
+- **低置信度澄清机制**：意图识别支持 `confidence + missing_slots`，在高风险或信息缺失时先追问，减少误操作
 - **统一资产管理**：集成 NetBox，提供设备、IP、站点、机柜等资产管理
 - **智能告警分析**：集成 Zabbix，提供告警查询、趋势分析和健康评分
 - **日志分析**：集成 ELK，支持 AI 自动生成查询语句和日志聚合分析
 - **执行轨迹可视化**：所有 AI 行为可回溯、可审计、可追溯
+- **自动化反馈闭环**：支持任务级人工反馈（正确/误判/部分正确）与统计看板
+- **反馈学习校准**：研判前按近7/30天反馈动态校准置信度与人工确认策略
 
 ## 项目架构
 
@@ -98,7 +101,8 @@ netops/
 │   │   ├── chat.py           # 对话 API
 │   │   ├── logs.py           # 日志 API
 │   │   ├── models.py         # 模型 API
-│   │   └── sessions.py       # 会话 API
+│   │   ├── sessions.py       # 会话 API
+│   │   └── schemas/          # API 请求/响应模型（schema层）
 │   ├── config/               # 配置
 │   │   ├── logging.py        # 日志配置
 │   │   └── settings.py       # 应用设置
@@ -111,7 +115,9 @@ netops/
 │   │   ├── llm_client.py     # LLM 客户端
 │   │   └── prompts/          # Prompt 模板
 │   ├── services/             # 业务服务
-│   │   └── log_analyzer.py   # 日志分析服务
+│   │   ├── log_analyzer.py   # 日志分析服务
+│   │   ├── abnormal_tracker.py          # 异常跟踪（数据库持久化）
+│   │   └── feedback_learning_service.py # 反馈学习与风险校准
 │   ├── storage/              # 存储模块
 │   │   ├── chat_history/     # 聊天历史
 │   │   └── session_storage.py
@@ -138,7 +144,8 @@ netops/
 │   │   │   ├── Assets.vue    # 资产视图
 │   │   │   ├── Alerts.vue    # 告警中心
 │   │   │   ├── Logs.vue      # 日志分析
-│   │   │   └── Settings.vue  # 系统设置
+│   │   │   ├── Settings.vue  # 系统设置
+│   │   │   └── automation/FeedbackStats.vue # 自动化反馈统计详情
 │   │   ├── router/           # 路由
 │   │   │   └── index.ts
 │   │   ├── store/            # 状态管理
@@ -172,6 +179,14 @@ netops/
 ```
 
 ## 快速开始
+
+## 反馈闭环接口（新增）
+
+- `POST /api/automation/tasks/{task_id}/feedback`：提交人工反馈（correct/incorrect/partial）
+- `GET /api/automation/feedback/stats`：按诊断类型统计反馈（支持 `window_days`、`min_samples`）
+- `GET /api/automation/feedback/trends`：按诊断类型输出日期趋势
+- `GET /api/automation/feedback/insights`：输出误判 TopN 和阈值调整建议
+- 前端 `自动化中心 -> 反馈统计`：支持按诊断类型切换、正确率/误判率双线切换、7/30天与自定义日期范围、CSV 导出（含 TopN 建议）
 
 ### 环境要求
 

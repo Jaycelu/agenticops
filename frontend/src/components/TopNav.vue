@@ -29,6 +29,7 @@ const navItems = ref([
   { path: '/alerts', label: '告警', icon: AlertTriangle },
   { path: '/logs', label: '日志', icon: FileText },
   { path: '/automation/dashboard', label: '自动化中心', icon: Bot },
+  { path: '/automation/feedback-stats', label: '反馈统计', icon: Bot },
   { path: '/automation/abnormal-types', label: '异常类型管理', icon: Settings },
   { path: '/settings', label: '设置', icon: Settings }
 ])
