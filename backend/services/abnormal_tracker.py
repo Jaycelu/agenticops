@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Tuple
 from sqlalchemy.orm import Session
+from zoneinfo import ZoneInfo
 
 from models.automation import AbnormalTrackerState
 from database import SessionLocal
@@ -23,6 +24,11 @@ class AbnormalTracker:
         self.accumulation_threshold = tracker_config.get("accumulation_threshold", 3)
         self.dedup_window_minutes = tracker_config.get("dedup_window_minutes", 30)
         self.cooldown_minutes = tracker_config.get("cooldown_minutes", 60)
+        self.tz = ZoneInfo("Asia/Shanghai")
+
+    def _now(self) -> datetime:
+        """统一使用中国时区，避免与数据库时区字段混用导致比较偏差。"""
+        return datetime.now(self.tz)
 
     def _get_or_create_state(
         self,
@@ -57,7 +63,7 @@ class AbnormalTracker:
         db: Session,
         site_id: Optional[int] = None
     ) -> Tuple[bool, str]:
-        now = datetime.now()
+        now = self._now()
         state = self._get_or_create_state(db, device_ip, abnormal_type, site_id)
 
         if state.last_trigger_time:
@@ -103,7 +109,7 @@ class AbnormalTracker:
 
         适用于“按天累计N次触发”或“严重日志实时触发”的场景。
         """
-        now = datetime.now()
+        now = self._now()
         state = self._get_or_create_state(db, device_ip, abnormal_type, site_id)
 
         # 窗口外重置计数，避免历史噪声长期累积
@@ -160,7 +166,7 @@ class AbnormalTracker:
             if not state or state.first_abnormal_time is None:
                 return base_severity
 
-            now = datetime.now()
+            now = self._now()
             duration_minutes = (now - state.first_abnormal_time).total_seconds() / 60
             current_index = severity_levels.index(base_severity)
 
@@ -237,7 +243,7 @@ class AbnormalTracker:
             db.close()
 
     def cleanup_old_states(self):
-        now = datetime.now()
+        now = self._now()
         cleanup_threshold = now - timedelta(hours=24)
 
         db = SessionLocal()
