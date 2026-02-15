@@ -2,7 +2,7 @@
 自动化中心API接口
 提供自动化相关的REST API
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
@@ -119,14 +119,28 @@ async def get_site(site_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/sites/{site_id}/automation-toggle")
-async def toggle_site_automation(site_id: int, enabled: bool, db: Session = Depends(get_db)):
+async def toggle_site_automation(
+    site_id: int,
+    enabled: bool,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
     site = db.query(Site).filter(Site.id == site_id).first()
     if not site:
         raise HTTPException(status_code=404, detail="Site not found")
     site_automation_service.set_site_enabled(db, site_id, enabled)
-    from services.log_sampler import log_sampler
-    await log_sampler.refresh_jobs()
-    return {"site_id": site_id, "enabled": bool(enabled)}
+
+    async def _refresh_sampler_safely():
+        try:
+            from services.log_sampler import log_sampler
+            await log_sampler.refresh_jobs()
+        except Exception:
+            # 开关结果应优先返回，采样器刷新失败仅记录日志
+            import logging
+            logging.getLogger(__name__).exception("Failed to refresh log sampler after site toggle")
+
+    background_tasks.add_task(_refresh_sampler_safely)
+    return {"site_id": site_id, "enabled": bool(enabled), "refresh_scheduled": True}
 
 
 # ============ 日志采样 ============
@@ -340,9 +354,12 @@ async def get_automation_tasks(
     # 添加设备IP信息
     tasks_with_device_ip = []
     for task in tasks:
-        latest_feedback = db.query(AutomationTaskFeedback).filter(
-            AutomationTaskFeedback.task_id == task.id
-        ).order_by(AutomationTaskFeedback.created_at.desc()).first()
+        try:
+            latest_feedback = db.query(AutomationTaskFeedback).filter(
+                AutomationTaskFeedback.task_id == task.id
+            ).order_by(AutomationTaskFeedback.created_at.desc()).first()
+        except Exception:
+            latest_feedback = None
 
         task_dict = {
             "id": task.id,
@@ -400,9 +417,12 @@ async def get_automation_task(task_id: int, db: Session = Depends(get_db)):
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     
-    feedbacks = db.query(AutomationTaskFeedback).filter(
-        AutomationTaskFeedback.task_id == task.id
-    ).order_by(AutomationTaskFeedback.created_at.desc()).all()
+    try:
+        feedbacks = db.query(AutomationTaskFeedback).filter(
+            AutomationTaskFeedback.task_id == task.id
+        ).order_by(AutomationTaskFeedback.created_at.desc()).all()
+    except Exception:
+        feedbacks = []
 
     # 转换为字典并添加设备IP
     task_dict = {
@@ -722,10 +742,13 @@ async def get_dashboard_summary(
     success_tasks_count = tasks_query.filter(AutomationTask.status == "success").count()
     failed_tasks_count = tasks_query.filter(AutomationTask.status == "failed").count()
 
-    feedback_stats = feedback_learning_service.get_feedback_stats(
-        db=db,
-        site_id=site_id
-    )
+    try:
+        feedback_stats = feedback_learning_service.get_feedback_stats(
+            db=db,
+            site_id=site_id
+        )
+    except Exception:
+        feedback_stats = {}
     feedback_total = sum(item.get("total", 0) for item in feedback_stats.values())
     feedback_correct = sum(item.get("correct", 0) for item in feedback_stats.values())
     feedback_incorrect = sum(item.get("incorrect", 0) for item in feedback_stats.values())
