@@ -390,7 +390,11 @@ async def get_automation_tasks(
 
         action_type = (task.decision_result or {}).get("context", {}).get("recommended_action_type")
         task_dict["recommended_action_type"] = action_type
-        task_dict["manual_intervention_required"] = action_type in {"replace_hardware", "manual_investigation"}
+        task_dict["manual_intervention_required"] = (
+            action_type in {"replace_hardware", "manual_investigation"}
+            or bool(task.need_human_confirm)
+            or task.status in {"waiting_confirm", "waiting_approval"}
+        )
         
         # 从context中获取设备IP
         if task.decision_result and "context" in task.decision_result:
@@ -458,7 +462,11 @@ async def get_automation_task(task_id: int, db: Session = Depends(get_db)):
 
     action_type = (task.decision_result or {}).get("context", {}).get("recommended_action_type")
     task_dict["recommended_action_type"] = action_type
-    task_dict["manual_intervention_required"] = action_type in {"replace_hardware", "manual_investigation"}
+    task_dict["manual_intervention_required"] = (
+        action_type in {"replace_hardware", "manual_investigation"}
+        or bool(task.need_human_confirm)
+        or task.status in {"waiting_confirm", "waiting_approval"}
+    )
     
     # 从context中获取设备IP
     if task.decision_result and "context" in task.decision_result:

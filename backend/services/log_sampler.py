@@ -464,8 +464,8 @@ class LogSampler:
                 db.flush()  # 确保log_sample有ID
                 total_samples_count += 1
 
-                # 更新异常类型的出现次数
-                should_process_abnormal = is_abnormal and policy_decision.get("should_trigger", True)
+                # 异常记录与研判触发解耦：只要判定异常，就纳入后续研判候选
+                should_process_abnormal = is_abnormal
                 if should_process_abnormal:
                     triggered_abnormal_sample_ids.append(log_sample.id)
                     abnormal_type_service.update_occurrence(db, matched_type["type_code"])
@@ -480,11 +480,8 @@ class LogSampler:
                         time_window_start, time_window_end
                     )
 
-                # 仅对异常采样调用规则引擎和后续自动化
-                if should_process_abnormal:
-                    await self._run_rule_engine_diagnosis(
-                        db, site_id, netbox_device_id, device_ip, stats, log_sample
-                    )
+                # 注意：采样阶段不直接创建任务，统一走编排器详细研判链路，
+                # 避免出现“有任务但无证据”的旁路任务。
 
             db.commit()
             logger.info(
@@ -530,7 +527,7 @@ class LogSampler:
             from database import SessionLocal
             db_new = SessionLocal()
             try:
-                from models.automation import Site, LogSample
+                from models.automation import Site, LogSample, LogAnalysisResult
                 site = db_new.query(Site).filter(Site.id == site_id).first()
 
                 if not site:
@@ -561,6 +558,13 @@ class LogSampler:
                     if not device_ip or not abnormal_type:
                         continue
 
+                    existing_analysis = db_new.query(LogAnalysisResult).filter(
+                        LogAnalysisResult.related_sample_id == sample.id
+                    ).first()
+                    if existing_analysis:
+                        logger.debug(f"Sample {sample.id} already diagnosed, skipping duplicate trigger")
+                        continue
+
                     matched_type = {}
                     if sample.raw_data and isinstance(sample.raw_data, dict):
                         matched_type = sample.raw_data.get("matched_type") or {}
@@ -589,6 +593,10 @@ class LogSampler:
                         should_trigger, reason = abnormal_tracker.should_trigger_diagnosis(
                             device_ip, abnormal_type, db_new, site.id
                         )
+
+                    # 首次异常样本兜底：避免因历史tracker状态导致研判长期为0
+                    if not should_trigger:
+                        should_trigger, reason = True, f"first_analysis_fallback({reason})"
 
                     if should_trigger:
                         logger.info(f"Triggering diagnosis for {device_ip} {abnormal_type}: {reason}")
