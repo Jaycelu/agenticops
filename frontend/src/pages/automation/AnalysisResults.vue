@@ -139,6 +139,32 @@
             </div>
           </div>
 
+          <div class="detail-section" v-if="evidence.evidence_status || evidence.context_aware?.inspection">
+            <h3>多源证据状态</h3>
+            <div class="info-grid">
+              <div class="info-item">
+                <label>总体状态:</label>
+                <span>{{ getEvidenceStatusLabel(evidence.evidence_status?.status || 'skipped') }}</span>
+              </div>
+              <div class="info-item">
+                <label>拓扑证据:</label>
+                <span>{{ getEvidenceStatusLabel(evidence.evidence_status?.topology_status || 'skipped') }}</span>
+              </div>
+              <div class="info-item">
+                <label>现场检查:</label>
+                <span>{{ getEvidenceStatusLabel(evidence.evidence_status?.inspection_status || evidence.context_aware?.inspection?.status || 'skipped') }}</span>
+              </div>
+              <div class="info-item">
+                <label>最终结论:</label>
+                <span>{{ getEvidenceStatusLabel(evidence.evidence_status?.final_status || 'skipped') }}</span>
+              </div>
+            </div>
+            <div class="evidence-item" v-if="evidence.evidence_status?.message || evidence.context_aware?.inspection?.error">
+              <strong>状态说明:</strong>
+              {{ evidence.evidence_status?.message || evidence.context_aware?.inspection?.error }}
+            </div>
+          </div>
+
           <!-- 研判步骤 -->
           <div class="detail-section">
             <h3>研判步骤</h3>
@@ -329,6 +355,14 @@ const statusLabels: Record<string, string> = {
   failed: '失败'
 }
 
+const evidenceStatusLabels: Record<string, string> = {
+  success: '成功',
+  partial: '部分完成',
+  failed: '失败',
+  skipped: '已跳过',
+  manual_required: '需人工介入'
+}
+
 const evidence = computed(() => {
   if (!selectedResult.value?.evidence) return {}
   return selectedResult.value.evidence
@@ -413,6 +447,10 @@ const getConfidenceLabel = (confidence: string) => {
 
 const getStatusLabel = (status: string) => {
   return statusLabels[status] || status
+}
+
+const getEvidenceStatusLabel = (status: string) => {
+  return evidenceStatusLabels[status] || status
 }
 
 const formatTime = (time: string) => {

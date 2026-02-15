@@ -161,13 +161,17 @@ class LogSampler:
             # 按设备分组统计日志
             device_stats = self._aggregate_logs_by_device(logs, collection_policy)
 
+            # 为本轮采样生成批次ID，便于前后端一致性核对
+            batch_id = f"{site_code}_{time_window_end.strftime('%Y%m%d%H%M%S')}"
+
             # 写入数据库
             await self._write_samples_to_db(
                 site_code=site_code,
                 device_stats=device_stats,
                 time_window_start=time_window_start,
                 time_window_end=time_window_end,
-                collection_policy=collection_policy
+                collection_policy=collection_policy,
+                batch_id=batch_id
             )
 
             logger.info(f"Completed log sampling for {site_code}")
@@ -334,7 +338,8 @@ class LogSampler:
         device_stats: Dict[str, Dict],
         time_window_start: datetime,
         time_window_end: datetime,
-        collection_policy: Optional[Dict] = None
+        collection_policy: Optional[Dict] = None,
+        batch_id: Optional[str] = None
     ):
         """
         将采样数据写入数据库
@@ -371,6 +376,7 @@ class LogSampler:
             # 为每个有日志的设备都创建采样记录；异常仅作为标记字段
             abnormal_devices_count = 0
             total_samples_count = 0
+            triggered_abnormal_sample_ids: List[int] = []
             for device_ip, stats in device_stats.items():
                 policy_decision = self._evaluate_collection_policy(
                     db=db,
@@ -396,8 +402,8 @@ class LogSampler:
                 )
 
                 # 策略可覆盖异常类型（例如严重日志实时触发）
-                # 仅在策略判定允许触发时使用覆盖类型
-                if policy_decision.get("should_trigger") and policy_decision.get("matched_type_override"):
+                # 异常判定与是否触发研判解耦：即使当前窗口不触发，也应保留异常分类
+                if policy_decision.get("matched_type_override"):
                     matched_type = policy_decision["matched_type_override"]
 
                 # 如果仍未匹配到异常类型，补一个通用高错误率类型
@@ -440,6 +446,7 @@ class LogSampler:
                     abnormal_type=matched_type["type_code"] if matched_type else None,
                     raw_data={
                         "device_ip": device_ip,
+                        "batch_id": batch_id,
                         "log_messages": stats["log_messages"],
                         "other_error_count": stats.get("other_error_count", 0),
                         "other_error_fingerprints": stats.get("other_error_fingerprints", []),
@@ -460,6 +467,7 @@ class LogSampler:
                 # 更新异常类型的出现次数
                 should_process_abnormal = is_abnormal and policy_decision.get("should_trigger", True)
                 if should_process_abnormal:
+                    triggered_abnormal_sample_ids.append(log_sample.id)
                     abnormal_type_service.update_occurrence(db, matched_type["type_code"])
 
                 # 如果不是已知异常，检查是否为Raw Anomaly
@@ -485,8 +493,13 @@ class LogSampler:
             )
 
             # 触发研判流程（异步）
-            if abnormal_devices_count > 0:
-                asyncio.create_task(self._trigger_diagnosis_for_abnormal_samples(db, site_id, device_stats, {}))
+            if triggered_abnormal_sample_ids:
+                asyncio.create_task(
+                    self._trigger_diagnosis_for_abnormal_samples(
+                        site_id=site_id,
+                        sample_ids=triggered_abnormal_sample_ids
+                    )
+                )
 
         except Exception as e:
             db.rollback()
@@ -497,19 +510,15 @@ class LogSampler:
 
     async def _trigger_diagnosis_for_abnormal_samples(
         self,
-        db: Session,
-        site_id: str,
-        device_stats: Dict[str, Dict],
-        thresholds: Dict
+        site_id: int,
+        sample_ids: Optional[List[int]] = None
     ):
         """
         触发异常采样的研判流程
 
         Args:
-            db: 数据库会话
-            site_id: 基地代码或ID
-            device_stats: 设备统计字典
-            thresholds: 阈值配置
+            site_id: 基地ID
+            sample_ids: 当前采样周期写入的异常采样ID列表
         """
         try:
             logger.debug(f"Trigger diagnosis called for site_id={site_id}")
@@ -521,46 +530,65 @@ class LogSampler:
             from database import SessionLocal
             db_new = SessionLocal()
             try:
-                from models.automation import Site
-                # 如果传入的是site_id（整数），直接使用
-                # 如果传入的是site_code（字符串），需要查询获取site_id
-                if isinstance(site_id, int):
-                    site = db_new.query(Site).filter(Site.id == site_id).first()
-                else:
-                    site = db_new.query(Site).filter(Site.site_code == site_id).first()
+                from models.automation import Site, LogSample
+                site = db_new.query(Site).filter(Site.id == site_id).first()
 
                 if not site:
                     logger.error(f"Site not found: {site_id}")
                     return
 
-                actual_site_id = site.id
+                query = db_new.query(LogSample).filter(
+                    LogSample.site_id == site.id,
+                    LogSample.is_abnormal == True
+                )
+                if sample_ids:
+                    query = query.filter(LogSample.id.in_(sample_ids))
+                else:
+                    from datetime import datetime, timedelta
+                    time_threshold = datetime.now() - timedelta(minutes=30)
+                    query = query.filter(LogSample.created_at >= time_threshold)
 
-                # 查询刚刚创建的异常采样
-                from datetime import datetime, timedelta
-                time_threshold = datetime.now() - timedelta(minutes=10)
-
-                from models.automation import LogSample
-                abnormal_samples = db_new.query(LogSample).filter(
-                    LogSample.site_id == actual_site_id,
-                    LogSample.is_abnormal == True,
-                    LogSample.created_at >= time_threshold
-                ).order_by(LogSample.created_at.desc()).limit(5).all()
+                abnormal_samples = query.order_by(LogSample.created_at.desc()).all()
 
                 logger.info(f"Found {len(abnormal_samples)} abnormal samples for site {site.site_code}")
 
                 # 触发研判（使用异常跟踪器进行去重和累积）
                 triggered_count = 0
-                for i, sample in enumerate(abnormal_samples):
+                for sample in abnormal_samples:
                     device_ip = sample.raw_data.get("device_ip") if sample.raw_data else None
                     abnormal_type = sample.abnormal_type
 
                     if not device_ip or not abnormal_type:
                         continue
 
-                    # 检查是否应该触发研判（累积、去重、冷却）
-                    should_trigger, reason = abnormal_tracker.should_trigger_diagnosis(
-                        device_ip, abnormal_type, db_new, actual_site_id
-                    )
+                    matched_type = {}
+                    if sample.raw_data and isinstance(sample.raw_data, dict):
+                        matched_type = sample.raw_data.get("matched_type") or {}
+                    tracking_cfg = matched_type.get("tracking_config") or {}
+                    enable_tracking = bool(matched_type.get("enable_tracking", True))
+
+                    if not enable_tracking:
+                        should_trigger, reason = True, "tracking disabled, trigger directly"
+                    elif tracking_cfg:
+                        threshold = int(tracking_cfg.get("accumulation_threshold", abnormal_tracker.accumulation_threshold) or abnormal_tracker.accumulation_threshold)
+                        dedup_minutes = int(tracking_cfg.get("dedup_window_minutes", abnormal_tracker.dedup_window_minutes) or abnormal_tracker.dedup_window_minutes)
+                        cooldown_minutes = int(tracking_cfg.get("cooldown_minutes", abnormal_tracker.cooldown_minutes) or abnormal_tracker.cooldown_minutes)
+                        should_trigger, reason = abnormal_tracker.should_trigger_with_policy(
+                            device_ip=device_ip,
+                            abnormal_type=abnormal_type,
+                            db=db_new,
+                            site_id=site.id,
+                            increment=1,
+                            threshold=threshold,
+                            window_minutes=max(cooldown_minutes * 2, 60),
+                            dedup_window_minutes=dedup_minutes,
+                            cooldown_minutes=cooldown_minutes
+                        )
+                    else:
+                        # 回退到默认追踪配置
+                        should_trigger, reason = abnormal_tracker.should_trigger_diagnosis(
+                            device_ip, abnormal_type, db_new, site.id
+                        )
 
                     if should_trigger:
                         logger.info(f"Triggering diagnosis for {device_ip} {abnormal_type}: {reason}")
@@ -579,7 +607,7 @@ class LogSampler:
                     logger.info(f"Triggered {triggered_count} diagnoses for {site.site_code}")
                     # 触发告警
                     from services.alert_service import alert_service
-                    await alert_service.process_new_analysis_results(actual_site_id)
+                    await alert_service.process_new_analysis_results(site.id)
                 else:
                     logger.info(f"No diagnoses triggered for {site.site_code} (all filtered by abnormal tracker)")
 
@@ -644,7 +672,7 @@ class LogSampler:
                         "risk_level": risk_level,
                         "enable_tracking": True,
                         "tracking_config": {}
-                    } if should else None
+                    }
                 }
 
         # 2) 周期累计触发（例如接口up/down 30次/天）
@@ -670,19 +698,18 @@ class LogSampler:
                 dedup_window_minutes=min(120, max(15, int(window_minutes / 12))),
                 cooldown_minutes=min(240, max(30, int(window_minutes / 6)))
             )
-            if should:
-                return {
-                    "should_trigger": True,
-                    "reason": f"[periodic:{field}] {reason}",
-                    "trigger_mode": "periodic",
-                    "matched_type_override": {
-                        "type_code": abnormal_type,
-                        "type_name": abnormal_type,
-                        "risk_level": cfg.get("risk_level", "medium"),
-                        "enable_tracking": True,
-                        "tracking_config": {}
-                    }
+            return {
+                "should_trigger": should,
+                "reason": f"[periodic:{field}] {reason}",
+                "trigger_mode": "periodic",
+                "matched_type_override": {
+                    "type_code": abnormal_type,
+                    "type_name": abnormal_type,
+                    "risk_level": cfg.get("risk_level", "medium"),
+                    "enable_tracking": True,
+                    "tracking_config": {}
                 }
+            }
 
         # 3) 不拦截，让后续阈值匹配继续判断
         return {

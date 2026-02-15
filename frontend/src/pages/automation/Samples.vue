@@ -92,11 +92,22 @@
               <span class="sample-time">{{ formatTime(sample.sampled_at) }}</span>
               <span class="sample-device">设备IP: {{ sample.device_ip || '未知' }}</span>
               <span class="sample-device-id">设备ID: {{ sample.netbox_device_id || '未知' }}</span>
+              <span class="sample-batch">批次: {{ sample.batch_id || '-' }}</span>
             </div>
           </div>
         </div>
       </div>
       <div v-else class="no-data">{{ abnormalOnly ? '暂无异常采样数据' : '暂无采样数据' }}</div>
+
+      <div v-if="totalPages > 1" class="pagination">
+        <button class="page-btn" :disabled="currentPage === 1 || loading" @click="changePage(currentPage - 1)">
+          上一页
+        </button>
+        <span class="page-info">第 {{ currentPage }} / {{ totalPages }} 页</span>
+        <button class="page-btn" :disabled="currentPage === totalPages || loading" @click="changePage(currentPage + 1)">
+          下一页
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -115,8 +126,11 @@ const selectedSiteId = ref<number | null>(null)
 const loading = ref(false)
 const startDate = ref<string>('')
 const endDate = ref<string>('')
-const abnormalOnly = ref(true)
+const abnormalOnly = ref(false)
 const totalSamples = ref(0)
+const pageSize = ref(100)
+const currentPage = ref(1)
+const totalPages = ref(1)
 
 const abnormalTypeLabels: Record<string, string> = {
   LINK_QUALITY_DEGRADE: '链路质量下降',
@@ -134,7 +148,8 @@ const loadSamples = async () => {
     }
     const params: any = {
       site_id: selectedSiteId.value,
-      limit: 500
+      limit: pageSize.value,
+      skip: (currentPage.value - 1) * pageSize.value
     }
     if (abnormalOnly.value) {
       params.is_abnormal = true
@@ -149,6 +164,7 @@ const loadSamples = async () => {
     const data = await getLogSamples(params)
     samples.value = data.samples || []
     totalSamples.value = data.total || 0
+    totalPages.value = Math.max(1, Math.ceil(totalSamples.value / pageSize.value))
   } catch (error) {
     console.error('Failed to load samples:', error)
   } finally {
@@ -186,10 +202,17 @@ const handleSiteChange = (siteId: number) => {
 const setAbnormalOnly = (value: boolean) => {
   if (abnormalOnly.value === value) return
   abnormalOnly.value = value
+  currentPage.value = 1
   loadSamples()
 }
 
 const refreshSamples = () => {
+  loadSamples()
+}
+
+const changePage = (page: number) => {
+  if (page < 1 || page > totalPages.value || page === currentPage.value) return
+  currentPage.value = page
   loadSamples()
 }
 
@@ -208,6 +231,7 @@ const formatTime = (time: string) => {
 // 监听基地ID变化，自动加载数据
 watch(selectedSiteId, (newId) => {
   if (newId) {
+    currentPage.value = 1
     loadSamples()
   }
 })
@@ -530,5 +554,38 @@ onMounted(() => {
   gap: 16px;
   font-size: 12px;
   color: #999;
+  flex-wrap: wrap;
+}
+
+.sample-batch {
+  color: #475569;
+}
+
+.pagination {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.page-btn {
+  border: 1px solid #dbe4f0;
+  background: #ffffff;
+  color: #334155;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.page-info {
+  color: #64748b;
+  font-size: 13px;
 }
 </style>

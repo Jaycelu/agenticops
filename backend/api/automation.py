@@ -4,7 +4,7 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 
 from database import get_db
@@ -39,6 +39,41 @@ def _parse_optional_date(date_str: Optional[str], field_name: str) -> Optional[d
         return datetime.strptime(date_str, "%Y-%m-%d")
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid {field_name} format, use YYYY-MM-DD")
+
+
+def _build_evidence_status(task: AutomationTask) -> Dict[str, Any]:
+    """
+    归一化任务证据状态，避免前端将任务pending误解为证据pending。
+    """
+    context = (task.decision_result or {}).get("context", {})
+    context_aware = context.get("context_aware") or {}
+    inspection = context_aware.get("inspection") or {}
+    topology_context = context_aware.get("topology_context") or {}
+    final_result = context_aware.get("final") or {}
+
+    has_topology = bool((topology_context.get("device") or {}) or (topology_context.get("links") or []))
+    inspection_status = inspection.get("status") or "skipped"
+    final_confidence = final_result.get("confidence")
+
+    if inspection_status == "success" and has_topology:
+        status = "success"
+    elif inspection_status in {"failed"}:
+        status = "failed"
+    elif inspection_status in {"manual_required"}:
+        status = "manual_required"
+    elif has_topology:
+        status = "partial"
+    else:
+        status = "skipped"
+
+    return {
+        "status": status,
+        "topology_status": "success" if has_topology else "skipped",
+        "inspection_status": inspection_status,
+        "final_status": "success" if final_result else "skipped",
+        "confidence": final_confidence,
+        "message": inspection.get("error") or ""
+    }
 
 
 # ============ 基地管理 ============
@@ -102,8 +137,8 @@ async def get_log_samples(
     is_abnormal: Optional[bool] = None,
     start_date: Optional[str] = Query(None, description="开始日期，格式：YYYY-MM-DD"),
     end_date: Optional[str] = Query(None, description="结束日期，格式：YYYY-MM-DD"),
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db)
 ):
     """获取日志采样列表"""
@@ -150,7 +185,8 @@ async def get_log_samples(
             "is_abnormal": sample.is_abnormal,
             "abnormal_type": sample.abnormal_type,
             "raw_data": sample.raw_data,
-            "created_at": sample.created_at
+            "created_at": sample.created_at,
+            "batch_id": sample.raw_data.get("batch_id") if isinstance(sample.raw_data, dict) else None
         }
         
         # 从raw_data中获取设备IP
@@ -161,6 +197,10 @@ async def get_log_samples(
 
     return {
         "total": total,
+        "skip": skip,
+        "limit": limit,
+        "returned": len(samples_with_device_ip),
+        "has_more": skip + len(samples_with_device_ip) < total,
         "samples": samples_with_device_ip
     }
 
@@ -266,8 +306,8 @@ async def get_automation_tasks(
     status: Optional[str] = None,
     start_date: Optional[str] = Query(None, description="开始日期，格式：YYYY-MM-DD"),
     end_date: Optional[str] = Query(None, description="结束日期，格式：YYYY-MM-DD"),
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db)
 ):
     """获取自动化任务列表"""
@@ -329,6 +369,7 @@ async def get_automation_tasks(
                 "created_at": latest_feedback.created_at
             } if latest_feedback else None
         }
+        task_dict["evidence_status"] = _build_evidence_status(task)
 
         action_type = (task.decision_result or {}).get("context", {}).get("recommended_action_type")
         task_dict["recommended_action_type"] = action_type
@@ -344,6 +385,10 @@ async def get_automation_tasks(
 
     return {
         "total": total,
+        "skip": skip,
+        "limit": limit,
+        "returned": len(tasks_with_device_ip),
+        "has_more": skip + len(tasks_with_device_ip) < total,
         "tasks": tasks_with_device_ip
     }
 
@@ -389,6 +434,7 @@ async def get_automation_task(task_id: int, db: Session = Depends(get_db)):
             for feedback in feedbacks
         ]
     }
+    task_dict["evidence_status"] = _build_evidence_status(task)
 
     action_type = (task.decision_result or {}).get("context", {}).get("recommended_action_type")
     task_dict["recommended_action_type"] = action_type

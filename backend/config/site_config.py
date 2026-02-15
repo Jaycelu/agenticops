@@ -130,6 +130,18 @@ DEFAULT_DIAGNOSIS_POLICY = {
             "auto_execute": False,
             "require_confirm": True
         }
+    },
+    # 自动化任务触发策略
+    "task_trigger_policy": {
+        # 仅当风险等级 >= min_severity 且置信度 >= min_confidence 时才创建自动化任务
+        "min_severity": "medium",
+        "min_confidence": 0.6,
+        # 可自动执行的建议动作类型（其余转人工确认）
+        "auto_action_types": ["config_optimization"],
+        # 这些动作类型强制进入人工确认流
+        "manual_action_types": ["replace_hardware", "manual_investigation"],
+        # 自动执行前要求现场检查成功
+        "require_inspection_success_for_auto": True
     }
 }
 
@@ -268,3 +280,20 @@ def get_feedback_learning_policy(site_code: Optional[str], diagnosis_type: Optio
         by_type = override.get("by_diagnosis_type", {})
         policy.update(by_type.get(diagnosis_type, {}))
     return policy
+
+
+def get_task_trigger_policy(site_code: Optional[str]) -> dict:
+    """
+    获取自动化任务触发策略。
+    """
+    default_policy = DEFAULT_DIAGNOSIS_POLICY.get("task_trigger_policy", {})
+    if not site_code:
+        return dict(default_policy)
+    config = get_site_config(site_code)
+    if not config:
+        return dict(default_policy)
+    diagnosis_policy = config.get("diagnosis_policy", {})
+    site_policy = diagnosis_policy.get("task_trigger_policy", {})
+    merged = dict(default_policy)
+    merged.update(site_policy)
+    return merged

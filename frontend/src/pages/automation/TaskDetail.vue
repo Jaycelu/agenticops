@@ -20,6 +20,10 @@
               {{ statusLabels[task.status] || task.status }}
             </span>
           </div>
+          <div v-if="task.evidence_status" class="info-item">
+            <label>证据状态</label>
+            <span>{{ getEvidenceStatusLabel(task.evidence_status.status) }}</span>
+          </div>
           <div class="info-item">
             <label>触发方式</label>
             <span>{{ task.triggered_by }}</span>
@@ -106,6 +110,29 @@
         <pre class="execution-result">{{ JSON.stringify(task.execution_result, null, 2) }}</pre>
       </div>
 
+      <div v-if="task.evidence_status" class="section">
+        <h2>证据链状态</h2>
+        <div class="info-grid">
+          <div class="info-item">
+            <label>拓扑证据</label>
+            <span>{{ getEvidenceStatusLabel(task.evidence_status.topology_status) }}</span>
+          </div>
+          <div class="info-item">
+            <label>现场检查</label>
+            <span>{{ getEvidenceStatusLabel(task.evidence_status.inspection_status) }}</span>
+          </div>
+          <div class="info-item">
+            <label>最终结论</label>
+            <span>{{ getEvidenceStatusLabel(task.evidence_status.final_status) }}</span>
+          </div>
+          <div class="info-item" v-if="task.evidence_status.confidence !== null && task.evidence_status.confidence !== undefined">
+            <label>结论置信度</label>
+            <span>{{ formatConfidence(Number(task.evidence_status.confidence)) }}</span>
+          </div>
+        </div>
+        <p v-if="task.evidence_status.message" class="manual-info">{{ task.evidence_status.message }}</p>
+      </div>
+
       <div v-if="task.audit_trail && task.audit_trail.length > 0" class="section">
         <h2>审计追踪</h2>
         <div class="audit-timeline">
@@ -189,6 +216,8 @@ const dispatching = ref(false)
 const statusLabels: Record<string, string> = {
   pending: '待处理',
   running: '运行中',
+  waiting_confirm: '待人工确认',
+  waiting_approval: '待审批',
   success: '成功',
   failed: '失败',
   aborted: '已终止'
@@ -216,6 +245,14 @@ const riskLevelLabels: Record<string, string> = {
   medium: '中风险',
   high: '高风险',
   critical: '严重风险'
+}
+
+const evidenceStatusLabels: Record<string, string> = {
+  success: '成功',
+  partial: '部分完成',
+  failed: '失败',
+  skipped: '已跳过',
+  manual_required: '需人工介入'
 }
 
 const loadTask = async () => {
@@ -255,6 +292,10 @@ const formatConfidence = (confidence: number) => {
     return `${(confidence * 100).toFixed(0)}%`
   }
   return confidence
+}
+
+const getEvidenceStatusLabel = (status: string) => {
+  return evidenceStatusLabels[status] || status
 }
 
 const getVerdictLabel = (verdict: string) => {

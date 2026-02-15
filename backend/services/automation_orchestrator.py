@@ -5,7 +5,7 @@
 import json
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any, Tuple
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
@@ -16,12 +16,12 @@ from models.automation import (
 from services.diagnosis_service import diagnosis_service
 from services.state_aggregator import state_aggregator
 from services.abnormal_upgrader import abnormal_upgrader
-from services.execution_engine import execution_engine, ExecutorType, ExecutionResult
+from services.execution_engine import execution_engine, ExecutorType
 from services.confirmation_service import confirmation_service
 from services.approval_service import approval_service
 from services.decision_service import decision_service
 from services.feedback_learning_service import feedback_learning_service
-from services.schemas import SeverityLevel, TaskTriggerEvent, DecisionResult
+from services.schemas import SeverityLevel, TaskTriggerEvent, DecisionResult, ExecutionResult as SchemaExecutionResult
 from services.context_aware_diagnosis import context_aware_diagnosis_service
 from services.site_automation_service import site_automation_service
 
@@ -119,6 +119,102 @@ class AutomationOrchestrator:
 
         logger.info("All executors registered to execution engine")
 
+    def _severity_rank(self, severity: str) -> int:
+        order = {"low": 1, "medium": 2, "warning": 2, "high": 3, "critical": 4}
+        return order.get((severity or "").lower(), 1)
+
+    def _build_context_evidence_status(self, context_diag: Dict[str, Any]) -> Dict[str, Any]:
+        inspection = (context_diag or {}).get("inspection") or {}
+        topology_context = (context_diag or {}).get("topology_context") or {}
+        final_result = (context_diag or {}).get("final") or {}
+        has_topology = bool((topology_context.get("device") or {}) or (topology_context.get("links") or []))
+        inspection_status = inspection.get("status") or "skipped"
+
+        if inspection_status == "success" and has_topology:
+            status = "success"
+        elif inspection_status == "failed":
+            status = "failed"
+        elif inspection_status == "manual_required":
+            status = "manual_required"
+        elif has_topology:
+            status = "partial"
+        else:
+            status = "skipped"
+
+        return {
+            "status": status,
+            "topology_status": "success" if has_topology else "skipped",
+            "inspection_status": inspection_status,
+            "final_status": "success" if final_result else "skipped",
+            "confidence": final_result.get("confidence"),
+            "message": inspection.get("error") or "",
+        }
+
+    def _resolve_task_trigger_policy(self, db: Session, site_id: int) -> Dict[str, Any]:
+        from config.site_config import get_task_trigger_policy
+
+        site = db.query(Site).filter(Site.id == site_id).first()
+        site_code = site.site_code if site else None
+        return get_task_trigger_policy(site_code)
+
+    def _evaluate_task_trigger(
+        self,
+        diagnosis,
+        action_type: str,
+        inspection_status: str,
+        policy: Dict[str, Any]
+    ) -> Tuple[bool, bool, str]:
+        min_severity = str(policy.get("min_severity", "medium")).lower()
+        min_confidence = float(policy.get("min_confidence", 0.6))
+        auto_action_types = set(policy.get("auto_action_types", ["config_optimization"]))
+        manual_action_types = set(policy.get("manual_action_types", ["replace_hardware", "manual_investigation"]))
+        require_inspection_success_for_auto = bool(policy.get("require_inspection_success_for_auto", True))
+
+        risk_obj = getattr(diagnosis, "risk_level", "low")
+        risk_level = (risk_obj.value if hasattr(risk_obj, "value") else str(risk_obj)).lower()
+        confidence = float(getattr(diagnosis, "confidence", 0.0) or 0.0)
+        require_human_confirm = bool(getattr(diagnosis, "require_human_confirm", False))
+
+        if require_human_confirm or action_type in manual_action_types:
+            return True, False, "manual_confirmation_required"
+
+        if self._severity_rank(risk_level) < self._severity_rank(min_severity):
+            return False, False, f"risk_below_threshold({risk_level}<{min_severity})"
+
+        if confidence < min_confidence:
+            return False, False, f"confidence_below_threshold({confidence:.2f}<{min_confidence:.2f})"
+
+        can_auto = action_type in auto_action_types
+        if can_auto and require_inspection_success_for_auto and inspection_status != "success":
+            can_auto = False
+
+        if can_auto:
+            return True, True, "auto_action_allowed"
+        return True, False, "task_created_waiting_manual"
+
+    def _attach_context_to_latest_analysis(
+        self,
+        db: Session,
+        sample_id: int,
+        context_diag: Dict[str, Any],
+        task_trigger_decision: Dict[str, Any]
+    ):
+        try:
+            analysis_result = db.query(LogAnalysisResult).filter(
+                LogAnalysisResult.related_sample_id == sample_id
+            ).order_by(LogAnalysisResult.created_at.desc()).first()
+            if not analysis_result:
+                return
+            evidence = analysis_result.evidence or {}
+            evidence["context_aware"] = context_diag
+            evidence["evidence_status"] = self._build_context_evidence_status(context_diag)
+            evidence["task_trigger_decision"] = task_trigger_decision
+            analysis_result.evidence = evidence
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.warning(f"Failed to attach context evidence for sample {sample_id}: {e}")
+
     async def process_abnormal_sample(self, sample_id: int):
         """
         处理异常采样，触发研判流程
@@ -158,35 +254,26 @@ class AutomationOrchestrator:
                 netbox_device_id=sample.netbox_device_id
             )
 
-            # 步骤3：如果需要升级或已经是状态异常，则进行研判
-            if upgrade_result["needs_upgrade"] or sample.abnormal_type in [
-                "LINK_QUALITY_DEGRADE",
-                "INTERFACE_FLAP",
-                "NEIGHBOR_UNSTABLE"
-            ]:
-                # 创建研判任务
-                diagnosis_task = await diagnosis_service.create_diagnosis_task(
-                    site_id=sample.site_id,
-                    netbox_device_id=sample.netbox_device_id,
-                    device_ip=sample.raw_data.get("device_ip") if sample.raw_data else None,
-                    abnormal_type=sample.abnormal_type
-                )
+            # 步骤3：对异常采样统一执行详细研判
+            diagnosis_task = await diagnosis_service.create_diagnosis_task(
+                site_id=sample.site_id,
+                netbox_device_id=sample.netbox_device_id,
+                device_ip=sample.raw_data.get("device_ip") if sample.raw_data else None,
+                abnormal_type=sample.abnormal_type
+            )
 
-                # 执行研判
-                diagnosis_result = await diagnosis_service.diagnose(diagnosis_task)
+            # 执行研判
+            diagnosis_result = await diagnosis_service.diagnose(diagnosis_task)
 
-                # 步骤4：写入分析结果
-                self._save_analysis_result(db, sample, diagnosis_result, state_result, upgrade_result)
+            # 步骤4：写入分析结果
+            self._save_analysis_result(db, sample, diagnosis_result, state_result, upgrade_result)
 
-                logger.info(f"Completed diagnosis for sample {sample_id}: {diagnosis_result.summary}")
+            logger.info(f"Completed diagnosis for sample {sample_id}: {diagnosis_result.summary}")
 
-                # 步骤5：创建决策任务并执行动作
-                await self._create_and_execute_decision_task(
-                    db, sample, diagnosis_result
-                )
-
-            else:
-                logger.info(f"Sample {sample_id} does not meet upgrade criteria, skipping diagnosis")
+            # 步骤5：创建决策任务并执行动作
+            await self._create_and_execute_decision_task(
+                db, sample, diagnosis_result
+            )
 
         except Exception as e:
             logger.error(f"Error processing abnormal sample {sample_id}: {e}", exc_info=True)
@@ -257,7 +344,11 @@ class AutomationOrchestrator:
         }
         return mapping.get(risk_level, "info")
 
-    async def check_and_diagnose_all_abnormal_samples(self, site_id: Optional[int] = None):
+    async def check_and_diagnose_all_abnormal_samples(
+        self,
+        site_id: Optional[int] = None,
+        batch_limit: int = 1000
+    ):
         """
         检查并诊断所有未处理的异常采样
 
@@ -284,8 +375,8 @@ class AutomationOrchestrator:
             if analyzed_sample_ids:
                 query = query.filter(~LogSample.id.in_(analyzed_sample_ids))
 
-            # 按时间排序，获取最近的异常采样
-            samples = query.order_by(LogSample.sampled_at.desc()).limit(10).all()
+            # 按时间排序，批量获取未处理异常采样，避免只处理极少量数据
+            samples = query.order_by(LogSample.sampled_at.desc()).limit(max(1, min(batch_limit, 5000))).all()
 
             logger.info(f"Found {len(samples)} abnormal samples to diagnose")
 
@@ -357,6 +448,39 @@ class AutomationOrchestrator:
                     pass
             if action_type in {"replace_hardware", "manual_investigation"} or inspection_status == "manual_required":
                 converted_diagnosis.require_human_confirm = True
+
+            task_trigger_policy = self._resolve_task_trigger_policy(db, sample.site_id)
+            should_create_task, can_auto_execute, trigger_reason = self._evaluate_task_trigger(
+                diagnosis=converted_diagnosis,
+                action_type=action_type,
+                inspection_status=inspection_status or "skipped",
+                policy=task_trigger_policy
+            )
+
+            task_trigger_decision = {
+                "should_create_task": should_create_task,
+                "can_auto_execute": can_auto_execute,
+                "reason": trigger_reason,
+                "policy": task_trigger_policy,
+                "action_type": action_type,
+                "inspection_status": inspection_status or "skipped",
+                "risk_level": converted_diagnosis.risk_level.value if hasattr(converted_diagnosis.risk_level, "value") else str(converted_diagnosis.risk_level),
+                "confidence": converted_diagnosis.confidence
+            }
+
+            self._attach_context_to_latest_analysis(
+                db=db,
+                sample_id=sample.id,
+                context_diag=context_diag,
+                task_trigger_decision=task_trigger_decision
+            )
+
+            if not should_create_task:
+                logger.info(f"Skip task creation for sample {sample.id}: {trigger_reason}")
+                return
+
+            if not can_auto_execute:
+                converted_diagnosis.require_human_confirm = True
             
             # 构建决策结果
             decision_result = DecisionResult(
@@ -370,6 +494,7 @@ class AutomationOrchestrator:
                     "abnormal_type": sample.abnormal_type,
                     "context_aware": context_diag,
                     "recommended_action_type": action_type,
+                    "task_trigger_decision": task_trigger_decision,
                 }
             )
 
@@ -404,6 +529,21 @@ class AutomationOrchestrator:
                 task_for_audit.audit_trail = context_diag.get("audit_trail", [])
                 db.commit()
 
+            if not can_auto_execute:
+                try:
+                    await decision_service.update_task_status(
+                        task_id=task_id,
+                        status="waiting_confirm",
+                        execution_result=SchemaExecutionResult(
+                            status="success",
+                            message=f"已创建任务，等待人工确认: {trigger_reason}",
+                            details={"task_trigger_decision": task_trigger_decision}
+                        )
+                    )
+                except Exception as e:
+                    logger.error(f"Error setting waiting_confirm for task {task_id}: {e}", exc_info=True)
+                return
+
             # 查找匹配的策略
             policy = self._find_matching_policy(db, sample.site_id, diagnosis_result)
             logger.debug(
@@ -426,7 +566,7 @@ class AutomationOrchestrator:
                         await decision_service.update_task_status(
                             task.id,
                             "success",
-                            ExecutionResult(
+                            SchemaExecutionResult(
                                 status="success",
                                 message="诊断完成，未匹配到执行策略",
                                 details={"diagnosis": diagnosis_result.model_dump()}
@@ -612,10 +752,10 @@ class AutomationOrchestrator:
             await decision_service.update_task_status(
                 task.id,
                 "failed",
-                ExecutionResult(
+                SchemaExecutionResult(
                     status="failed",
                     message=f"执行失败: {str(e)}",
-                    error=str(e)
+                    details={"error": str(e)}
                 )
             )
 
@@ -648,11 +788,10 @@ class AutomationOrchestrator:
                         # 如果policy_id为None，直接标记为成功（诊断完成，无需执行策略）
                         if task.policy_id is None:
                             logger.info(f"Task {task.id} has no policy, marking as success")
-                            from services.schemas import ExecutionResult
                             await decision_service.update_task_status(
                                 task.id,
                                 "success",
-                                ExecutionResult(
+                                SchemaExecutionResult(
                                     status="success",
                                     message="诊断完成，未配置执行策略",
                                     details={"task_id": task.id}
@@ -670,11 +809,10 @@ class AutomationOrchestrator:
                         else:
                             logger.warning(f"Policy {task.policy_id} not found for task {task.id}")
                             # 策略不存在，标记为成功
-                            from services.schemas import ExecutionResult
                             await decision_service.update_task_status(
                                 task.id,
                                 "success",
-                                ExecutionResult(
+                                SchemaExecutionResult(
                                     status="success",
                                     message="诊断完成，策略不存在",
                                     details={"task_id": task.id, "policy_id": task.policy_id}

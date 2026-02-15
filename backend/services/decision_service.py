@@ -22,6 +22,23 @@ logger = logging.getLogger(__name__)
 class DecisionService:
     """决策服务"""
 
+    def _serialize_execution_result(self, execution_result: Optional[Any]) -> Optional[Dict[str, Any]]:
+        if execution_result is None:
+            return None
+        if isinstance(execution_result, dict):
+            return execution_result
+        if hasattr(execution_result, "model_dump"):
+            try:
+                return execution_result.model_dump()
+            except Exception:
+                pass
+        if hasattr(execution_result, "to_dict"):
+            try:
+                return execution_result.to_dict()
+            except Exception:
+                pass
+        return {"message": str(execution_result)}
+
     async def create_decision_task(
         self,
         site_id: int,
@@ -129,8 +146,9 @@ class DecisionService:
 
             task.status = status
 
-            if execution_result:
-                task.execution_result = execution_result.model_dump()
+            serialized_execution = self._serialize_execution_result(execution_result)
+            if serialized_execution is not None:
+                task.execution_result = serialized_execution
 
             if status in ["success", "failed", "aborted"]:
                 task.finished_at = datetime.now()
@@ -144,7 +162,7 @@ class DecisionService:
             await self._log_action(
                 db, task_id, "status_update",
                 f"状态更新为{status}",
-                {"status": status, "execution_result": execution_result.model_dump() if execution_result else None}
+                {"status": status, "execution_result": serialized_execution}
             )
 
             return task
