@@ -364,6 +364,15 @@ const loadSummary = async () => {
       if (!isSummaryEmpty(rangeSummary)) {
         summary.value = rangeSummary
         summaryScopeLabel.value = '近7天'
+      } else {
+        // 近7天仍为空时，回退全量统计，确保能看到历史累计数据
+        const allTimeSummary = await getDashboardSummary({
+          site_id: selectedSiteId.value
+        })
+        if (!isSummaryEmpty(allTimeSummary)) {
+          summary.value = allTimeSummary
+          summaryScopeLabel.value = '全量'
+        }
       }
     }
 
