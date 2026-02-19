@@ -65,7 +65,7 @@ class PlannerAgent:
         if intent.intent == "analyze_device":
             params = {"action": "query_alerts"}
             if intent.targets:
-                params["device_name"] = intent.targets[0]
+                params["host"] = intent.targets[0]
 
             steps.append(ExecutionStep(
                 step_id=generate_id("step"),
@@ -83,7 +83,7 @@ class PlannerAgent:
         if intent.intent == "analyze_device":
             params = {"action": "query_logs"}
             if intent.targets:
-                params["device_name"] = intent.targets[0]
+                params["query"] = intent.targets[0]
             if intent.time_range:
                 params["time_range"] = intent.time_range
 

@@ -187,6 +187,7 @@ python3 scripts/cleanup_automation_data.py
 
 - `/api/assets/*` 资产查询
 - `/api/alerts/*` 告警查询
+- `/api/alerts/events*` 告警事件入库与状态流转（open/acknowledged/resolved）
 - `/api/logs/*` 日志查询/分析
 - `/api/automation/*` 自动化中心（样本、研判、任务、反馈、统计）
 - `/api/ssh/*` SSH 凭据、设备绑定、连通性检查、命令执行

@@ -75,6 +75,25 @@ export interface AlertStatistics {
   disabled_hosts: number
 }
 
+export interface AlertEvent {
+  id: number
+  source: string
+  external_event_id?: string
+  dedup_key: string
+  site_id?: number
+  netbox_device_id?: number
+  host?: string
+  name: string
+  severity: string
+  severity_level: number
+  status: string
+  acknowledged: boolean
+  occurred_at?: string
+  resolved_at?: string
+  last_seen_at?: string
+  payload: Record<string, any>
+}
+
 export const alertsApi = {
   async getAlerts(params?: {
     severity?: number
@@ -146,6 +165,50 @@ export const alertsApi = {
   async clearCache(): Promise<{ message: string }> {
     // 如果使用VITE_API_BASE_URL环境变量，则API路径应包含/api前缀
     const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/alerts/clear-cache` : `${API_BASE_URL}/alerts/clear-cache`
+    const response = await axios.post(apiUrl)
+    return response.data
+  },
+
+  async getAlertEvents(params?: {
+    status?: string
+    severity?: string
+    source?: string
+    site_id?: number
+    netbox_device_id?: number
+    skip?: number
+    limit?: number
+  }): Promise<{ page: { total: number; skip: number; limit: number; returned: number; has_more: boolean }; events: AlertEvent[] }> {
+    const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/alerts/events` : `${API_BASE_URL}/alerts/events`
+    const response = await axios.get(apiUrl, { params })
+    return response.data
+  },
+
+  async createAlertEvent(payload: {
+    source?: string
+    external_event_id?: string
+    site_id?: number
+    netbox_device_id?: number
+    host?: string
+    name: string
+    severity?: string
+    severity_level?: number
+    occurred_at?: string
+    payload?: Record<string, any>
+    dedup_key?: string
+  }): Promise<AlertEvent> {
+    const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/alerts/events` : `${API_BASE_URL}/alerts/events`
+    const response = await axios.post(apiUrl, payload)
+    return response.data
+  },
+
+  async acknowledgeAlertEvent(eventId: number): Promise<AlertEvent> {
+    const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/alerts/events/${eventId}/acknowledge` : `${API_BASE_URL}/alerts/events/${eventId}/acknowledge`
+    const response = await axios.post(apiUrl)
+    return response.data
+  },
+
+  async resolveAlertEvent(eventId: number): Promise<AlertEvent> {
+    const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/alerts/events/${eventId}/resolve` : `${API_BASE_URL}/alerts/events/${eventId}/resolve`
     const response = await axios.post(apiUrl)
     return response.data
   }

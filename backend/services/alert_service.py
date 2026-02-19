@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
-from models.automation import LogAnalysisResult, Site
+from models.automation import LogAnalysisResult, Site, AlertEvent
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +116,29 @@ class AlertService:
             alert: 告警字典
         """
         self.alert_cache[alert_key] = alert
+
+    def _upsert_alert_event(self, db: Session, alert: Dict) -> AlertEvent:
+        record = db.query(AlertEvent).filter(AlertEvent.dedup_key == alert["alert_key"]).first()
+        if not record:
+            record = AlertEvent(
+                source=alert.get("source", "AUTOMATED_DIAGNOSIS"),
+                external_event_id=str(alert.get("analysis_id", "")) or None,
+                dedup_key=alert["alert_key"],
+            )
+            db.add(record)
+
+        record.site_id = alert.get("site_id")
+        record.netbox_device_id = alert.get("device_id")
+        record.host = None
+        record.name = alert.get("summary") or "自动化诊断告警"
+        record.severity = alert.get("severity") or "warning"
+        record.severity_level = {"info": 1, "warning": 2, "critical": 4}.get(record.severity, 2)
+        record.status = "open"
+        record.acknowledged = False
+        record.occurred_at = datetime.fromisoformat(alert["created_at"])
+        record.last_seen_at = datetime.now()
+        record.payload = alert
+        return record
 
     async def send_dingtalk_alert(self, alert: Dict, webhook_url: Optional[str] = None):
         """
@@ -224,12 +247,16 @@ class AlertService:
                 alert = self.generate_alert_from_analysis(result)
 
                 if alert:
+                    self._upsert_alert_event(db, alert)
                     # 发送钉钉告警（需要配置webhook）
                     # webhook_url = "YOUR_DINGTALK_WEBHOOK_URL"
                     # await self.send_dingtalk_alert(alert, webhook_url)
                     logger.info(f"Alert generated (not sent): {alert['alert_id']}")
 
+            db.commit()
+
         except Exception as e:
+            db.rollback()
             logger.error(f"Error processing analysis results for alerts: {e}", exc_info=True)
         finally:
             db.close()

@@ -112,7 +112,7 @@ export interface Prefix {
   status: string
   description: string
   tenant: string
-  family: number
+  family: number | string
   vlan: string
   vlan_vid: number
   total_ips: number

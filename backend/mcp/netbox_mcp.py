@@ -92,6 +92,15 @@ class NetBoxMCP(BaseMCP):
                 if d.device_type and d.device_type.manufacturer
                 and vendor_filter in str(d.device_type.manufacturer.name).lower()
             ]
+        elif not isinstance(devices, list):
+            devices = list(devices)
+
+        if "limit" in params and params["limit"] is not None:
+            try:
+                limit = max(1, int(params["limit"]))
+                devices = devices[:limit]
+            except Exception:
+                pass
 
         result = {
             "count": len(devices),
@@ -414,6 +423,22 @@ class NetBoxMCP(BaseMCP):
         }
 
         return self._success(result, {"action": "get_device_config", "device_id": device_id})
+
+    async def _get_device_config_by_id(self, params: Dict[str, Any]) -> MCPResult:
+        """兼容旧调用：返回 {config: ...} 结构"""
+        base = await self._get_device_config(params)
+        if not base.success:
+            return base
+        data = base.data or {}
+        return self._success(
+            {
+                "device_id": data.get("device_id"),
+                "device_name": data.get("device_name"),
+                "config": data.get("config_context") or {},
+                "custom_fields": data.get("custom_fields") or {},
+            },
+            {"action": "get_device_config_by_id", "device_id": params.get("device_id")},
+        )
 
     async def _fetch_and_save_device_config(self, params: Dict[str, Any]) -> MCPResult:
         """从设备获取配置并写入NetBox"""

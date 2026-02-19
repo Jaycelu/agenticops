@@ -848,13 +848,11 @@ class LogSampler:
                         from mcp.netbox_mcp import NetBoxMCP
                         netbox_mcp = NetBoxMCP()
                         result = await netbox_mcp.execute({
-                            "action": "query_devices",
-                            "id": netbox_device_id
+                            "action": "get_device_by_id",
+                            "device_id": netbox_device_id
                         })
-                        if result.success and result.data.get("count", 0) > 0:
-                            devices = result.data.get("devices", [])
-                            if devices:
-                                device_info = devices[0]
+                        if result.success and result.data:
+                            device_info = result.data
                     except Exception as e:
                         logger.warning(f"Error getting device info from NetBox: {e}")
 

@@ -256,24 +256,22 @@ class DiagnosisService:
             if task.netbox_device_id:
                 try:
                     result = await netbox_mcp.execute({
-                        "action": "query_devices",
-                        "id": task.netbox_device_id
+                        "action": "get_device_by_id",
+                        "device_id": task.netbox_device_id
                     })
-                    
-                    if result.success and result.data.get("count", 0) > 0:
-                        devices = result.data.get("devices", [])
-                        if devices:
-                            device = devices[0]
-                            peer_evidence = {
-                                "peer_device": {
-                                    "name": device.get("name"),
-                                    "site": device.get("site"),
-                                    "role": device.get("role"),
-                                    "status": device.get("status")
-                                },
-                                "peer_interface": "not_available",
-                                "peer_errors": "not_available"
-                            }
+
+                    if result.success and result.data:
+                        device = result.data
+                        peer_evidence = {
+                            "peer_device": {
+                                "name": device.get("name"),
+                                "site": device.get("site"),
+                                "role": device.get("role"),
+                                "status": device.get("status")
+                            },
+                            "peer_interface": "not_available",
+                            "peer_errors": "not_available"
+                        }
                 except Exception as e:
                     logger.warning(f"Error getting device info from NetBox: {e}")
             

@@ -5,7 +5,8 @@ from mcp.elk_mcp import ELKMCP
 from utils.cache import netbox_cache
 from services.log_analyzer import LogAnalyzer
 from models.llm_client import LLMClient
-from api.models import _models_store
+from api.schemas.common import MessageResponse, error_detail
+from api.schemas.logs import BaseConfigsResponse, LogsResponse, AggregationResponse
 
 router = APIRouter(prefix="/api/logs", tags=["logs"])
 elk_mcp = ELKMCP()
@@ -20,17 +21,17 @@ class LogQueryRequest(BaseModel):
     offset: int = 0
 
 
-@router.get("/bases")
+@router.get("/bases", response_model=BaseConfigsResponse)
 async def get_base_configs():
     """获取所有基地配置"""
     result = await elk_mcp.execute({"action": "get_base_configs"})
     if result.success:
         return result.data
     else:
-        raise HTTPException(status_code=500, detail=result.error)
+        raise HTTPException(status_code=500, detail=error_detail("LOG_UPSTREAM_ERROR", result.error))
 
 
-@router.get("/query")
+@router.get("/query", response_model=LogsResponse)
 async def query_logs(
     query: Optional[str] = "*",
     time_range: Optional[str] = "-1d,now",
@@ -58,10 +59,10 @@ async def query_logs(
         netbox_cache.set("logs", params, result.data, ttl=60)
         return result.data
     else:
-        raise HTTPException(status_code=500, detail=result.error)
+        raise HTTPException(status_code=500, detail=error_detail("LOG_UPSTREAM_ERROR", result.error))
 
 
-@router.get("/search")
+@router.get("/search", response_model=LogsResponse)
 async def search_logs(
     base: str,
     time_range: Optional[str] = None,
@@ -94,10 +95,10 @@ async def search_logs(
         netbox_cache.set(f"logs_{base}", params, result.data, ttl=60)
         return result.data
     else:
-        raise HTTPException(status_code=500, detail=result.error)
+        raise HTTPException(status_code=500, detail=error_detail("LOG_UPSTREAM_ERROR", result.error))
 
 
-@router.get("/base/{base_name}")
+@router.get("/base/{base_name}", response_model=LogsResponse)
 async def query_logs_by_base(
     base_name: str,
     time_range: Optional[str] = None,
@@ -130,10 +131,10 @@ async def query_logs_by_base(
         netbox_cache.set(f"logs_{base_name}", params, result.data, ttl=60)
         return result.data
     else:
-        raise HTTPException(status_code=500, detail=result.error)
+        raise HTTPException(status_code=500, detail=error_detail("LOG_UPSTREAM_ERROR", result.error))
 
 
-@router.get("/deyang")
+@router.get("/deyang", response_model=LogsResponse)
 async def query_deyang_logs(
     time_range: Optional[str] = None,
     limit: int = 100,
@@ -160,13 +161,16 @@ async def query_deyang_logs(
         netbox_cache.set("logs_deyang", params, result.data, ttl=60)
         return result.data
     else:
-        raise HTTPException(status_code=500, detail=result.error)
+        raise HTTPException(status_code=500, detail=error_detail("LOG_UPSTREAM_ERROR", result.error))
 
 
-@router.post("/clear-cache")
+@router.post("/clear-cache", response_model=MessageResponse)
 async def clear_cache():
     """清除日志缓存"""
-    netbox_cache.clear()
+    netbox_cache.clear("logs")
+    for base_name in elk_mcp.base_configs.keys():
+        netbox_cache.clear(f"logs_{base_name}")
+    netbox_cache.clear("logs_deyang")
     return {"message": "Cache cleared successfully"}
 
 
@@ -312,7 +316,7 @@ class LogAggregationRequest(BaseModel):
     }
 
 
-@router.post("/aggregate")
+@router.post("/aggregate", response_model=AggregationResponse)
 async def aggregate_logs(request: LogAggregationRequest):
     """聚合日志数据"""
     try:
@@ -339,7 +343,7 @@ async def aggregate_logs(request: LogAggregationRequest):
         
                     result = await elk_mcp.execute(params)
                     if not result.success:
-                        raise HTTPException(status_code=500, detail=result.error)
+                        raise HTTPException(status_code=500, detail=error_detail("LOG_UPSTREAM_ERROR", result.error))
         
                     batch_logs = result.data.get("logs", [])
                     all_logs.extend(batch_logs)

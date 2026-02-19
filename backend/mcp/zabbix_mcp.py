@@ -107,7 +107,7 @@ class ZabbixMCP(BaseMCP):
         }
 
         # 添加筛选条件
-        if "severity" in params and params["severity"]:
+        if "severity" in params and params["severity"] is not None:
             zabbix_params["severities"] = [params["severity"]]
         
         if "host" in params and params["host"]:
@@ -193,7 +193,7 @@ class ZabbixMCP(BaseMCP):
         }
 
         # 添加筛选条件
-        if "severity" in params and params["severity"]:
+        if "severity" in params and params["severity"] is not None:
             zabbix_params["filter"] = zabbix_params.get("filter", {})
             zabbix_params["filter"]["severity"] = params["severity"]
         
@@ -290,7 +290,7 @@ class ZabbixMCP(BaseMCP):
         }
 
         # 添加筛选条件
-        if "severity" in params and params["severity"]:
+        if "severity" in params and params["severity"] is not None:
             zabbix_params["filter"]["priority"] = params["severity"]
 
         if "host" in params and params["host"]:
@@ -314,7 +314,7 @@ class ZabbixMCP(BaseMCP):
                 "severity_level": priority,
                 "host": host_name,
                 "status": "启用" if trigger.get("status") == "0" else "禁用",
-                "value": "异常" if trigger.get("value") == 1 else "正常"
+                "value": "异常" if str(trigger.get("value")) == "1" else "正常"
             })
 
         return self._success(result, {"action": "query_triggers", "filters": params})

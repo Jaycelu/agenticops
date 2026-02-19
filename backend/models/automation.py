@@ -101,6 +101,42 @@ class AssetDevice(Base):
     )
 
 
+class AlertEvent(Base):
+    """统一告警事件表（供自动化中心消费）"""
+    __tablename__ = "alert_event"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    source = Column(String(50), nullable=False, default="ZABBIX", index=True)
+    external_event_id = Column(String(128), index=True)
+    dedup_key = Column(String(64), nullable=False, unique=True, index=True)
+
+    site_id = Column(Integer, ForeignKey("site.id"), nullable=True, index=True)
+    netbox_device_id = Column(Integer, index=True)
+    host = Column(String(255), index=True)
+    name = Column(String(512), nullable=False)
+    severity = Column(String(30), nullable=False, index=True)
+    severity_level = Column(Integer, nullable=False, default=0, index=True)
+
+    status = Column(String(30), nullable=False, default="open", index=True)  # open/acknowledged/resolved
+    acknowledged = Column(Boolean, nullable=False, default=False, index=True)
+
+    occurred_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    resolved_at = Column(DateTime(timezone=True))
+    last_seen_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    payload = Column(JSON, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    site = relationship("Site")
+
+    __table_args__ = (
+        Index("idx_alert_event_status_time", "status", "occurred_at"),
+        Index("idx_alert_event_site_severity", "site_id", "severity_level"),
+        Index("idx_alert_event_external_source", "source", "external_event_id"),
+    )
+
+
 class LogSample(Base):
     """日志采样表"""
     __tablename__ = "log_sample"

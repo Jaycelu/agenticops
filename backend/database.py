@@ -44,6 +44,6 @@ def init_db():
         AutomationPolicy, AutomationTask, AutomationActionLog,
         AutomationApproval, RawAnomaly, AutomationTaskFeedback,
         AbnormalTrackerState, SSHCredential, SSHCredentialDeviceBinding,
-        AssetDevice, CommandTemplate
+        AssetDevice, AlertEvent, CommandTemplate
     )
     Base.metadata.create_all(bind=engine)

@@ -34,6 +34,7 @@ export interface LogsResponse {
 export interface LogQueryParams {
   query?: string
   time_range?: string
+  filter?: string
   limit?: number
   offset?: number
 }
@@ -68,30 +69,6 @@ export interface AggregationResponse {
   total_available?: number
   aggregated_groups: AggregatedGroup[]
   has_more?: boolean
-}
-
-export interface AggregatedGroup {
-  device: string
-  total_count: number
-  level_groups: LevelGroup[]
-}
-
-export interface LevelGroup {
-  level: string
-  count: number
-  time_range: string
-  logs: LogEntry[]
-}
-
-export interface AggregationParams {
-  base_name: string
-  time_range?: string
-  filter?: string
-  aggregation: {
-    by_device: boolean
-    by_level: boolean
-    by_time_window?: string
-  }
 }
 
 export interface DeviceLogAnalysisRequest {

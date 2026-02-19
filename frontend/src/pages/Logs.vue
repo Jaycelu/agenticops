@@ -486,7 +486,6 @@ const singleAnalysisResults = ref<Record<number, string>>({})
 const noLogsHint = ref<boolean>(false)
 const timeoutError = ref<boolean>(false)
 const expandedLogs = ref<Record<number, boolean>>({})
-const abortController = ref<AbortController | null>(null)
 const levelFilter = ref<string>('all')
 const jumpPage = ref<number>(1)
 
@@ -542,9 +541,7 @@ const visibleLogs = computed(() => {
 
 async function loadBases() {
   try {
-    // 使用相对路径，让 Vite 代理处理
-    const response = await fetch('/api/logs/bases')
-    const data = await response.json()
+    const data = await logsApi.getBases()
     bases.value = data.bases || []
   } catch (error) {
     console.error('Error loading bases:', error)
@@ -579,34 +576,19 @@ function clearLogsCache() {
 async function loadLogs() {
   if (!selectedBase.value) return
 
-  if (abortController.value) {
-    abortController.value.abort()
-  }
-
-  abortController.value = new AbortController()
-
   loading.value = true
   noLogsHint.value = false
   timeoutError.value = false
 
   try {
     const filter = customFilter.value || currentFilter.value
-    
-    const response = await fetch(
-      `/api/logs/search?base=${selectedBase.value}&time_range=${timeRange.value}&filter=${encodeURIComponent(filter)}&limit=${limit.value}&offset=${offset.value}`,
-      {
-        signal: abortController.value.signal,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      }
-    )
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-
-    const data = await response.json()
+    const data = await logsApi.queryLogsByBase(selectedBase.value, {
+      time_range: timeRange.value,
+      filter,
+      limit: Number(limit.value),
+      offset: Number(offset.value)
+    })
     logs.value = data.logs || []
     totalLogs.value = data.total || 0
 
@@ -615,14 +597,10 @@ async function loadLogs() {
     }
 
   } catch (error: any) {
-    if (error.name === 'AbortError') {
-      console.log('Request aborted')
-    } else {
-      console.error('Error loading logs:', error)
-      logs.value = []
-      totalLogs.value = 0
-      timeoutError.value = true
-    }
+    console.error('Error loading logs:', error)
+    logs.value = []
+    totalLogs.value = 0
+    timeoutError.value = true
   } finally {
     loading.value = false
   }

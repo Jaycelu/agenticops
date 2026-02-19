@@ -57,18 +57,17 @@ def lookup_netbox_asset(query: str) -> str:
         # 使用辅助函数运行异步方法
         result = run_async(netbox_mcp.execute({
             "action": "query_devices",
-            "name": query if not query.replace(".", "").isdigit() else None,
-            "ip_address": query if query.replace(".", "").isdigit() else None,
+            "name": query,
             "limit": 1
         }))
 
         if result.success and result.data.get("count", 0) > 0:
             device = result.data["devices"][0]
             return f"""name: {device.get('name')}
-ip: {device.get('primary_ip', {}).get('address', '').split('/')[0] if device.get('primary_ip') else 'N/A'}
-platform: {device.get('platform', {}).get('name', 'unknown')}
-role: {device.get('role', {}).get('name', 'unknown')}
-site: {device.get('site', {}).get('name', 'unknown')}"""
+ip: {str(device.get('primary_ip', 'N/A')).split('/')[0] if device.get('primary_ip') else 'N/A'}
+platform: {device.get('platform', 'unknown')}
+role: {device.get('role', 'unknown')}
+site: {device.get('site', 'unknown')}"""
         else:
             return f"未找到设备：{query}，请确认设备名称或 IP 地址。"
 
@@ -135,18 +134,20 @@ def query_zabbix_alerts(device_name: Optional[str] = None, severity: Optional[st
         from mcp.zabbix_mcp import ZabbixMCP
         zabbix_mcp = ZabbixMCP()
 
-        # 构建查询条件
-        filters = {}
-        if device_name:
-            filters["host"] = [device_name]
-        if severity:
-            filters["priority"] = [severity]
-
         # 使用辅助函数运行异步方法
+        severity_map = {
+            "unclassified": 0,
+            "information": 1,
+            "warning": 2,
+            "average": 3,
+            "high": 4,
+            "disaster": 5,
+        }
+        sev = severity_map.get(str(severity).lower()) if severity else None
         result = run_async(zabbix_mcp.execute({
-            "action": "get_alerts",
-            "filters": filters,
-            "output": "extend",
+            "action": "query_alerts",
+            "host": device_name,
+            "severity": sev,
             "limit": 10
         }))
 
@@ -194,10 +195,10 @@ def search_elk_logs(query: str, time_range: str = "1h") -> str:
 
         # 使用辅助函数运行异步方法
         result = run_async(elk_mcp.execute({
-            "action": "search_logs",
+            "action": "query_logs",
             "query": query,
             "time_range": time_range,
-            "size": 10
+            "limit": 10
         }))
 
         if result.success and result.data:
