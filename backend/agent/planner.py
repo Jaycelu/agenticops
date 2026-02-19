@@ -23,9 +23,6 @@ class PlannerAgent:
             if "netbox" in intent.tools:
                 steps.extend(self._build_netbox_steps(intent))
 
-            if "zabbix" in intent.tools:
-                steps.extend(self._build_zabbix_steps(intent))
-
             if "elk" in intent.tools:
                 steps.extend(self._build_elk_steps(intent))
 
@@ -53,24 +50,6 @@ class PlannerAgent:
                 step_id=generate_id("step"),
                 tool="netbox",
                 action="query_devices",
-                params=params,
-                status="pending"
-            ))
-
-        return steps
-
-    def _build_zabbix_steps(self, intent: Intent) -> List[ExecutionStep]:
-        steps = []
-
-        if intent.intent == "analyze_device":
-            params = {"action": "query_alerts"}
-            if intent.targets:
-                params["host"] = intent.targets[0]
-
-            steps.append(ExecutionStep(
-                step_id=generate_id("step"),
-                tool="zabbix",
-                action="query_alerts",
                 params=params,
                 status="pending"
             ))
@@ -200,12 +179,16 @@ class PlannerAgent:
             status="pending"
         ))
 
-        # 第二步：从Zabbix获取监控数据
+        # 第二步：从ELK获取日志证据
         steps.append(ExecutionStep(
             step_id=generate_id("step"),
-            tool="zabbix",
-            action="query_alerts",
-            params={"limit": 1000},
+            tool="elk",
+            action="query_logs",
+            params={
+                "query": intent.targets[0] if intent.targets else "*",
+                "time_range": intent.time_range or "-1d,now",
+                "limit": 200
+            },
             status="pending"
         ))
 

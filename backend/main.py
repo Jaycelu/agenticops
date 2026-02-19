@@ -9,6 +9,7 @@ from api.abnormal_types import router as abnormal_types_router
 from api.ssh_management import router as ssh_management_router
 from api.command_templates import router as command_templates_router
 from api.events import router as events_router
+from api.tickets import router as tickets_router
 from utils.cache import netbox_cache
 import asyncio
 
@@ -140,6 +141,7 @@ app.include_router(abnormal_types_router)
 app.include_router(ssh_management_router)
 app.include_router(command_templates_router)
 app.include_router(events_router)
+app.include_router(tickets_router)
 
 
 @app.get("/")

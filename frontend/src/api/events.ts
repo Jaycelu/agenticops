@@ -47,6 +47,18 @@ export interface EventRelationsResponse {
   }>
 }
 
+export interface PlaybookDraftCheckResponse {
+  success: boolean
+  message: string
+  event_id: number
+  playbook_check: {
+    passed?: boolean
+    errors?: string[]
+    warnings?: string[]
+  }
+  playbook_yaml?: string
+}
+
 export const eventsApi = {
   async listEvents(params?: {
     status?: string
@@ -68,7 +80,10 @@ export const eventsApi = {
     return response.data
   },
 
-  async dispatchReadonly(eventId: number, reviewer: string = 'operator'): Promise<{ success: boolean; message: string; task_id?: number }> {
+  async dispatchReadonly(
+    eventId: number,
+    reviewer: string = 'operator'
+  ): Promise<{ success: boolean; message: string; task_id?: number; playbook_check?: Record<string, any> }> {
     const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/events/${eventId}/dispatch-readonly` : `${API_BASE_URL}/events/${eventId}/dispatch-readonly`
     const response = await axios.post(apiUrl, { reviewer })
     return response.data
@@ -83,6 +98,14 @@ export const eventsApi = {
   async getRelations(eventId: number): Promise<EventRelationsResponse> {
     const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/events/${eventId}/relations` : `${API_BASE_URL}/events/${eventId}/relations`
     const response = await axios.get(apiUrl)
+    return response.data
+  },
+
+  async generatePlaybookDraft(eventId: number, includePlaybook: boolean = true): Promise<PlaybookDraftCheckResponse> {
+    const apiUrl = API_BASE_URL.startsWith('http')
+      ? `${API_BASE_URL}/api/events/${eventId}/playbook-draft-check`
+      : `${API_BASE_URL}/events/${eventId}/playbook-draft-check`
+    const response = await axios.post(apiUrl, { include_playbook: includePlaybook })
     return response.data
   }
 }

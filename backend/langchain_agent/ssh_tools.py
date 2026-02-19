@@ -8,6 +8,10 @@ import logging
 from typing import Dict, List, Any, Optional
 from langchain_core.tools import tool
 
+from database import SessionLocal
+from models.automation import SSHCredential, SSHCredentialDeviceBinding
+from services.ssh_service import ssh_service
+
 logger = logging.getLogger(__name__)
 
 
@@ -135,6 +139,24 @@ def is_dangerous_command(command: str) -> bool:
 # SSH 工具
 # ============================================================================
 
+
+def _resolve_binding_by_ip(ip: str, db) -> Optional[SSHCredentialDeviceBinding]:
+    devices = ssh_service.query_netbox_devices()
+    matched_device = next((d for d in devices if (d.get("primary_ip") or "").strip() == ip.strip()), None)
+    if not matched_device:
+        return None
+
+    return (
+        db.query(SSHCredentialDeviceBinding)
+        .join(SSHCredential, SSHCredential.id == SSHCredentialDeviceBinding.credential_id)
+        .filter(
+            SSHCredentialDeviceBinding.netbox_device_id == int(matched_device["id"]),
+            SSHCredential.enabled.is_(True),
+        )
+        .order_by(SSHCredentialDeviceBinding.updated_at.desc())
+        .first()
+    )
+
 @tool
 def run_show_command(ip: str, commands: List[str]) -> str:
     """
@@ -163,14 +185,28 @@ def run_show_command(ip: str, commands: List[str]) -> str:
                 logger.warning(f"Command may not be safe: {cmd}")
                 return f"⚠️  命令不在白名单中: {cmd}。仅允许 show/display 类命令。"
 
-        # 模拟执行（实际应该从 NetBox 获取设备凭证并使用 Paramiko 连接）
-        # 这里先返回模拟结果
-        output = f"模拟执行 show 命令:\n"
-        for cmd in commands:
-            output += f"\n>>> {cmd}\n"
-            output += f"Command executed successfully on {ip}\n"
+        db = SessionLocal()
+        try:
+            binding = _resolve_binding_by_ip(ip, db)
+            if not binding:
+                return f"❌ 未找到设备 {ip} 的 SSH 凭据绑定，请先在 SSH 管理模块完成绑定。"
 
-        return output
+            result = ssh_service.execute_commands(
+                db=db,
+                credential_id=binding.credential_id,
+                netbox_device_id=binding.netbox_device_id,
+                commands=commands,
+                timeout=20,
+            )
+            if not result.get("success"):
+                return f"❌ 执行失败：{result}"
+
+            rows = []
+            for item in result.get("results", []):
+                rows.append(f">>> {item.get('command', '')}\n{item.get('output', '')}\n")
+            return "\n".join(rows) if rows else "执行完成，无输出。"
+        finally:
+            db.close()
 
     except Exception as e:
         logger.error(f"Error running show command: {e}")
@@ -233,15 +269,24 @@ def confirm_and_execute_config(ip: str, config_lines: List[str]) -> str:
             if is_dangerous_command(cmd):
                 return f"❌ 拒绝执行危险命令: {cmd}"
 
-        # 模拟执行（实际应该使用 Paramiko 连接设备并执行配置）
-        output = f"模拟执行配置命令:\n"
-        for cmd in config_lines:
-            output += f"\n>>> {cmd}\n"
-            output += f"Config command executed successfully on {ip}\n"
+        db = SessionLocal()
+        try:
+            binding = _resolve_binding_by_ip(ip, db)
+            if not binding:
+                return f"❌ 未找到设备 {ip} 的 SSH 凭据绑定，请先在 SSH 管理模块完成绑定。"
 
-        output += "\n✅ 配置下发成功"
-
-        return output
+            result = ssh_service.execute_commands(
+                db=db,
+                credential_id=binding.credential_id,
+                netbox_device_id=binding.netbox_device_id,
+                commands=config_lines,
+                timeout=20,
+            )
+            if not result.get("success"):
+                return f"❌ 执行配置失败：{result}"
+            return "✅ 配置命令已执行，请立即复核设备状态与业务影响。"
+        finally:
+            db.close()
 
     except Exception as e:
         logger.error(f"Error executing config: {e}")

@@ -105,7 +105,7 @@ def render_sidebar():
 
         **可用工具：**
         - 📦 NetBox 资产查询
-        - 📊 Zabbix 告警查询
+        - 📡 事件中心查询
         - 🔍 ELK 日志搜索
         - 🔧 SSH 命令执行
         """)

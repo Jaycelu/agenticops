@@ -613,9 +613,8 @@ class LogSampler:
 
                 if triggered_count > 0:
                     logger.info(f"Triggered {triggered_count} diagnoses for {site.site_code}")
-                    # 触发告警
-                    from services.alert_service import alert_service
-                    await alert_service.process_new_analysis_results(site.id)
+                    # 旧告警链路已下线：后续统一通过事件中心(/api/events/ingest)接入。
+                    logger.info("Legacy alert trigger disabled; use event ingest workflow instead")
                 else:
                     logger.info(f"No diagnoses triggered for {site.site_code} (all filtered by abnormal tracker)")
 

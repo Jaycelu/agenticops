@@ -5,7 +5,7 @@ from api.schemas.settings import ModelUpdateRequest, ModelCreateRequest
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
-# 模拟的模型存储（实际应该使用数据库）
+# 运行时模型配置存储（当前为内存态，后续可迁移到数据库）
 _models_store = {
     "default": {
         "id": "default",

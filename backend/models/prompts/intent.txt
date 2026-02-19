@@ -10,7 +10,7 @@
 3. role: 设备角色（如"核心交换机"、"接入交换机"、"汇聚交换机"、"路由器"、"防火墙"等）
 4. site: 站点名称（如"德阳"、"成都"、"重庆"等）
 5. time_range: 时间范围（today, yesterday, last_7_days, custom）
-6. tools: 需要调用的工具（netbox, zabbix, elk, backup, inspection, healthcheck）
+6. tools: 需要调用的工具（netbox, elk, backup, inspection, healthcheck）
 7. risk_level: 风险级别（read_only, needs_confirmation, high_risk）
 8. automation_type: 自动化任务类型（仅当intent为自动化类时需要）
    - backup_config: 配置备份

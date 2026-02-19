@@ -45,10 +45,47 @@ class EventIngestRequest(BaseModel):
     raw_payload: Dict[str, Any] = Field(default_factory=dict)
 
 
+class SplunkWebhookRequest(BaseModel):
+    search_name: Optional[str] = None
+    sid: Optional[str] = None
+    host: Optional[str] = None
+    source: Optional[str] = None
+    sourcetype: Optional[str] = None
+    time: Optional[str] = None
+    event: Dict[str, Any] = Field(default_factory=dict)
+    result: Dict[str, Any] = Field(default_factory=dict)
+
+
+class EDAWebhookRequest(BaseModel):
+    rulebook: Optional[str] = None
+    rule_name: Optional[str] = None
+    event_id: Optional[str] = None
+    source: Optional[str] = None
+    occurred_at: Optional[str] = None
+    severity: Optional[str] = None
+    event: Dict[str, Any] = Field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    auto_dispatch_readonly: bool = True
+    reviewer: Optional[str] = "eda-system"
+
+
 class EventIngestResponse(BaseModel):
     accepted: bool = True
     observe_only: bool
     event: AlertEventItem
+
+
+class EventIngestDispatchResult(BaseModel):
+    dispatched: bool = False
+    task_id: Optional[int] = None
+    message: str = ""
+
+
+class EDAIngestResponse(BaseModel):
+    accepted: bool = True
+    observe_only: bool
+    event: AlertEventItem
+    dispatch: EventIngestDispatchResult
 
 
 class EventListResponse(BaseModel):
@@ -64,6 +101,7 @@ class EventDispatchResponse(BaseModel):
     success: bool
     message: str
     task_id: Optional[int] = None
+    playbook_check: Dict[str, Any] = Field(default_factory=dict)
 
 
 class EventTicketCreateRequest(BaseModel):
@@ -91,3 +129,15 @@ class EventRelationsResponse(BaseModel):
     event_id: int
     ticket: Dict[str, Any] = Field(default_factory=dict)
     linked_tasks: List[EventTaskLinkItem] = Field(default_factory=list)
+
+
+class EventPlaybookDraftRequest(BaseModel):
+    include_playbook: bool = True
+
+
+class EventPlaybookDraftResponse(BaseModel):
+    success: bool
+    message: str
+    event_id: int
+    playbook_check: Dict[str, Any] = Field(default_factory=dict)
+    playbook_yaml: str = ""

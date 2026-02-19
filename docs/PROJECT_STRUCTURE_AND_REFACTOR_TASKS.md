@@ -11,9 +11,9 @@
 - `scripts/`：运维辅助脚本
 
 ### backend 核心子目录
-- `backend/api/`：REST API 路由（chat、automation、alerts、assets、logs）
+- `backend/api/`：REST API 路由（chat、automation、events、assets、logs）
 - `backend/agent/`：工作台对话 Agent（intent/planner/executor/orchestrator）
-- `backend/mcp/`：NetBox/Zabbix/ELK 工具封装
+- `backend/mcp/`：NetBox/ELK 工具封装
 - `backend/services/`：自动化中心核心能力（采样、异常跟踪、研判、决策、执行）
 - `backend/models/`：LLM 客户端与 Prompt 模板
 - `backend/config/`：配置和日志
@@ -50,3 +50,21 @@
 14. `T14`：反馈统计详情页增强（诊断类型切换、折线趋势、CSV导出）
 15. `T15`：趋势图双指标切换（正确率/误判率/双线）+ CSV附带TopN建议
 16. `T16`：反馈统计支持自定义日期范围（start_date/end_date）并与窗口模式兼容
+
+## 5. 本地工单闭环持续实施清单（当前执行基线）
+
+1. `LT1`：锁定本地工单模式（`TICKET_MODE=local`，外部仅预留）`[已完成]`
+2. `LT2`：审批流 API/UI 闭环（发起审批、审批决策、审批历史、待审批列表）`[已完成]`
+3. `LT3`：事件->工单->任务联动校验（关系查询与状态同步）`[已完成]`
+4. `LT4`：旧告警模块与残留耦合清理（代码/文档/导航统一事件中心）`[进行中]`
+5. `LT5`：自动化中心最小安全执行路径（check 模式 + 人工确认 + observe-only）`[已完成]`
+6. `LT6`：本地工单操作审计增强（状态变更审计字段、筛选、导出）`[已完成（状态历史与操作者记录）]`
+7. `LT7`：上线前回归包（后端语法检查 + 前端构建 + 关键链路手测清单）`[持续执行]`
+
+## 6. LT4 明细执行顺序（下一阶段）
+
+1. 删除/替换所有“alerts”历史文案与入口（保留必要兼容跳转）
+2. 清理后端无用告警服务残留引用
+3. 对齐前端文案为“事件中心/本地工单”
+4. 更新 README、RUNBOOK、迁移文档中的旧表述
+5. 回归测试并冻结基线

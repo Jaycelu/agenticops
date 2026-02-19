@@ -66,6 +66,12 @@ class ApprovalService:
         """初始化审批服务"""
         self.flow_config = ApprovalFlowConfig()
 
+    @staticmethod
+    def _get_db(db: Optional[Session] = None):
+        if db is not None:
+            return db, False
+        return SessionLocal(), True
+
     def get_approval_level(self, risk_level: str) -> Optional[ApprovalLevel]:
         """
         根据风险等级获取审批级别
@@ -108,7 +114,8 @@ class ApprovalService:
         self,
         task_id: int,
         risk_level: str,
-        initiator: str
+        initiator: str,
+        db: Optional[Session] = None,
     ) -> Dict[str, Any]:
         """
         发起审批流程
@@ -121,13 +128,16 @@ class ApprovalService:
         Returns:
             审批流程信息
         """
-        db = SessionLocal()
+        db, own_db = self._get_db(db)
 
         try:
             task = db.query(AutomationTask).filter(AutomationTask.id == task_id).first()
             if not task:
                 logger.error(f"Task {task_id} not found")
                 return {"success": False, "message": "Task not found"}
+
+            if task.status not in {"waiting_confirm", "pending"}:
+                return {"success": False, "message": f"Task status {task.status} cannot initiate approval"}
 
             # 获取审批级别
             approval_level = self.get_approval_level(risk_level)
@@ -139,6 +149,19 @@ class ApprovalService:
             task.status = "waiting_approval"
             task.need_human_confirm = True
             task.updated_at = datetime.now()
+            trail = task.audit_trail or []
+            trail.append(
+                {
+                    "stage": "Approval",
+                    "title": "发起审批",
+                    "payload": {
+                        "initiator": initiator,
+                        "risk_level": risk_level,
+                        "approval_level": approval_level.value,
+                    },
+                }
+            )
+            task.audit_trail = trail
 
             db.commit()
             db.refresh(task)
@@ -167,14 +190,16 @@ class ApprovalService:
             logger.error(f"Error initiating approval for task {task_id}: {e}", exc_info=True)
             return {"success": False, "message": str(e)}
         finally:
-            db.close()
+            if own_db:
+                db.close()
 
     async def approve_task(
         self,
         task_id: int,
         approver: str,
         decision: str,
-        comment: Optional[str] = None
+        comment: Optional[str] = None,
+        db: Optional[Session] = None,
     ) -> Dict[str, Any]:
         """
         审批任务
@@ -188,7 +213,7 @@ class ApprovalService:
         Returns:
             审批结果
         """
-        db = SessionLocal()
+        db, own_db = self._get_db(db)
 
         try:
             task = db.query(AutomationTask).filter(AutomationTask.id == task_id).first()
@@ -199,6 +224,17 @@ class ApprovalService:
             if task.status != "waiting_approval":
                 logger.warning(f"Task {task_id} is not in waiting_approval status")
                 return {"success": False, "message": "Task is not waiting for approval"}
+
+            decision = (decision or "").strip().lower()
+            if decision not in {"approved", "rejected"}:
+                return {"success": False, "message": "decision must be approved|rejected"}
+
+            duplicate = db.query(AutomationApproval).filter(
+                AutomationApproval.task_id == task_id,
+                AutomationApproval.approver == approver
+            ).first()
+            if duplicate:
+                return {"success": False, "message": "approver has already submitted decision"}
 
             # 记录审批记录
             approval = AutomationApproval(
@@ -235,6 +271,20 @@ class ApprovalService:
                 logger.info(f"Task {task_id} approved by {approver}, waiting for more approvers")
 
             task.updated_at = datetime.now()
+            trail = task.audit_trail or []
+            trail.append(
+                {
+                    "stage": "Approval",
+                    "title": "审批决策",
+                    "payload": {
+                        "approver": approver,
+                        "decision": decision,
+                        "comment": comment or "",
+                        "result_status": task.status,
+                    },
+                }
+            )
+            task.audit_trail = trail
             db.commit()
             db.refresh(task)
 
@@ -252,11 +302,13 @@ class ApprovalService:
             logger.error(f"Error approving task {task_id}: {e}", exc_info=True)
             return {"success": False, "message": str(e)}
         finally:
-            db.close()
+            if own_db:
+                db.close()
 
     async def get_approval_history(
         self,
-        task_id: int
+        task_id: int,
+        db: Optional[Session] = None,
     ) -> List[Dict[str, Any]]:
         """
         获取审批历史
@@ -267,7 +319,7 @@ class ApprovalService:
         Returns:
             审批历史列表
         """
-        db = SessionLocal()
+        db, own_db = self._get_db(db)
 
         try:
             approvals = db.query(AutomationApproval).filter(
@@ -291,13 +343,15 @@ class ApprovalService:
             logger.error(f"Error getting approval history for task {task_id}: {e}", exc_info=True)
             return []
         finally:
-            db.close()
+            if own_db:
+                db.close()
 
     async def get_pending_approvals(
         self,
         site_id: Optional[int] = None,
         approver: Optional[str] = None,
-        limit: int = 100
+        limit: int = 100,
+        db: Optional[Session] = None,
     ) -> List[Dict[str, Any]]:
         """
         获取待审批的任务列表
@@ -310,7 +364,7 @@ class ApprovalService:
         Returns:
             待审批任务列表
         """
-        db = SessionLocal()
+        db, own_db = self._get_db(db)
 
         try:
             query = db.query(AutomationTask).filter(
@@ -325,7 +379,7 @@ class ApprovalService:
             result = []
             for task in tasks:
                 # 获取审批历史
-                approvals = await self.get_approval_history(task.id)
+                approvals = await self.get_approval_history(task.id, db=db)
 
                 # 获取风险等级
                 risk_level = task.decision_result.get("diagnosis", {}).get("risk_level", "medium") if task.decision_result else "medium"
@@ -354,7 +408,8 @@ class ApprovalService:
             logger.error(f"Error getting pending approvals: {e}", exc_info=True)
             return []
         finally:
-            db.close()
+            if own_db:
+                db.close()
 
     async def cancel_approval(
         self,

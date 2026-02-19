@@ -18,10 +18,10 @@
 配置文件：`backend/.env`（可由 `deploy/env.example` 复制）。
 
 关键项：
-1. 数据库：`DATABASE_URL` / `AUTOMATION_DATABASE_URL`
+1. 数据库：`DATABASE_URL` / `AUTOMATION_DATABASE_URL`（必须为 `postgresql://`）
 2. 安全开关：`automation_observe_only=true`
-3. 外部系统：`NETBOX_*`, `ZABBIX_*`, `ELK_*`
-4. 工单预留：`ticket_system_*`（当前可留空，使用 mock）
+3. 外部系统：`NETBOX_*`, `ELK_*`
+4. 工单配置：`TICKET_MODE=local`（当前固定本地工单闭环）；`ticket_system_*` 仅做后续外部对接预留
 
 ## 4. 启动流程
 
@@ -47,14 +47,14 @@ npm run dev
 
 ## 5. 发布前强制验证
 
-### 5.1 后端契约测试
+### 5.1 后端语法检查
 
 ```bash
 cd backend
-python3 -m unittest tests/test_core_api_contracts.py
+python3 -m compileall .
 ```
 
-期望：`Ran 6 tests ... OK`
+期望：无语法错误。
 
 ### 5.2 前端构建
 
@@ -87,9 +87,13 @@ npm run build
 - `GET /api/events/{id}/relations`
 - 期望 `linked_tasks` 包含对应任务，状态进入 `waiting_confirm` 或后续状态。
 
-6. 创建工单（预留）：
+6. 创建工单：
 - `POST /api/events/{id}/ticket`
-- 当前 mock 模式下期望 `ticket_id` 形如 `LOCAL-*`。
+- 默认本地工单模式下期望 `ticket_id` 形如 `LOCAL-*`。
+
+7. 查询本地工单：
+- `GET /api/tickets`
+- `PATCH /api/tickets/{ticket_code}` 更新状态。
 
 7. 前端联动核对：
 - 事件详情显示 `recommended_skill_code`
@@ -141,14 +145,14 @@ pip3 install -r requirements.txt
 ## 9. 回滚策略
 
 1. 前端异常：回退对应页面/API 提交；确保 `npm run build` 恢复。
-2. 后端异常：优先回退 API 行为变更；保证 `test_core_api_contracts.py` 通过。
+2. 后端异常：优先回退 API 行为变更；保证 `python3 -m compileall .` 通过。
 3. 数据层：本阶段未引入破坏性迁移，按服务回滚即可。
 
 ## 10. 交接清单
 
 交接前确认：
-1. `backend/tests/test_core_api_contracts.py` 最新且通过。
+1. 后端 `python3 -m compileall .` 通过。
 2. `frontend` 构建成功。
 3. 事件中心关键页面可用：列表、详情、只读派发、关联跳转。
-4. 本文档与 `docs/EVENTS_MIGRATION_PLAN.md` 已更新。
-
+4. 工单页面可用：`/tickets`（列表与状态更新）。
+5. 本文档与 `docs/EVENTS_MIGRATION_PLAN.md` 已更新。

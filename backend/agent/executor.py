@@ -1,7 +1,6 @@
 from typing import Dict, Any
 from agent.schemas import ExecutionStep
 from mcp.netbox_mcp import NetBoxMCP
-from mcp.zabbix_mcp import ZabbixMCP
 from mcp.elk_mcp import ELKMCP
 from config.logging import logger
 from datetime import datetime
@@ -11,7 +10,6 @@ class ExecutorAgent:
     def __init__(self):
         self.mcps = {
             "netbox": NetBoxMCP(),
-            "zabbix": ZabbixMCP(),
             "elk": ELKMCP()
         }
         self.virtual_tool_handlers = {

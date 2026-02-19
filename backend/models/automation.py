@@ -106,7 +106,7 @@ class AlertEvent(Base):
     __tablename__ = "alert_event"
 
     id = Column(BigInteger, primary_key=True, index=True)
-    source = Column(String(50), nullable=False, default="ZABBIX", index=True)
+    source = Column(String(50), nullable=False, default="SPLUNK", index=True)
     external_event_id = Column(String(128), index=True)
     dedup_key = Column(String(64), nullable=False, unique=True, index=True)
 
@@ -134,6 +134,32 @@ class AlertEvent(Base):
         Index("idx_alert_event_status_time", "status", "occurred_at"),
         Index("idx_alert_event_site_severity", "site_id", "severity_level"),
         Index("idx_alert_event_external_source", "source", "external_event_id"),
+    )
+
+
+class LocalTicket(Base):
+    """本地工单表（用于系统内闭环与后续外部工单对接）"""
+    __tablename__ = "local_ticket"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_code = Column(String(64), nullable=False, unique=True, index=True)
+    provider = Column(String(32), nullable=False, default="local", index=True)
+    event_id = Column(BigInteger, ForeignKey("alert_event.id"), nullable=True, index=True)
+    title = Column(String(512), nullable=False)
+    description = Column(Text)
+    priority = Column(String(30), nullable=False, default="P3", index=True)
+    requester = Column(String(120), nullable=False, default="netops-automation")
+    status = Column(String(30), nullable=False, default="open", index=True)  # open, in_progress, resolved, closed
+    ticket_metadata = Column("metadata", JSON, default=dict)
+    closed_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    event = relationship("AlertEvent")
+
+    __table_args__ = (
+        Index("idx_local_ticket_status_time", "status", "created_at"),
+        Index("idx_local_ticket_event_provider", "event_id", "provider"),
     )
 
 

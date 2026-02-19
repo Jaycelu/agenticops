@@ -162,6 +162,49 @@
         </div>
       </div>
 
+      <div class="section">
+        <h2>审批流</h2>
+        <div class="workflow-actions">
+          <button
+            v-if="task.status === 'waiting_confirm'"
+            class="dispatch-btn"
+            :disabled="approvalLoading"
+            @click="handleInitiateApproval"
+          >
+            {{ approvalLoading ? '处理中...' : '发起审批' }}
+          </button>
+          <button
+            v-if="task.status === 'waiting_approval'"
+            class="dispatch-btn"
+            :disabled="approvalLoading"
+            @click="handleApprove"
+          >
+            {{ approvalLoading ? '处理中...' : '审批通过' }}
+          </button>
+          <button
+            v-if="task.status === 'waiting_approval'"
+            class="back-btn"
+            :disabled="approvalLoading"
+            @click="handleReject"
+          >
+            {{ approvalLoading ? '处理中...' : '审批拒绝' }}
+          </button>
+          <div v-if="approvalMessage" class="manual-info">{{ approvalMessage }}</div>
+        </div>
+        <div v-if="approvalHistory.length > 0" class="feedback-list">
+          <h3>审批记录</h3>
+          <div v-for="item in approvalHistory" :key="item.approval_id" class="feedback-item">
+            <span class="feedback-verdict" :class="item.decision === 'approved' ? 'correct' : 'incorrect'">
+              {{ item.decision }}
+            </span>
+            <span class="feedback-time">{{ formatTime(item.created_at) }}</span>
+            <p class="feedback-comment">
+              审批人: {{ item.approver }}{{ item.comment ? `，备注: ${item.comment}` : '' }}
+            </p>
+          </div>
+        </div>
+      </div>
+
       <!-- 人工反馈 -->
       <div class="section">
         <h2>人工反馈闭环</h2>
@@ -201,7 +244,14 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft } from 'lucide-vue-next'
-import { dispatchTaskConfig, getAutomationTask, submitTaskFeedback } from '@/api/automation'
+import {
+  decideTaskApproval,
+  dispatchTaskConfig,
+  getAutomationTask,
+  getTaskApprovalHistory,
+  initiateTaskApproval,
+  submitTaskFeedback
+} from '@/api/automation'
 
 const route = useRoute()
 const router = useRouter()
@@ -212,6 +262,9 @@ const feedbackVerdict = ref<'correct' | 'incorrect' | 'partial'>('correct')
 const feedbackComment = ref('')
 const submittingFeedback = ref(false)
 const dispatching = ref(false)
+const approvalLoading = ref(false)
+const approvalMessage = ref('')
+const approvalHistory = ref<any[]>([])
 
 const statusLabels: Record<string, string> = {
   pending: '待处理',
@@ -264,6 +317,16 @@ const loadTask = async () => {
     console.error('Failed to load task:', error)
   } finally {
     loading.value = false
+  }
+}
+
+const loadApprovalHistory = async () => {
+  if (!task.value) return
+  try {
+    const data = await getTaskApprovalHistory(Number(taskId.value))
+    approvalHistory.value = data.approvals || []
+  } catch (error) {
+    approvalHistory.value = []
   }
 }
 
@@ -337,8 +400,66 @@ const handleDispatch = async () => {
   }
 }
 
+const handleInitiateApproval = async () => {
+  if (!task.value) return
+  approvalLoading.value = true
+  approvalMessage.value = ''
+  try {
+    const risk = task.value?.decision_result?.diagnosis?.risk_level || 'medium'
+    const result = await initiateTaskApproval(Number(taskId.value), { risk_level: risk, initiator: 'operator' })
+    approvalMessage.value = result?.approval?.approval_level
+      ? `已发起审批，级别: ${result.approval.approval_level}`
+      : (result?.message || '已发起审批')
+    await loadTask()
+    await loadApprovalHistory()
+  } catch (error: any) {
+    approvalMessage.value = error?.response?.data?.detail || '发起审批失败'
+  } finally {
+    approvalLoading.value = false
+  }
+}
+
+const handleApprove = async () => {
+  approvalLoading.value = true
+  approvalMessage.value = ''
+  try {
+    const result = await decideTaskApproval(Number(taskId.value), {
+      approver: 'operator',
+      decision: 'approved',
+      comment: 'approved_from_ui'
+    })
+    approvalMessage.value = `审批完成，当前状态: ${result.status}`
+    await loadTask()
+    await loadApprovalHistory()
+  } catch (error: any) {
+    approvalMessage.value = error?.response?.data?.detail || '审批失败'
+  } finally {
+    approvalLoading.value = false
+  }
+}
+
+const handleReject = async () => {
+  approvalLoading.value = true
+  approvalMessage.value = ''
+  try {
+    const result = await decideTaskApproval(Number(taskId.value), {
+      approver: 'operator',
+      decision: 'rejected',
+      comment: 'rejected_from_ui'
+    })
+    approvalMessage.value = `已拒绝，当前状态: ${result.status}`
+    await loadTask()
+    await loadApprovalHistory()
+  } catch (error: any) {
+    approvalMessage.value = error?.response?.data?.detail || '审批失败'
+  } finally {
+    approvalLoading.value = false
+  }
+}
+
 onMounted(() => {
   loadTask()
+  loadApprovalHistory()
 })
 </script>
 

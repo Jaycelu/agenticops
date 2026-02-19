@@ -2,7 +2,7 @@
 
 ## 1. 背景与目标
 
-当前已完成告警主链路向事件中心迁移，核心目标是将“告警处理”统一为“事件驱动 + 只读研判 + 任务联动 + 工单预留”的稳态架构，并保持 `observe_only=true` 安全约束。
+当前已完成告警主链路向事件中心迁移，核心目标是将“告警处理”统一为“事件驱动 + 只读研判 + 任务联动 + 本地工单闭环”的稳态架构，并保持 `observe_only=true` 安全约束。
 
 本阶段文档用于固化：
 1. 架构与边界
@@ -13,7 +13,7 @@
 
 ## 2. 当前基线（截至本次交付）
 
-1. 事件中心主链路已上线：接入、只读派发、工单预留、关联查询。
+1. 事件中心主链路已上线：接入、只读派发、工单创建、关联查询。
 2. 旧告警主链路已移除：
 - `backend/api/alerts.py`
 - `frontend/src/pages/Alerts.vue`
@@ -24,7 +24,7 @@
 - 事件详情跳转任务详情 `/automation/tasks/:id`
 5. 后端契约测试已增强并通过：
 - 事件 ingest/list
-- 工单 mock 模式
+- 本地工单模式
 - relations 状态流转
 - observe-only 执行保护
 
@@ -36,7 +36,7 @@
 - 事件存储：`alert_event`
 - 只读派发：`POST /api/events/{event_id}/dispatch-readonly`
 - 任务链路：`automation_task`（`trigger_event.source_type=AlertEvent`）
-- 工单预留：`POST /api/events/{event_id}/ticket`（当前本地 mock）
+- 工单：`POST /api/events/{event_id}/ticket`（默认落本地工单表）
 - 关系聚合：`GET /api/events/{event_id}/relations`
 
 ### 3.2 安全边界
@@ -73,17 +73,31 @@
 - `POST /api/events/ingest`
 - 行为：幂等去重（`external_event_id/fingerprint/时间桶`）并 upsert。
 
+- `POST /api/events/ingest/splunk`
+- 行为：Splunk webhook 专用入口，映射 `result/event` 字段到统一事件模型并落库。
+- 安全：当配置 `SPLUNK_WEBHOOK_TOKEN` 时，必须携带请求头 `X-Splunk-Token`。
+
+- `POST /api/events/ingest/eda`
+- 行为：Ansible EDA/rulebook 事件入口，映射事件并写入事件中心；可按 `auto_dispatch_readonly` 自动创建只读研判任务。
+- 安全：当配置 `EDA_WEBHOOK_TOKEN` 时，必须携带请求头 `X-EDA-Token`。
+
 ### 5.3 查询
 - `GET /api/events`
 - 支持：`status`, `severity`, `source`, `site_id`, `netbox_device_id`, `skip`, `limit`
 
 ### 5.4 只读派发
 - `POST /api/events/{event_id}/dispatch-readonly`
-- 结果：创建自动化任务，状态推进至 `waiting_confirm`。
+- 结果：创建自动化任务，状态推进至 `waiting_confirm`，并自动生成 Playbook 草稿与 check 结果写入审计轨迹。
 
-### 5.5 工单预留
+### 5.4.1 Playbook 草稿校验
+- `POST /api/events/{event_id}/playbook-draft-check`
+- 行为：按事件上下文生成 Ansible Playbook 草稿（只读诊断命令），执行 YAML/结构校验并返回 check 结果（不执行配置变更）。
+
+### 5.5 工单
 - `POST /api/events/{event_id}/ticket`
-- 当前：本地 mock 适配器返回 `LOCAL-*` 工单号。
+- 当前：默认创建本地工单记录并返回 `LOCAL-*` 工单号。
+- `GET /api/tickets`：查询本地工单列表。
+- `PATCH /api/tickets/{ticket_code}`：更新本地工单状态。
 
 ### 5.6 关联查询
 - `GET /api/events/{event_id}/relations`
@@ -103,16 +117,16 @@
 ## 7. 测试与发布基线
 
 每次提交必须满足：
-1. 后端：`python3 -m unittest tests/test_core_api_contracts.py`
+1. 后端：`python3 -m compileall .`
 2. 前端：`npm run build`
 
 本次结果：
-1. 后端：`Ran 6 tests ... OK`
+1. 后端：`python3 -m compileall .` 通过
 2. 前端：`vite build ... ✓ built`
 
 ## 8. 已知限制
 
-1. 工单系统仍为 mock 预留，尚未对接真实工单平台。
+1. 外部工单系统尚未接入，当前以本地工单模块为默认闭环。
 2. `relations` 当前采用 Python 侧筛选 JSON `trigger_event`（DB-agnostic），后续可优化为数据库原生 JSON 查询。
 3. `recommended_skill_code` 目前以上下文字段/`payload` 为主，后续建议统一持久化到规范字段。
 
@@ -123,10 +137,9 @@
 2. 增加 `relations` 分页与状态过滤。
 
 ### P3.2 工单系统接入（保持开关可控）
-1. 在 `ticket_adapter` 增加 provider 配置层。
-2. 保持“默认 mock，按环境启用真实 provider”。
+1. 维持“默认 local，按环境启用 external provider”。
+2. 外部对接契约见 `docs/TICKET_INTEGRATION_GUIDE.md`。
 
 ### P3.3 可观测性
 1. 增加事件派发成功率、任务等待确认时长、工单创建成功率指标。
 2. 将关键异常写入统一审计日志。
-

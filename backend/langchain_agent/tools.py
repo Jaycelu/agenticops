@@ -1,12 +1,12 @@
 """
 LangChain Tools - 将 MCP 工具转换为 LangChain 兼容格式
 
-安全工具：lookup_netbox_asset, run_show_command, query_zabbix_alerts, search_elk_logs
+安全工具：lookup_netbox_asset, run_show_command, search_elk_logs
 敏感工具：apply_config_change
 """
 
 from langchain_core.tools import tool
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import logging
 import asyncio
 
@@ -115,65 +115,6 @@ def run_show_command(ip: str, commands: List[str]) -> str:
 
 
 @tool
-def query_zabbix_alerts(device_name: Optional[str] = None, severity: Optional[str] = None) -> str:
-    """
-    查询 Zabbix 告警信息。
-
-    Args:
-        device_name: 设备名称（可选）
-        severity: 告警级别（可选），如 "High", "Warning", "Information"
-
-    Returns:
-        告警信息列表
-
-    Example:
-        >>> query_zabbix_alerts(device_name="Core-Switch-01", severity="High")
-        "告警1: Interface Down on Core-Switch-01\n告警2: High CPU Usage..."
-    """
-    try:
-        from mcp.zabbix_mcp import ZabbixMCP
-        zabbix_mcp = ZabbixMCP()
-
-        # 使用辅助函数运行异步方法
-        severity_map = {
-            "unclassified": 0,
-            "information": 1,
-            "warning": 2,
-            "average": 3,
-            "high": 4,
-            "disaster": 5,
-        }
-        sev = severity_map.get(str(severity).lower()) if severity else None
-        result = run_async(zabbix_mcp.execute({
-            "action": "query_alerts",
-            "host": device_name,
-            "severity": sev,
-            "limit": 10
-        }))
-
-        if result.success and result.data:
-            alerts = result.data.get("alerts", [])
-            if not alerts:
-                return "没有找到符合条件的告警。"
-
-            alert_text = []
-            for alert in alerts[:5]:  # 最多返回 5 条
-                alert_text.append(
-                    f"- {alert.get('name', 'N/A')} "
-                    f"({alert.get('severity', 'N/A')}) "
-                    f"at {alert.get('clock', 'N/A')}"
-                )
-
-            return "\n".join(alert_text)
-        else:
-            return "查询 Zabbix 告警失败。"
-
-    except Exception as e:
-        logger.error(f"Error querying Zabbix alerts: {e}")
-        return f"查询 Zabbix 告警失败：{str(e)}"
-
-
-@tool
 def search_elk_logs(query: str, time_range: str = "1h") -> str:
     """
     搜索 ELK 日志。
@@ -264,7 +205,6 @@ def apply_config_change(ip: str, config_lines: List[str]) -> str:
 SAFE_TOOLS = [
     lookup_netbox_asset,
     run_show_command,
-    query_zabbix_alerts,
     search_elk_logs
 ]
 

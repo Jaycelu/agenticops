@@ -9,6 +9,10 @@ from config.settings import settings
 class TicketAdapter:
     """Adapter for integrating with an existing ticket system."""
 
+    @staticmethod
+    def _use_local_mode() -> bool:
+        return (settings.ticket_mode or "local").lower() != "external"
+
     def _headers(self) -> Dict[str, str]:
         headers = {"Content-Type": "application/json"}
         if settings.ticket_system_api_key:
@@ -16,13 +20,13 @@ class TicketAdapter:
         return headers
 
     async def create_ticket(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        if not settings.ticket_system_base_url:
-            # Fallback mock mode for local integration until real API is configured.
+        if self._use_local_mode() or not settings.ticket_system_base_url:
+            # Local mode: keep the ticket lifecycle inside this platform.
             return {
                 "success": True,
                 "ticket_id": f"LOCAL-{int(datetime.now().timestamp())}",
                 "status": "created",
-                "provider": "mock",
+                "provider": "local",
             }
 
         url = f"{settings.ticket_system_base_url.rstrip('/')}/tickets"
@@ -39,8 +43,8 @@ class TicketAdapter:
             }
 
     async def update_ticket(self, ticket_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        if not settings.ticket_system_base_url:
-            return {"success": True, "ticket_id": ticket_id, "status": payload.get("status", "updated"), "provider": "mock"}
+        if self._use_local_mode() or not settings.ticket_system_base_url:
+            return {"success": True, "ticket_id": ticket_id, "status": payload.get("status", "updated"), "provider": "local"}
 
         url = f"{settings.ticket_system_base_url.rstrip('/')}/tickets/{ticket_id}"
         async with httpx.AsyncClient(timeout=settings.ticket_system_timeout_seconds) as client:

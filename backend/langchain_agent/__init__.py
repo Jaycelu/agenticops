@@ -3,7 +3,7 @@ LangChain Agent - NetOps 智能运维助手
 
 这个模块提供了基于 LangChain 的智能体框架，用于：
 1. 意图识别（闲聊、诊断、配置）
-2. 工具调用（NetBox、Zabbix、ELK、SSH）
+2. 工具调用（NetBox、ELK、SSH）
 3. 自动化编排
 """
 
@@ -13,7 +13,6 @@ from .tools import (
     lookup_netbox_asset,
     run_show_command,
     apply_config_change,
-    query_zabbix_alerts,
     search_elk_logs
 )
 
@@ -25,6 +24,5 @@ __all__ = [
     "lookup_netbox_asset",
     "run_show_command",
     "apply_config_change",
-    "query_zabbix_alerts",
     "search_elk_logs"
 ]

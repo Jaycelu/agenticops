@@ -56,13 +56,13 @@
           <select v-model="filters.source" class="filter-input" @change="loadEvents">
             <option value="">全部来源</option>
             <option value="SPLUNK">SPLUNK</option>
-            <option value="ZABBIX">ZABBIX</option>
+            <option value="EDA">EDA</option>
             <option value="AUTOMATION">AUTOMATION</option>
           </select>
         </div>
       </div>
 
-      <div class="alerts-section">
+      <div class="events-section">
         <div v-if="loading" class="loading">
           <Loader2 class="animate-spin" :size="40" />
           <p>加载中...</p>
@@ -71,7 +71,7 @@
           <AlertCircle :size="48" />
           <p>暂无事件数据</p>
         </div>
-        <div v-else class="alerts-list">
+        <div v-else class="events-list">
           <div v-for="item in events" :key="item.id" class="alert-item" @click="openDetail(item)">
             <div class="alert-header">
               <div class="alert-severity">
@@ -121,10 +121,29 @@
           <button class="btn-action primary" :disabled="actionLoading" @click="dispatchReadonlySelected">
             {{ actionLoading ? '处理中...' : '触发只读研判' }}
           </button>
+          <button class="btn-action" :disabled="playbookLoading" @click="generatePlaybookDraftSelected">
+            {{ playbookLoading ? '生成中...' : '生成Playbook草稿' }}
+          </button>
           <button class="btn-action" :disabled="ticketLoading" @click="createTicketSelected">
             {{ ticketLoading ? '处理中...' : '创建工单' }}
           </button>
           <button class="btn-action" @click="loadRelations">刷新关联</button>
+        </div>
+        <div class="playbook-panel">
+          <h4>Playbook Check</h4>
+          <div v-if="playbookDraft.check && Object.keys(playbookDraft.check).length > 0" class="playbook-check">
+            <span class="check-badge" :class="{ passed: !!playbookDraft.check.passed, failed: !playbookDraft.check.passed }">
+              {{ playbookDraft.check.passed ? 'PASSED' : 'FAILED' }}
+            </span>
+            <span v-if="(playbookDraft.check.warnings || []).length > 0" class="check-note">
+              warnings: {{ (playbookDraft.check.warnings || []).length }}
+            </span>
+            <span v-if="(playbookDraft.check.errors || []).length > 0" class="check-note error">
+              errors: {{ (playbookDraft.check.errors || []).length }}
+            </span>
+          </div>
+          <div v-else class="relation-item muted">暂无草稿校验结果</div>
+          <pre v-if="playbookDraft.playbook_yaml" class="playbook-yaml">{{ playbookDraft.playbook_yaml }}</pre>
         </div>
         <div class="relation-panel">
           <h4>关联工单</h4>
@@ -175,8 +194,13 @@ const mode = ref('unknown')
 const events = ref<EventItem[]>([])
 const selectedEvent = ref<EventItem | null>(null)
 const actionLoading = ref(false)
+const playbookLoading = ref(false)
 const ticketLoading = ref(false)
 const actionMessage = ref('')
+const playbookDraft = ref<{ check: Record<string, any>; playbook_yaml: string }>({
+  check: {},
+  playbook_yaml: ''
+})
 const relations = ref<EventRelationsState>({
   ticket: {},
   linked_tasks: []
@@ -230,12 +254,18 @@ async function refreshData() {
 function openDetail(item: EventItem) {
   selectedEvent.value = item
   actionMessage.value = ''
+  const cachedDraft = (item.payload || {}).playbook_draft || {}
+  playbookDraft.value = {
+    check: (cachedDraft.check as Record<string, any>) || {},
+    playbook_yaml: ''
+  }
   void loadRelations()
 }
 
 function closeDetail() {
   selectedEvent.value = null
   actionMessage.value = ''
+  playbookDraft.value = { check: {}, playbook_yaml: '' }
   relations.value = { ticket: {}, linked_tasks: [] }
 }
 
@@ -246,6 +276,12 @@ async function dispatchReadonlySelected() {
   try {
     const result = await eventsApi.dispatchReadonly(selectedEvent.value.id, 'operator')
     actionMessage.value = result.message + (result.task_id ? `，任务ID: ${result.task_id}` : '')
+    if (result.playbook_check) {
+      playbookDraft.value = {
+        check: result.playbook_check,
+        playbook_yaml: playbookDraft.value.playbook_yaml
+      }
+    }
     await loadRelations()
   } catch (e: any) {
     actionMessage.value = e?.response?.data?.detail || '触发失败'
@@ -267,6 +303,25 @@ async function createTicketSelected() {
     actionMessage.value = e?.response?.data?.detail || '工单创建失败'
   } finally {
     ticketLoading.value = false
+  }
+}
+
+async function generatePlaybookDraftSelected() {
+  if (!selectedEvent.value) return
+  playbookLoading.value = true
+  actionMessage.value = ''
+  try {
+    const result = await eventsApi.generatePlaybookDraft(selectedEvent.value.id, true)
+    playbookDraft.value = {
+      check: result.playbook_check || {},
+      playbook_yaml: result.playbook_yaml || ''
+    }
+    actionMessage.value = result.message
+    await loadEvents()
+  } catch (e: any) {
+    actionMessage.value = e?.response?.data?.detail || '草稿生成失败'
+  } finally {
+    playbookLoading.value = false
   }
 }
 
@@ -421,7 +476,7 @@ onMounted(async () => {
   padding: 0 12px;
 }
 
-.alerts-section {
+.events-section {
   background: #fff;
   border-radius: 12px;
   padding: 18px;
@@ -434,7 +489,7 @@ onMounted(async () => {
   padding: 42px 0;
 }
 
-.alerts-list {
+.events-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -595,6 +650,63 @@ onMounted(async () => {
   font-size: 12px;
   color: #475569;
   padding: 6px 0;
+}
+
+.playbook-panel {
+  margin-top: 12px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 10px;
+}
+
+.playbook-panel h4 {
+  font-size: 13px;
+  color: #334155;
+  margin: 8px 0 6px;
+}
+
+.playbook-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.check-badge {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.check-badge.passed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.check-badge.failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.check-note {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.check-note.error {
+  color: #991b1b;
+}
+
+.playbook-yaml {
+  max-height: 220px;
+  overflow: auto;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
 }
 
 .relation-task-main,

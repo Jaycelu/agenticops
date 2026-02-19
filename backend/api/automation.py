@@ -13,15 +13,16 @@ from models.automation import (
     AutomationPolicy, AutomationTask, AutomationTaskFeedback
 )
 from services.automation_orchestrator import automation_orchestrator
-from services.alert_service import alert_service
 from services.feedback_learning_service import feedback_learning_service
 from services.ssh_service import ssh_service
 from services.command_template_service import command_template_service
 from services.site_automation_service import site_automation_service
+from services.approval_service import approval_service
 from api.schemas.automation import (
+    ApprovalDecisionRequest,
+    ApprovalInitiateRequest,
     TaskFeedbackRequest,
     TriggerDiagnosisRequest,
-    TriggerAlertsRequest,
     TaskFeedbackListResponse,
     FeedbackStatsResponse,
     FeedbackTrendsResponse,
@@ -477,6 +478,68 @@ async def get_automation_task(task_id: int, db: Session = Depends(get_db)):
     return task_dict
 
 
+@router.post("/tasks/{task_id}/approval/initiate")
+async def initiate_task_approval(
+    task_id: int,
+    payload: ApprovalInitiateRequest,
+    db: Session = Depends(get_db),
+):
+    task = db.query(AutomationTask).filter(AutomationTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    result = await approval_service.initiate_approval(
+        task_id=task_id,
+        risk_level=(payload.risk_level or "medium").lower(),
+        initiator=payload.initiator or "operator",
+        db=db,
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("message", "initiate approval failed"))
+    return result
+
+
+@router.post("/tasks/{task_id}/approval/decision")
+async def decide_task_approval(
+    task_id: int,
+    payload: ApprovalDecisionRequest,
+    db: Session = Depends(get_db),
+):
+    task = db.query(AutomationTask).filter(AutomationTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    result = await approval_service.approve_task(
+        task_id=task_id,
+        approver=payload.approver,
+        decision=payload.decision,
+        comment=payload.comment,
+        db=db,
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("message", "approve failed"))
+    return result
+
+
+@router.get("/tasks/{task_id}/approval/history")
+async def get_task_approval_history(task_id: int, db: Session = Depends(get_db)):
+    task = db.query(AutomationTask).filter(AutomationTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    history = await approval_service.get_approval_history(task_id, db=db)
+    return {"task_id": task_id, "total": len(history), "approvals": history}
+
+
+@router.get("/approvals/pending")
+async def get_pending_approvals(
+    site_id: Optional[int] = None,
+    approver: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    result = await approval_service.get_pending_approvals(site_id=site_id, approver=approver, db=db)
+    return {"total": len(result), "items": result}
+
+
 @router.get("/tasks/{task_id}/feedback", response_model=TaskFeedbackListResponse)
 async def get_task_feedback(task_id: int, db: Session = Depends(get_db)):
     """获取任务反馈列表"""
@@ -905,6 +968,12 @@ async def dispatch_config_to_device(task_id: int, db: Session = Depends(get_db))
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    if task.status in {"waiting_confirm", "waiting_approval", "aborted", "cancelled"} or bool(task.need_human_confirm):
+        raise HTTPException(
+            status_code=400,
+            detail="task is not eligible for dispatch pre-check, complete manual confirmation/approval first",
+        )
+
     context = (task.decision_result or {}).get("context", {})
     device_id = context.get("netbox_device_id")
     if not device_id:
@@ -968,22 +1037,6 @@ async def trigger_diagnosis(
         return {
             "success": True,
             "message": f"Diagnosis triggered for sample {sample_id}"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/trigger-alerts", response_model=ManualActionResponse)
-async def trigger_alerts(
-    payload: TriggerAlertsRequest,
-    db: Session = Depends(get_db)
-):
-    """手动触发告警"""
-    try:
-        await alert_service.process_new_analysis_results(payload.site_id)
-        return {
-            "success": True,
-            "message": "Alerts triggered successfully"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

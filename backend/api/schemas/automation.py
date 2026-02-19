@@ -14,10 +14,6 @@ class TriggerDiagnosisRequest(BaseModel):
     sample_id: int
 
 
-class TriggerAlertsRequest(BaseModel):
-    site_id: Optional[int] = None
-
-
 class FeedbackItemResponse(BaseModel):
     id: int
     verdict: str
@@ -90,3 +86,14 @@ class ManualActionResponse(BaseModel):
     success: bool
     message: str
     data: Optional[Dict[str, Any]] = None
+
+
+class ApprovalInitiateRequest(BaseModel):
+    risk_level: str = Field(default="medium", description="low|medium|high|critical")
+    initiator: Optional[str] = "operator"
+
+
+class ApprovalDecisionRequest(BaseModel):
+    approver: str = Field(..., min_length=1, max_length=100)
+    decision: str = Field(..., description="approved|rejected")
+    comment: Optional[str] = None

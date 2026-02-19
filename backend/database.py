@@ -6,8 +6,17 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from config.settings import settings
 
+# 统一要求生产与开发均使用 PostgreSQL，避免 SQLite 行为差异导致线上风险。
+def _ensure_postgres(url: str) -> str:
+    db_url = (url or "").strip()
+    if not db_url.startswith("postgresql://") and not db_url.startswith("postgresql+psycopg2://"):
+        raise RuntimeError(
+            f"Unsupported database url: {db_url}. Only PostgreSQL is allowed."
+        )
+    return db_url
+
 # 创建数据库引擎
-db_url = settings.automation_database_url or settings.database_url
+db_url = _ensure_postgres(settings.automation_database_url or settings.database_url)
 engine = create_engine(
     db_url,
     pool_pre_ping=True,
@@ -44,6 +53,6 @@ def init_db():
         AutomationPolicy, AutomationTask, AutomationActionLog,
         AutomationApproval, RawAnomaly, AutomationTaskFeedback,
         AbnormalTrackerState, SSHCredential, SSHCredentialDeviceBinding,
-        AssetDevice, AlertEvent, CommandTemplate
+        AssetDevice, AlertEvent, LocalTicket, CommandTemplate
     )
     Base.metadata.create_all(bind=engine)

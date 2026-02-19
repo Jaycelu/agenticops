@@ -122,6 +122,27 @@ export const dispatchTaskConfig = async (taskId: number) => {
   return response.data
 }
 
+export const initiateTaskApproval = async (
+  taskId: number,
+  payload?: { risk_level?: 'low' | 'medium' | 'high' | 'critical'; initiator?: string }
+) => {
+  const response = await api.post(`/api/automation/tasks/${taskId}/approval/initiate`, payload || {})
+  return response.data
+}
+
+export const decideTaskApproval = async (
+  taskId: number,
+  payload: { approver: string; decision: 'approved' | 'rejected'; comment?: string }
+) => {
+  const response = await api.post(`/api/automation/tasks/${taskId}/approval/decision`, payload)
+  return response.data
+}
+
+export const getTaskApprovalHistory = async (taskId: number) => {
+  const response = await api.get(`/api/automation/tasks/${taskId}/approval/history`)
+  return response.data
+}
+
 export const getFeedbackStats = async (params?: {
   diagnosis_type?: string
   site_id?: number
@@ -205,11 +226,6 @@ export const getDashboardHourlyTrends = async (params?: {
 
 export const triggerDiagnosis = async (sampleId: number) => {
   const response = await api.post('/api/automation/trigger-diagnosis', { sample_id: sampleId })
-  return response.data
-}
-
-export const triggerAlerts = async (params?: { site_id?: number }) => {
-  const response = await api.post('/api/automation/trigger-alerts', params)
   return response.data
 }
 
