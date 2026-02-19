@@ -294,7 +294,12 @@ const maxHourlySamples = computed(() => {
 // 方法
 const formatDateDisplay = (date: string) => {
   const d = new Date(date)
-  const options = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }
+  const options: Intl.DateTimeFormatOptions = {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long'
+  }
   return d.toLocaleDateString('zh-CN', options)
 }
 

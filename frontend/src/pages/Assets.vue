@@ -927,11 +927,13 @@ import {
   Tag, Download, RefreshCw, Upload, Lock, Key
 } from 'lucide-vue-next'
 
-const debounce = (func: Function, wait: number): Function => {
-  let timeout: NodeJS.Timeout | null = null
-  return function(this: any, ...args: any[]) {
+const debounce = <T extends (...args: any[]) => unknown>(func: T, wait: number) => {
+  let timeout: ReturnType<typeof setTimeout> | null = null
+  return (...args: Parameters<T>) => {
     if (timeout) clearTimeout(timeout)
-    timeout = setTimeout(() => func.apply(this, args), wait)
+    timeout = setTimeout(() => {
+      void func(...args)
+    }, wait)
   }
 }
 const route = useRoute()
@@ -1109,6 +1111,7 @@ const debouncedLoadDevices = debounce(loadDevices, 500)
 const debouncedLoadIPs = debounce(loadIPs, 500)
 const debouncedLoadRacks = debounce(loadRacks, 500)
 const debouncedLoadVLANs = debounce(loadVLANs, 500)
+const debouncedLoadPrefixes = debounce(loadPrefixes, 500)
 
 function getStatusIcon(status: string) {
   if (!status) return Clock
@@ -1128,7 +1131,7 @@ function getStatusClass(status: string): string {
   return 'status-unknown'
 }
 
-function formatLabel(key: string): string {
+function formatLabel(key: string | number): string {
   const labelMap: Record<string, string> = {
     id: 'ID',
     name: '名称',
@@ -1149,7 +1152,7 @@ function formatLabel(key: string): string {
     width: '宽度',
     asset_tag: '资产标签'
   }
-  return labelMap[key] || key
+  return labelMap[String(key)] || String(key)
 }
 
 function switchTab(tab: 'devices' | 'ips' | 'racks' | 'vlans' | 'prefixes') {
@@ -1231,10 +1234,12 @@ function saveColumns() {
 }
 
 function handleDragStart(event: DragEvent, index: number) {
+  void event
   draggedIndex.value = index
 }
 
 function handleDrop(event: DragEvent, dropIndex: number) {
+  void event
   if (draggedIndex.value === null || draggedIndex.value === dropIndex) return
 
   const columns = currentColumns.value
@@ -1708,10 +1713,6 @@ function applyDeepLinkFilters() {
   deviceFilters.value.role = role
   deviceFilters.value.vendor = vendor
   deviceFilters.value.name = keyword
-}
-
-function formatConfig(config: any): string {
-  return JSON.stringify(config, null, 2)
 }
 
 async function handleFetchAndSaveConfig() {

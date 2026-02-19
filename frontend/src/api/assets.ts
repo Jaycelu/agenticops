@@ -13,9 +13,11 @@ export interface Device {
   status: string
   serial: string
   primary_ip: string
+  rack?: string
   position?: number
   face?: string
   tags: string[]
+  [key: string]: unknown
 }
 
 export interface DeviceQuery {
@@ -38,11 +40,18 @@ export interface IP {
   assigned_object_type: string
   assigned_object_id: number
   dns_name: string
+  [key: string]: unknown
 }
 
 export interface IPListResponse {
   count: number
   ips: IP[]
+}
+
+export interface PrefixIPsResponse extends IPListResponse {
+  utilization?: number
+  total_ips?: number
+  used_ips?: number
 }
 
 export interface Site {
@@ -69,6 +78,7 @@ export interface Rack {
   role: string
   serial: string
   asset_tag: string
+  [key: string]: unknown
 }
 
 export interface RackQuery {
@@ -91,6 +101,7 @@ export interface VLAN {
   description: string
   tenant: string
   role: string
+  [key: string]: unknown
 }
 
 export interface VLANQuery {
@@ -118,6 +129,7 @@ export interface Prefix {
   total_ips: number
   used_ips: number
   utilization: number
+  [key: string]: unknown
 }
 
 export interface PrefixQuery {
@@ -193,7 +205,7 @@ export const assetsApi = {
     return response.data
   },
 
-  async getPrefixIPs(prefixId: number): Promise<IPListResponse> {
+  async getPrefixIPs(prefixId: number): Promise<PrefixIPsResponse> {
     // 如果使用VITE_API_BASE_URL环境变量，则API路径应包含/api前缀
     const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/assets/prefixes/${prefixId}/ips` : `${API_BASE_URL}/assets/prefixes/${prefixId}/ips`
     const response = await axios.get(apiUrl)

@@ -21,12 +21,12 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Network, House, Server, AlertTriangle, FileText, Settings, Bot } from 'lucide-vue-next'
+import { Network, House, Server, FileText, Settings, Bot, Radio } from 'lucide-vue-next'
 
 const navItems = ref([
   { path: '/', label: '驾驶舱', icon: House },
   { path: '/assets', label: '资产', icon: Server },
-  { path: '/alerts', label: '告警', icon: AlertTriangle },
+  { path: '/events', label: '事件中心', icon: Radio },
   { path: '/logs', label: '日志', icon: FileText },
   { path: '/automation/dashboard', label: '自动化中心', icon: Bot },
   { path: '/automation/abnormal-types', label: '异常类型管理', icon: Settings },

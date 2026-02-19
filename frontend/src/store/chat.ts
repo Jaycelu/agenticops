@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { chatApi, ChatRequest, ChatResponse, ExecutionStep } from '@/api/chat'
-import { sessionsApi, Session, SessionDetail } from '@/api/sessions'
+import { sessionsApi, Session } from '@/api/sessions'
 
 export interface Message {
   id: string
@@ -52,7 +52,7 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       messages.value.push(assistantMessage)
-      currentTraceId.value = response.data.trace_id
+      currentTraceId.value = response.data.trace_id ?? null
 
       // 刷新会话列表
       await loadSessions()
@@ -114,7 +114,7 @@ export const useChatStore = defineStore('chat', () => {
   async function createNewSession() {
     const newSessionId = `session_${Date.now()}`
     try {
-      await sessionsApi.createSession(newSessionId)
+      await sessionsApi.createSession({ name: newSessionId })
       currentSessionId.value = newSessionId
       clearMessages()
       await loadSessions()

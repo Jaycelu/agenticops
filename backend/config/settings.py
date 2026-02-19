@@ -52,6 +52,14 @@ class Settings(BaseSettings):
     retention_feedback_days: int = 180
     retention_tracker_state_days: int = 7
 
+    # Safety guard: observe-only mode blocks non read-only automation actions
+    automation_observe_only: bool = True
+
+    # External ticket system integration
+    ticket_system_base_url: str = ""
+    ticket_system_api_key: str = ""
+    ticket_system_timeout_seconds: int = 15
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

@@ -111,24 +111,24 @@
 
         <article class="card panel alerts-panel">
           <div class="panel-header">
-            <h2>Zabbix 告警统计</h2>
-            <span class="muted">按严重等级聚合</span>
+            <h2>事件统计</h2>
+            <span class="muted">按事件严重等级聚合</span>
           </div>
 
           <div class="metric-grid two-col">
-            <button class="metric-item metric-critical" @click="goToAlerts('critical')">
+            <button class="metric-item metric-critical" @click="goToEvents('critical')">
               <span class="metric-value critical">{{ alarmStats.critical }}</span>
               <span class="metric-label">严重</span>
             </button>
-            <button class="metric-item metric-warning" @click="goToAlerts('warning')">
+            <button class="metric-item metric-warning" @click="goToEvents('warning')">
               <span class="metric-value warning">{{ alarmStats.warning }}</span>
               <span class="metric-label">警告</span>
             </button>
           </div>
 
-          <button class="metric-item full-width metric-total" @click="goToAlerts('all')">
+          <button class="metric-item full-width metric-total" @click="goToEvents('all')">
             <span class="metric-value">{{ alarmStats.total }}</span>
-            <span class="metric-label">实时告警总数</span>
+            <span class="metric-label">实时事件总数</span>
           </button>
 
           <p class="muted small" v-if="selectedSiteName">
@@ -207,7 +207,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Building2 } from 'lucide-vue-next'
-import { alertsApi } from '@/api/alerts'
+import { eventsApi } from '@/api/events'
 import { assetsApi, Device, Site } from '@/api/assets'
 import {
   getDashboardHourlyTrends,
@@ -265,7 +265,7 @@ const assetSnapshot = ref<AssetSnapshot>({
   devices: []
 })
 
-const alerts = ref<any[]>([])
+const events = ref<any[]>([])
 const automationSummary = ref<any>({ tasks: { failed: 0 } })
 const hourlyTrends = ref<HourTrend[]>([])
 const feedbackStats = ref<Record<string, any>>({})
@@ -299,7 +299,7 @@ const rolePie = computed(() => buildPie(roleDistribution.value, PIE_COLORS))
 const vendorPie = computed(() => buildPie(vendorDistribution.value, PIE_COLORS))
 
 const alarmStats = computed(() => {
-  const all = alerts.value || []
+  const all = events.value || []
   const critical = all.filter((item) => /灾难|严重|critical|high/i.test(String(item.severity || ''))).length
   const warning = all.filter((item) => /一般严重|警告|warning|medium/i.test(String(item.severity || ''))).length
 
@@ -511,16 +511,16 @@ const loadAssetsData = async () => {
 }
 
 const loadAlertsData = async () => {
-  const response = await alertsApi.getAlerts({ limit: 2000 })
-  const rows = response.alerts || []
+  const response = await eventsApi.listEvents({ limit: 2000, status: 'open' })
+  const rows = response.events || []
 
   if (!selectedSite.value) {
-    alerts.value = rows
+    events.value = rows
     return
   }
 
   const tokens = [selectedSite.value.name, selectedSite.value.slug].filter(Boolean).map((item) => normalized(String(item)))
-  alerts.value = rows.filter((item: any) => {
+  events.value = rows.filter((item: any) => {
     const source = `${item.host || ''} ${item.name || ''}`
     const sourceNorm = normalized(source)
     return tokens.some((token) => sourceNorm.includes(token))
@@ -566,9 +566,9 @@ const goToAssets = (type: 'device' | 'rack' | 'ip' | 'vlan', extra?: Record<stri
   router.push({ path: '/assets', query })
 }
 
-const goToAlerts = (level: 'all' | 'critical' | 'warning') => {
+const goToEvents = (level: 'all' | 'critical' | 'warning') => {
   router.push({
-    path: '/alerts',
+    path: '/events',
     query: {
       level,
       site: selectedSiteName.value || ''

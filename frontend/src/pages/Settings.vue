@@ -927,7 +927,6 @@ const templateForm = ref({
   device_role: '',
   items: [] as any[]
 })
-const editingTemplateItem = ref<number | null>(null)
 
 interface SSHCredential {
   id: number
@@ -1333,7 +1332,10 @@ function editModel(model: ModelConfig) {
     api_key: model.api_key,
     api_url: model.api_url,
     model: model.model,
-    parameters: { ...model.parameters }
+    parameters: {
+      temperature: model.parameters?.temperature ?? 0.7,
+      max_tokens: model.parameters?.max_tokens ?? 4096
+    }
   }
   showCreateModal.value = true
 }
@@ -1620,12 +1622,15 @@ function getCategoryName(category: string): string {
 
 function updateCommands(index: number) {
   const item = templateForm.value.items[index]
-  item.commands = item.commandsText.split('\n').filter(cmd => cmd.trim())
+  item.commands = item.commandsText.split('\n').filter((cmd: string) => cmd.trim())
 }
 
 function updateDeviceTypes(index: number) {
   const item = templateForm.value.items[index]
-  item.device_types = item.deviceTypesText.split(',').map(t => t.trim()).filter(t => t)
+  item.device_types = item.deviceTypesText
+    .split(',')
+    .map((t: string) => t.trim())
+    .filter((t: string) => t)
 }
 
 function getSeverityBadge(severity: string): string {

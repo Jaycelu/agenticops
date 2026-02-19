@@ -14,12 +14,17 @@ export interface ChatRequest {
   session_id?: string
 }
 
+export interface ExecutionStep {
+  [key: string]: unknown
+}
+
 export interface ChatResponse {
   success: boolean
   data?: {
     response: string
+    message?: string
     trace_id?: string
-    execution_results?: any[]
+    execution_results?: ExecutionStep[]
     execution_plan?: any
   }
   error?: string

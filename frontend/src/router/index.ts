@@ -22,8 +22,12 @@ const routes: RouteRecordRaw[] = [
       },
       {
         path: 'alerts',
-        name: 'Alerts',
-        component: () => import('@/pages/Alerts.vue')
+        redirect: '/events'
+      },
+      {
+        path: 'events',
+        name: 'Events',
+        component: () => import('@/pages/Events.vue')
       },
       {
         path: 'logs',

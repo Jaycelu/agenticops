@@ -4,11 +4,11 @@ from contextlib import asynccontextmanager
 from config.logging import setup_logging
 from api import chat_router, assets_router, logs_router, models_router
 from api.sessions import router as sessions_router
-from api.alerts import router as alerts_router
 from api.automation import router as automation_router
 from api.abnormal_types import router as abnormal_types_router
 from api.ssh_management import router as ssh_management_router
 from api.command_templates import router as command_templates_router
+from api.events import router as events_router
 from utils.cache import netbox_cache
 import asyncio
 
@@ -133,13 +133,13 @@ app.add_middleware(
 app.include_router(chat_router)
 app.include_router(assets_router)
 app.include_router(sessions_router)
-app.include_router(alerts_router)
 app.include_router(logs_router)
 app.include_router(models_router)
 app.include_router(automation_router)
 app.include_router(abnormal_types_router)
 app.include_router(ssh_management_router)
 app.include_router(command_templates_router)
+app.include_router(events_router)
 
 
 @app.get("/")

@@ -7,6 +7,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import Enum
 
+from config.settings import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -240,6 +242,18 @@ class ExecutionEngine:
                 status=ExecutionStatus.FAILED,
                 message=f"Executor not found for type: {action_type.value}",
                 error=f"No executor registered for {action_type.value}"
+            )
+
+        # Safety first: in observe-only mode, block non-read-only actions.
+        if (
+            settings.automation_observe_only
+            and action_type != ExecutorType.NOTIFICATION
+            and not bool(action_config.get("read_only", False))
+        ):
+            return ExecutionResult(
+                status=ExecutionStatus.ABORTED,
+                message="Action blocked in observe-only mode",
+                error="Set action_config.read_only=true or disable automation_observe_only"
             )
 
         # 验证配置

@@ -105,12 +105,12 @@ export const settingsApi = {
     }
   },
 
-  async activateModel(modelId: string): Promise<{ success: boolean; message: string }> {
+  async activateModel(modelId: string): Promise<{ success: boolean; message?: string; error?: string }> {
     try {
       // 如果使用VITE_API_BASE_URL环境变量，则API路径应包含/api前缀
       const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/settings/models/${modelId}/activate` : `${API_BASE_URL}/settings/models/${modelId}/activate`
       const response = await axios.post(apiUrl)
-      return { success: true, data: response.data }
+      return { success: true, message: response.data?.message || '激活成功' }
     } catch (error: any) {
       return { success: false, error: error.response?.data?.message || error.message }
     }

@@ -450,7 +450,7 @@ import { logsApi, type AggregationParams, type AggregationResponse, type DeviceL
 import { 
   FileSearch, RefreshCw, Building2, Clock, Filter, List, Server, Search, 
   Layers, LayoutGrid, X, Loader2, AlertTriangle, Bot, ChevronDown, ChevronRight, 
-  FileX, MapPinOff, AlertCircle, Info, FileText, ChevronLeft, PlayCircle
+  FileX, MapPinOff, AlertCircle, Info, FileText, ChevronLeft
 } from 'lucide-vue-next'
 
 interface BaseConfig {
@@ -476,8 +476,6 @@ const selectedBaseName = ref<string>('')
 const timeRange = ref<string>('-1d,now')
 const limit = ref<number>(200)
 const offset = ref<number>(0)
-const analyzing = ref(false)
-const analysisResult = ref<string>('')
 const currentFilter = ref<string>('')
 const customFilter = ref<string>('')
 const hostnameFilter = ref<string>('')

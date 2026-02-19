@@ -15,6 +15,7 @@
     "vue-router": "^4.2.5"
   },
   "devDependencies": {
+    "@types/estree": "^1.0.8",
     "@tailwindcss/postcss": "^4.1.18",
     "@vitejs/plugin-vue": "^4.5.0",
     "autoprefixer": "^10.4.23",
@@ -22,6 +23,6 @@
     "tailwindcss": "^4.1.18",
     "typescript": "^5.3.2",
     "vite": "^5.0.2",
-    "vue-tsc": "^1.8.25"
+    "vue-tsc": "^2.1.10"
   }
 }
