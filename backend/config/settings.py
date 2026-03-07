@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     elk_username: str = "lujianzhong"
     elk_password: str = "trinasolar2025"
 
+    # Zabbix Configuration
+    zabbix_url: str = ""
+    zabbix_api_url: str = ""
+    zabbix_username: str = ""
+    zabbix_password: str = ""
+
     # Local LLM Configuration
     llm_model_name: str = "Qwen3-32B-AWQ"
     llm_api_key: str = ""

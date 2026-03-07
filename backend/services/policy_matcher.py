@@ -164,6 +164,8 @@ class PolicyMatcher:
         context = {}
 
         if isinstance(source, LogSample):
+            raw_data = source.raw_data or {}
+            signal_summary = raw_data.get("signal_summary") or {}
             # LogSample上下文
             context.update({
                 "site_id": source.site_id,
@@ -173,13 +175,13 @@ class PolicyMatcher:
                 "flap_count": source.flap_count or 0,
                 "neighbor_change_count": source.neighbor_change_count or 0,
                 "is_abnormal": source.is_abnormal,
-                "abnormal_type": source.abnormal_type
+                "abnormal_type": signal_summary.get("primary_signal")
             })
 
             # 添加原始数据
-            if source.raw_data:
-                context["device_ip"] = source.raw_data.get("device_ip")
-                context["log_messages"] = source.raw_data.get("log_messages", [])
+            if raw_data:
+                context["device_ip"] = raw_data.get("device_ip")
+                context["log_messages"] = raw_data.get("log_messages", [])
 
         elif isinstance(source, RawAnomaly):
             # RawAnomaly上下文

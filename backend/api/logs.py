@@ -1,10 +1,13 @@
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel
+import hashlib
 from mcp.elk_mcp import ELKMCP
 from utils.cache import netbox_cache
 from services.log_analyzer import LogAnalyzer
 from models.llm_client import LLMClient
+from database import SessionLocal
+from engines.case_orchestrator import case_orchestrator
 from api.schemas.common import MessageResponse, error_detail
 from api.schemas.logs import BaseConfigsResponse, LogsResponse, AggregationResponse
 
@@ -309,6 +312,13 @@ class LogAggregationRequest(BaseModel):
     base_name: str
     time_range: Optional[str] = "-1d,now"
     filter: Optional[str] = None
+    create_case: bool = False
+    run_pipeline: bool = False
+    site_id: Optional[int] = None
+    netbox_device_id: Optional[int] = None
+    device_ip: Optional[str] = None
+    host: Optional[str] = None
+    title: Optional[str] = None
     aggregation: Dict[str, Any] = {
         "by_device": True,
         "by_level": True,
@@ -383,7 +393,8 @@ async def aggregate_logs(request: LogAggregationRequest):
                     "total_logs": len(all_logs),  # 实际聚合的日志数量
                     "total_available": actual_total,  # 可用的总日志数量
                     "aggregated_groups": aggregated,
-                    "has_more": has_more_logs
+                    "has_more": has_more_logs,
+                    **(await _maybe_create_case_for_aggregate(request, all_logs, aggregated))
                 }
     except HTTPException:
         raise
@@ -448,6 +459,13 @@ class DeviceLogAnalysisRequest(BaseModel):
     base_name_cn: Optional[str] = ""
     device: str
     logs: List[Dict[str, Any]]
+    create_case: bool = False
+    run_pipeline: bool = False
+    site_id: Optional[int] = None
+    netbox_device_id: Optional[int] = None
+    device_ip: Optional[str] = None
+    host: Optional[str] = None
+    title: Optional[str] = None
 
 
 @router.post("/analyze-device")
@@ -588,7 +606,7 @@ async def analyze_device_logs(request: DeviceLogAnalysisRequest):
         # 如果结果以换行符开始，删除前面的换行符
         cleaned_result = cleaned_result.lstrip('\n\r')
 
-        return {
+        response = {
             "success": True,
             "result": cleaned_result,
             "device": request.device,
@@ -596,9 +614,116 @@ async def analyze_device_logs(request: DeviceLogAnalysisRequest):
             "analyzed_count": len(analysis_logs),
             "has_more": has_more_logs
         }
+        response.update(await _maybe_create_case_for_device_analysis(request, cleaned_result))
+        return response
 
     except Exception as e:
         return {
             "success": False,
             "error": f"设备日志分析失败：{str(e)}"
         }
+
+
+async def _maybe_create_case_for_aggregate(
+    request: LogAggregationRequest,
+    all_logs: List[Dict[str, Any]],
+    aggregated: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    if not request.create_case:
+        return {"case_id": None, "case_code": None}
+
+    dedup_raw = f"log-aggregate|{request.base_name}|{request.time_range}|{request.filter or ''}"
+    dedup_key = hashlib.md5(dedup_raw.encode()).hexdigest()
+    top_group = aggregated[0] if aggregated else {}
+    summary = (
+        f"Log aggregate for {request.base_name}, total_logs={len(all_logs)}, "
+        f"top_device={top_group.get('device', 'unknown')}, top_count={top_group.get('total_count', 0)}"
+    )
+    db = SessionLocal()
+    try:
+        case = await case_orchestrator.intake_case(
+            db,
+            title=request.title or f"[{request.base_name}] 日志聚合异常",
+            source_type="log_aggregate",
+            source_system="ELK",
+            dedup_key=f"log:{dedup_key}",
+            severity="warning",
+            site_id=request.site_id,
+            netbox_device_id=request.netbox_device_id,
+            device_ip=request.device_ip,
+            host=request.host,
+            summary=summary,
+            raw_payload={
+                "base_name": request.base_name,
+                "time_range": request.time_range,
+                "filter": request.filter,
+                "sample_logs": all_logs[:20],
+            },
+            normalized_payload={
+                "aggregated_groups": aggregated[:10],
+                "total_logs": len(all_logs),
+            },
+            case_metadata={"source": "logs.aggregate"},
+        )
+        if request.run_pipeline:
+            await case_orchestrator.run_case_pipeline(
+                db,
+                case_id=case.id,
+                base_name=request.base_name,
+                log_query=request.filter,
+                time_range=request.time_range or "-1d,now",
+                log_limit=min(1000, max(200, len(all_logs))),
+            )
+            db.refresh(case)
+        return {"case_id": case.id, "case_code": case.case_code}
+    finally:
+        db.close()
+
+
+async def _maybe_create_case_for_device_analysis(
+    request: DeviceLogAnalysisRequest,
+    analysis_text: str,
+) -> Dict[str, Any]:
+    if not request.create_case:
+        return {"case_id": None, "case_code": None}
+
+    dedup_raw = f"log-device|{request.base_name}|{request.device}|{len(request.logs)}"
+    dedup_key = hashlib.md5(dedup_raw.encode()).hexdigest()
+    db = SessionLocal()
+    try:
+        case = await case_orchestrator.intake_case(
+            db,
+            title=request.title or f"[{request.base_name}] 设备日志分析 {request.device}",
+            source_type="device_log_analysis",
+            source_system="ELK",
+            dedup_key=f"device-log:{dedup_key}",
+            severity="warning",
+            site_id=request.site_id,
+            netbox_device_id=request.netbox_device_id,
+            device_ip=request.device_ip or request.device,
+            host=request.host or request.device,
+            summary=analysis_text[:500],
+            raw_payload={
+                "device": request.device,
+                "base_name": request.base_name,
+                "logs": request.logs[:50],
+            },
+            normalized_payload={
+                "analysis": analysis_text[:2000],
+                "log_count": len(request.logs),
+            },
+            case_metadata={"source": "logs.analyze-device"},
+        )
+        if request.run_pipeline:
+            await case_orchestrator.run_case_pipeline(
+                db,
+                case_id=case.id,
+                base_name=request.base_name,
+                log_query=request.device,
+                time_range="-15m,now",
+                log_limit=max(200, min(1000, len(request.logs))),
+            )
+            db.refresh(case)
+        return {"case_id": case.id, "case_code": case.case_code}
+    finally:
+        db.close()

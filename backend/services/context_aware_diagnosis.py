@@ -30,15 +30,17 @@ class ContextAwareDiagnosisService:
         db: Session,
         site_id: int,
         netbox_device_id: Optional[int],
-        abnormal_type: str,
         source_logs: Dict[str, Any],
+        signal_key: Optional[str] = None,
         credential_id: Optional[int] = None,
+        abnormal_type: Optional[str] = None,
     ) -> Dict[str, Any]:
+        signal_key = signal_key or abnormal_type or "unknown_signal"
         topology_context = await self._build_topology_context(netbox_device_id)
 
         step1 = await self._step1_hypothesis(
             site_id=site_id,
-            abnormal_type=abnormal_type,
+            signal_key=signal_key,
             source_logs=source_logs,
             topology_context=topology_context,
         )
@@ -97,7 +99,7 @@ class ContextAwareDiagnosisService:
 
         step3 = await self._step3_final_conclusion(
             site_id=site_id,
-            abnormal_type=abnormal_type,
+            signal_key=signal_key,
             source_logs=source_logs,
             topology_context=topology_context,
             initial_hypothesis=step1,
@@ -111,7 +113,8 @@ class ContextAwareDiagnosisService:
                 "payload": {
                     "site_id": site_id,
                     "netbox_device_id": netbox_device_id,
-                    "abnormal_type": abnormal_type,
+                    "signal_key": signal_key,
+                    "abnormal_type": signal_key,
                     "source_logs": source_logs,
                 },
             },
@@ -175,7 +178,7 @@ class ContextAwareDiagnosisService:
     async def _step1_hypothesis(
         self,
         site_id: int,
-        abnormal_type: str,
+        signal_key: str,
         source_logs: Dict[str, Any],
         topology_context: Dict[str, Any],
     ) -> Dict[str, Any]:
@@ -186,7 +189,8 @@ class ContextAwareDiagnosisService:
         )
         user_payload = {
             "site_id": site_id,
-            "abnormal_type": abnormal_type,
+            "signal_key": signal_key,
+            "abnormal_type": signal_key,
             "source_logs": source_logs,
             "topology_context": topology_context,
         }
@@ -204,7 +208,7 @@ class ContextAwareDiagnosisService:
     async def _step3_final_conclusion(
         self,
         site_id: int,
-        abnormal_type: str,
+        signal_key: str,
         source_logs: Dict[str, Any],
         topology_context: Dict[str, Any],
         initial_hypothesis: Dict[str, Any],
@@ -218,7 +222,8 @@ class ContextAwareDiagnosisService:
         )
         user_payload = {
             "site_id": site_id,
-            "abnormal_type": abnormal_type,
+            "signal_key": signal_key,
+            "abnormal_type": signal_key,
             "source_logs": source_logs,
             "topology_context": topology_context,
             "initial_hypothesis": initial_hypothesis,

@@ -1,6 +1,6 @@
 """
-异常升级规则服务
-将单次事件升级为状态异常，避免误报
+信号升级规则服务
+将单次日志信号升级为持续性状态信号，避免误报。
 """
 import logging
 from datetime import datetime, timedelta
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class AbnormalUpgrader:
-    """异常升级器"""
+    """持续信号升级器"""
 
     def __init__(self):
         pass
@@ -42,7 +42,7 @@ class AbnormalUpgrader:
         check_window_minutes: int = 30
     ) -> Dict:
         """
-        检查是否需要将单次事件升级为状态异常
+        检查是否需要将单次信号升级为持续状态信号
 
         Args:
             site_id: 基地ID
@@ -89,24 +89,30 @@ class AbnormalUpgrader:
                 "error_upgrade": self._check_error_upgrade(samples, thresholds)
             }
 
-            # 判断是否需要升级
-            needs_upgrade = any(check["meets_criteria"] for check in upgrade_checks.values())
+            needs_escalation = any(check["meets_criteria"] for check in upgrade_checks.values())
 
-            # 确定异常类型
-            abnormal_type = None
-            if needs_upgrade:
+            signal_key = None
+            signal_title = None
+            if needs_escalation:
                 if upgrade_checks["crc_upgrade"]["meets_criteria"]:
-                    abnormal_type = "LINK_QUALITY_DEGRADE"
+                    signal_key = "link_quality_degrade"
+                    signal_title = "链路质量下降"
                 elif upgrade_checks["flap_upgrade"]["meets_criteria"]:
-                    abnormal_type = "INTERFACE_FLAP"
+                    signal_key = "interface_flap"
+                    signal_title = "接口震荡"
                 elif upgrade_checks["neighbor_upgrade"]["meets_criteria"]:
-                    abnormal_type = "NEIGHBOR_UNSTABLE"
+                    signal_key = "neighbor_unstable"
+                    signal_title = "邻居不稳定"
                 elif upgrade_checks["error_upgrade"]["meets_criteria"]:
-                    abnormal_type = "HIGH_ERROR_RATE"
+                    signal_key = "high_error_rate"
+                    signal_title = "高错误率"
 
             return {
-                "needs_upgrade": needs_upgrade,
-                "abnormal_type": abnormal_type,
+                "needs_escalation": needs_escalation,
+                "signal_key": signal_key,
+                "signal_title": signal_title,
+                "needs_upgrade": needs_escalation,
+                "abnormal_type": signal_key,
                 "check_window": {
                     "start": time_start.isoformat(),
                     "end": time_end.isoformat(),

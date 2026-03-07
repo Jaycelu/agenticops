@@ -33,12 +33,13 @@ class DiagnosisTask(BaseModel):
     netbox_device_id: Optional[int] = None
     device_ip: Optional[str] = None
     device_name: Optional[str] = None
-    abnormal_type: str  # LINK_QUALITY_DEGRADE, INTERFACE_FLAP, NEIGHBOR_UNSTABLE
+    signal_key: str = "unknown_signal"
     severity: str = "medium"  # low, medium, high, critical
     created_at: datetime = Field(default_factory=datetime.now)
     evidence: EvidenceModel = Field(default_factory=EvidenceModel)
     state_aggregation: Optional[Dict] = None
     upgrade_check: Optional[Dict] = None
+    signal_profile: Dict[str, Any] = Field(default_factory=dict)
 
 
 # 研判结果模型
@@ -72,7 +73,8 @@ class DiagnosisService:
         site_id: int,
         netbox_device_id: Optional[int] = None,
         device_ip: Optional[str] = None,
-        abnormal_type: str = "UNKNOWN"
+        signal_key: str = "unknown_signal",
+        abnormal_type: Optional[str] = None,
     ) -> DiagnosisTask:
         """
         创建研判任务
@@ -81,7 +83,7 @@ class DiagnosisService:
             site_id: 基地ID
             netbox_device_id: 设备ID
             device_ip: 设备IP
-            abnormal_type: 异常类型
+            signal_key: 日志/状态信号键
 
         Returns:
             研判任务
@@ -91,7 +93,7 @@ class DiagnosisService:
             site_id=site_id,
             netbox_device_id=netbox_device_id,
             device_ip=device_ip,
-            abnormal_type=abnormal_type
+            signal_key=signal_key or abnormal_type or "unknown_signal",
         )
 
         # 执行状态聚合
@@ -176,9 +178,12 @@ class DiagnosisService:
         # 趋势证据
         if task.upgrade_check:
             evidence.trend_evidence = {
+                "needs_escalation": task.upgrade_check.get("needs_escalation"),
+                "signal_key": task.upgrade_check.get("signal_key"),
+                "signal_title": task.upgrade_check.get("signal_title"),
+                "upgrade_checks": task.upgrade_check.get("upgrade_checks", {}),
                 "needs_upgrade": task.upgrade_check.get("needs_upgrade"),
                 "abnormal_type": task.upgrade_check.get("abnormal_type"),
-                "upgrade_checks": task.upgrade_check.get("upgrade_checks", {})
             }
 
         return evidence
@@ -473,7 +478,7 @@ class DiagnosisService:
         prompt = f"""你是一位资深的网络运维专家，请根据以下证据对网络设备问题进行研判。
 
 【异常类型】
-{task.abnormal_type}
+{task.signal_key}
 
 【日志证据】
 - CRC趋势: {evidence.log_evidence.get('crc_trend', {}).get('description', 'N/A')}
@@ -491,8 +496,8 @@ class DiagnosisService:
 - 对端错误: {evidence.peer_evidence.get('peer_errors', 'N/A')}
 
 【趋势证据】
-- 是否需要升级: {evidence.trend_evidence.get('needs_upgrade', 'N/A')}
-- 异常类型: {evidence.trend_evidence.get('abnormal_type', 'N/A')}
+- 是否需要升级: {evidence.trend_evidence.get('needs_escalation', evidence.trend_evidence.get('needs_upgrade', 'N/A'))}
+- 观测信号: {evidence.trend_evidence.get('signal_key', evidence.trend_evidence.get('abnormal_type', 'N/A'))}
 
 请以JSON格式返回研判结果，包含以下字段：
 {{

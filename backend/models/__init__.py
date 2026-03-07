@@ -11,6 +11,16 @@ from models.automation import (
     AutomationActionLog,
     AutomationApproval
 )
+from models.agenticops import (
+    SourceEvent,
+    CaseRecord,
+    EvidenceItem,
+    AgentRun,
+    AgentClaim,
+    MemoryEntry,
+    RemediationPlan,
+    ExecutionRun,
+)
 
 __all__ = [
     "Site",
@@ -20,5 +30,13 @@ __all__ = [
     "AutomationPolicy",
     "AutomationTask",
     "AutomationActionLog",
-    "AutomationApproval"
+    "AutomationApproval",
+    "SourceEvent",
+    "CaseRecord",
+    "EvidenceItem",
+    "AgentRun",
+    "AgentClaim",
+    "MemoryEntry",
+    "RemediationPlan",
+    "ExecutionRun",
 ]

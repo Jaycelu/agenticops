@@ -30,6 +30,26 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/Events.vue')
       },
       {
+        path: 'cases',
+        name: 'Cases',
+        component: () => import('@/pages/Cases.vue')
+      },
+      {
+        path: 'agents',
+        name: 'Agents',
+        component: () => import('@/pages/Agents.vue')
+      },
+      {
+        path: 'memories',
+        name: 'Memories',
+        component: () => import('@/pages/Memories.vue')
+      },
+      {
+        path: 'fabric',
+        name: 'Fabric',
+        component: () => import('@/pages/Fabric.vue')
+      },
+      {
         path: 'tickets',
         name: 'Tickets',
         component: () => import('@/pages/Tickets.vue')
@@ -51,43 +71,35 @@ const routes: RouteRecordRaw[] = [
       },
       {
         path: 'automation/dashboard',
-        name: 'AutomationDashboard',
-        component: () => import('@/pages/automation/Dashboard.vue')
+        redirect: '/fabric'
       },
       {
         path: 'automation/samples',
-        name: 'AutomationSamples',
-        component: () => import('@/pages/automation/Samples.vue')
+        redirect: '/logs'
       },
       {
         path: 'automation/tasks',
-        name: 'AutomationTasks',
-        component: () => import('@/pages/automation/Tasks.vue')
+        redirect: '/fabric'
       },
       {
         path: 'automation/tasks/:id',
-        name: 'AutomationTaskDetail',
-        component: () => import('@/pages/automation/TaskDetail.vue')
+        redirect: '/fabric'
       },
       {
         path: 'automation/analysis-results',
-        name: 'AutomationAnalysisResults',
-        component: () => import('@/pages/automation/AnalysisResults.vue')
+        redirect: '/cases'
       },
       {
         path: 'automation/policies',
-        name: 'AutomationPolicies',
-        component: () => import('@/pages/automation/Policies.vue')
+        redirect: '/fabric'
       },
       {
         path: 'automation/audit',
-        name: 'AutomationAudit',
-        component: () => import('@/pages/automation/Audit.vue')
+        redirect: '/fabric'
       },
       {
         path: 'automation/abnormal-types',
-        name: 'AutomationAbnormalTypes',
-        component: () => import('@/pages/automation/AbnormalTypes.vue')
+        redirect: '/cases'
       }
     ]
   }

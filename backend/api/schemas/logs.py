@@ -53,3 +53,5 @@ class AggregationResponse(BaseModel):
     total_available: int = 0
     aggregated_groups: List[AggregatedGroup] = Field(default_factory=list)
     has_more: bool = False
+    case_id: Optional[int] = None
+    case_code: Optional[str] = None

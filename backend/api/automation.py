@@ -12,12 +12,12 @@ from models.automation import (
     Site, LogSample, LogAnalysisResult,
     AutomationPolicy, AutomationTask, AutomationTaskFeedback
 )
-from services.automation_orchestrator import automation_orchestrator
 from services.feedback_learning_service import feedback_learning_service
 from services.ssh_service import ssh_service
 from services.command_template_service import command_template_service
 from services.site_automation_service import site_automation_service
 from services.approval_service import approval_service
+from services.log_sampler import log_sampler
 from api.schemas.automation import (
     ApprovalDecisionRequest,
     ApprovalInitiateRequest,
@@ -198,11 +198,17 @@ async def get_log_samples(
             "time_window_start": sample.time_window_start,
             "time_window_end": sample.time_window_end,
             "is_abnormal": sample.is_abnormal,
-            "abnormal_type": sample.abnormal_type,
+            "abnormal_type": None,
             "raw_data": sample.raw_data,
             "created_at": sample.created_at,
-            "batch_id": sample.raw_data.get("batch_id") if isinstance(sample.raw_data, dict) else None
+            "batch_id": sample.raw_data.get("batch_id") if isinstance(sample.raw_data, dict) else None,
+            "signal_summary": sample.raw_data.get("signal_summary") if isinstance(sample.raw_data, dict) else None,
+            "trigger_reason": sample.raw_data.get("trigger_reason") if isinstance(sample.raw_data, dict) else None,
+            "case_id": ((sample.raw_data or {}).get("case") or {}).get("case_id") if isinstance(sample.raw_data, dict) else None,
+            "case_code": ((sample.raw_data or {}).get("case") or {}).get("case_code") if isinstance(sample.raw_data, dict) else None,
         }
+        if sample_dict["signal_summary"]:
+            sample_dict["abnormal_type"] = sample_dict["signal_summary"].get("primary_signal")
         
         # 从raw_data中获取设备IP
         if sample.raw_data and "device_ip" in sample.raw_data:
@@ -1033,10 +1039,11 @@ async def trigger_diagnosis(
         raise HTTPException(status_code=404, detail="Sample not found")
 
     try:
-        await automation_orchestrator.process_abnormal_sample(sample_id)
+        result = await log_sampler.create_case_for_sample(sample_id, rerun_pipeline=True)
         return {
             "success": True,
-            "message": f"Diagnosis triggered for sample {sample_id}"
+            "message": f"Case pipeline triggered for sample {sample_id}",
+            "data": result,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

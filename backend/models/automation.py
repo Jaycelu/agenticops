@@ -11,13 +11,6 @@ from database import Base
 import enum
 
 
-class AbnormalTypeStatus(str, enum.Enum):
-    """异常类型状态枚举"""
-    DRAFT = "DRAFT"           # 新建，未生效
-    OBSERVED = "OBSERVED"     # 只统计，不触发研判
-    ENABLED = "ENABLED"       # 正式进入自动化
-
-
 class Site(Base):
     """基地信息表"""
     __tablename__ = "site"
@@ -184,7 +177,6 @@ class LogSample(Base):
 
     # 采样状态
     is_abnormal = Column(Boolean, default=False)
-    abnormal_type = Column(String(50))  # LINK_QUALITY_DEGRADE, INTERFACE_FLAP, NEIGHBOR_CHANGE
 
     # 原始数据
     raw_data = Column(JSON)
@@ -384,36 +376,6 @@ class AutomationTaskFeedback(Base):
     )
 
 
-class AbnormalTrackerState(Base):
-    """异常跟踪器持久化状态表"""
-    __tablename__ = "abnormal_tracker_state"
-
-    id = Column(Integer, primary_key=True, index=True)
-    site_id = Column(Integer, ForeignKey("site.id"), nullable=True, index=True)
-    device_ip = Column(String(45), nullable=False, index=True)
-    abnormal_type = Column(String(100), nullable=False, index=True)
-
-    count = Column(Integer, default=0)
-    first_abnormal_time = Column(DateTime(timezone=True))
-    last_trigger_time = Column(DateTime(timezone=True))
-    last_abnormal_time = Column(DateTime(timezone=True))
-
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-
-    # 索引
-    __table_args__ = (
-        Index(
-            'uniq_abnormal_tracker_state',
-            'site_id',
-            'device_ip',
-            'abnormal_type',
-            unique=True
-        ),
-        Index('idx_abnormal_tracker_last_abnormal', 'last_abnormal_time'),
-    )
-
-
 class SSHCredential(Base):
     """SSH凭据表"""
     __tablename__ = "ssh_credential"
@@ -533,49 +495,4 @@ class RawAnomaly(Base):
         Index('idx_raw_anomaly_fingerprint', 'log_fingerprint'),
         Index('idx_raw_anomaly_status', 'site_id', 'status', 'first_seen_at'),
         Index('uniq_raw_anomaly_window', 'site_id', 'device_id', 'log_fingerprint', 'time_window_start', unique=True),
-    )
-
-
-class AbnormalType(Base):
-    """异常类型管理表"""
-    __tablename__ = "abnormal_type"
-
-    id = Column(Integer, primary_key=True, index=True)
-    type_code = Column(String(100), unique=True, nullable=False, index=True)  # 异常类型代码，如LINK_QUALITY_DEGRADE
-    type_name = Column(String(200), nullable=False)  # 异常类型名称
-    description = Column(Text)  # 异常类型描述
-    
-    # 状态：DRAFT / OBSERVED / ENABLED
-    status = Column(String(20), nullable=False, default="DRAFT", index=True)
-    
-    # 异常特征
-    fingerprint_pattern = Column(String(200))  # 日志指纹模式（用于UNKNOWN类型）
-    keywords = Column(JSON)  # 关键词列表，如["CRC", "error"]
-    
-    # 阈值配置
-    threshold_config = Column(JSON, nullable=False)  # 阈值配置，如{"count": 50, "time_window_minutes": 5}
-    
-    # 风险等级
-    risk_level = Column(String(20), default="medium")  # low / medium / high
-    
-    # 是否启用异常跟踪
-    enable_tracking = Column(Boolean, default=True)
-    
-    # 跟踪配置
-    tracking_config = Column(JSON)  # 跟踪配置，如{"accumulation_threshold": 5, "dedup_window_minutes": 60, "cooldown_minutes": 60}
-    
-    # 统计信息
-    occurrence_count = Column(Integer, default=0)  # 出现次数
-    last_occurred_at = Column(DateTime(timezone=True))  # 最后出现时间
-    
-    # 创建和更新信息
-    created_by = Column(String(100), default="system")
-    updated_by = Column(String(100), default="system")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    
-    # 索引
-    __table_args__ = (
-        Index('idx_abnormal_type_status', 'status'),
-        Index('idx_abnormal_type_risk', 'risk_level'),
     )

@@ -52,7 +52,11 @@ def init_db():
         Site, SiteAutomationSwitch, DeviceState, LogSample, LogAnalysisResult,
         AutomationPolicy, AutomationTask, AutomationActionLog,
         AutomationApproval, RawAnomaly, AutomationTaskFeedback,
-        AbnormalTrackerState, SSHCredential, SSHCredentialDeviceBinding,
+        SSHCredential, SSHCredentialDeviceBinding,
         AssetDevice, AlertEvent, LocalTicket, CommandTemplate
+    )
+    from models.agenticops import (
+        SourceEvent, CaseRecord, EvidenceItem, AgentRun, AgentClaim,
+        MemoryEntry, RemediationPlan, ExecutionRun
     )
     Base.metadata.create_all(bind=engine)

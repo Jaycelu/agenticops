@@ -5,6 +5,7 @@
 import asyncio
 import logging
 import re
+from copy import deepcopy
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
@@ -20,6 +21,15 @@ from services.baseline_calculator import baseline_calculator
 from services.site_automation_service import site_automation_service
 
 logger = logging.getLogger(__name__)
+
+
+RISK_ORDER = {
+    "info": 0,
+    "low": 1,
+    "medium": 2,
+    "high": 3,
+    "critical": 4,
+}
 
 
 class LogSampler:
@@ -370,9 +380,6 @@ class LogSampler:
 
             site_id = site.id
 
-            # 导入异常类型管理服务
-            from services.abnormal_type_service import abnormal_type_service
-
             # 为每个有日志的设备都创建采样记录；异常仅作为标记字段
             abnormal_devices_count = 0
             total_samples_count = 0
@@ -386,37 +393,10 @@ class LogSampler:
                     stats=stats,
                     collection_policy=collection_policy or {}
                 )
+                pattern_summary = self._summarize_log_patterns(stats)
+                signal_summary = self._build_signal_summary(stats, policy_decision, pattern_summary)
 
-                # 使用异常类型管理服务进行判定
-                matched_type = abnormal_type_service.match_abnormal_type(
-                    db,
-                    error_count=stats["error_count"],
-                    crc_error_count=stats["crc_error_count"],
-                    flap_count=stats["flap_count"],
-                    neighbor_change_count=stats["neighbor_change_count"],
-                    other_error_count=stats.get("other_error_count", 0),
-                    other_error_fingerprints=stats.get("other_error_fingerprints", []),
-                    interface_state_change_count=stats.get("interface_state_change_count", 0),
-                    critical_event_count=stats.get("critical_event_count", 0),
-                    hardware_alarm_count=stats.get("hardware_alarm_count", 0),
-                )
-
-                # 策略可覆盖异常类型（例如严重日志实时触发）
-                # 异常判定与是否触发研判解耦：即使当前窗口不触发，也应保留异常分类
-                if policy_decision.get("matched_type_override"):
-                    matched_type = policy_decision["matched_type_override"]
-
-                # 如果仍未匹配到异常类型，补一个通用高错误率类型
-                if not matched_type and policy_decision.get("trigger_mode") in {"immediate", "periodic"}:
-                    matched_type = {
-                        "type_code": "HIGH_ERROR_RATE",
-                        "type_name": "高错误率",
-                        "risk_level": "medium",
-                        "enable_tracking": True,
-                        "tracking_config": {}
-                    }
-
-                is_abnormal = matched_type is not None
+                is_abnormal = signal_summary["signal_score"] > 0
                 if is_abnormal:
                     abnormal_devices_count += 1
 
@@ -443,35 +423,28 @@ class LogSampler:
                     time_window_start=time_window_start,
                     time_window_end=time_window_end,
                     is_abnormal=is_abnormal,
-                    abnormal_type=matched_type["type_code"] if matched_type else None,
                     raw_data={
                         "device_ip": device_ip,
                         "batch_id": batch_id,
                         "log_messages": stats["log_messages"],
                         "other_error_count": stats.get("other_error_count", 0),
                         "other_error_fingerprints": stats.get("other_error_fingerprints", []),
-                        "matched_type": matched_type,
-                        "collection_policy_decision": policy_decision
+                        "collection_policy_decision": policy_decision,
+                        "signal_summary": signal_summary,
+                        "pattern_summary": pattern_summary,
+                        "trigger_reason": policy_decision.get("reason"),
+                        "case": None,
                     }
                 )
-
-                # 添加指纹和日志计数
-                if log_fingerprint:
-                    log_sample.log_fingerprint = log_fingerprint
-                log_sample.log_count = log_count
 
                 db.add(log_sample)
                 db.flush()  # 确保log_sample有ID
                 total_samples_count += 1
 
-                # 异常记录与研判触发解耦：只要判定异常，就纳入后续研判候选
-                should_process_abnormal = is_abnormal
-                if should_process_abnormal:
+                if signal_summary["should_create_case"]:
                     triggered_abnormal_sample_ids.append(log_sample.id)
-                    abnormal_type_service.update_occurrence(db, matched_type["type_code"])
 
-                # 如果不是已知异常，检查是否为Raw Anomaly
-                if should_process_abnormal and matched_type["type_code"].startswith("UNKNOWN_") and log_fingerprint and log_count > 0:
+                if is_abnormal and log_fingerprint and log_count > 0:
                     # 如果没有设备ID，使用-1作为占位符
                     device_id_for_baseline = netbox_device_id if netbox_device_id else -1
                     await self._check_and_create_raw_anomaly(
@@ -519,15 +492,12 @@ class LogSampler:
         """
         try:
             logger.debug(f"Trigger diagnosis called for site_id={site_id}")
-            # 导入自动化编排器（避免循环导入）
-            from services.automation_orchestrator import automation_orchestrator
-            from services.abnormal_tracker import abnormal_tracker
 
             # 获取基地信息
             from database import SessionLocal
             db_new = SessionLocal()
             try:
-                from models.automation import Site, LogSample, LogAnalysisResult
+                from models.automation import Site, LogSample
                 site = db_new.query(Site).filter(Site.id == site_id).first()
 
                 if not site:
@@ -549,74 +519,22 @@ class LogSampler:
 
                 logger.info(f"Found {len(abnormal_samples)} abnormal samples for site {site.site_code}")
 
-                # 触发研判（使用异常跟踪器进行去重和累积）
                 triggered_count = 0
                 for sample in abnormal_samples:
-                    device_ip = sample.raw_data.get("device_ip") if sample.raw_data else None
-                    abnormal_type = sample.abnormal_type
-
-                    if not device_ip or not abnormal_type:
-                        continue
-
-                    existing_analysis = db_new.query(LogAnalysisResult).filter(
-                        LogAnalysisResult.related_sample_id == sample.id
-                    ).first()
-                    if existing_analysis:
-                        logger.debug(f"Sample {sample.id} already diagnosed, skipping duplicate trigger")
-                        continue
-
-                    matched_type = {}
-                    if sample.raw_data and isinstance(sample.raw_data, dict):
-                        matched_type = sample.raw_data.get("matched_type") or {}
-                    tracking_cfg = matched_type.get("tracking_config") or {}
-                    enable_tracking = bool(matched_type.get("enable_tracking", True))
-
-                    if not enable_tracking:
-                        should_trigger, reason = True, "tracking disabled, trigger directly"
-                    elif tracking_cfg:
-                        threshold = int(tracking_cfg.get("accumulation_threshold", abnormal_tracker.accumulation_threshold) or abnormal_tracker.accumulation_threshold)
-                        dedup_minutes = int(tracking_cfg.get("dedup_window_minutes", abnormal_tracker.dedup_window_minutes) or abnormal_tracker.dedup_window_minutes)
-                        cooldown_minutes = int(tracking_cfg.get("cooldown_minutes", abnormal_tracker.cooldown_minutes) or abnormal_tracker.cooldown_minutes)
-                        should_trigger, reason = abnormal_tracker.should_trigger_with_policy(
-                            device_ip=device_ip,
-                            abnormal_type=abnormal_type,
-                            db=db_new,
-                            site_id=site.id,
-                            increment=1,
-                            threshold=threshold,
-                            window_minutes=max(cooldown_minutes * 2, 60),
-                            dedup_window_minutes=dedup_minutes,
-                            cooldown_minutes=cooldown_minutes
-                        )
-                    else:
-                        # 回退到默认追踪配置
-                        should_trigger, reason = abnormal_tracker.should_trigger_diagnosis(
-                            device_ip, abnormal_type, db_new, site.id
-                        )
-
-                    # 首次异常样本兜底：避免因历史tracker状态导致研判长期为0
-                    if not should_trigger:
-                        should_trigger, reason = True, f"first_analysis_fallback({reason})"
-
-                    if should_trigger:
-                        logger.info(f"Triggering diagnosis for {device_ip} {abnormal_type}: {reason}")
-                        try:
-                            await automation_orchestrator.process_abnormal_sample(sample.id)
+                    try:
+                        result = await self._create_case_for_sample_with_db(db_new, site, sample, rerun_pipeline=False)
+                        if result.get("case_id"):
                             triggered_count += 1
-                        except Exception as e:
-                            logger.error(
-                                f"Error processing abnormal sample {sample.id}: {e}",
-                                exc_info=True
-                            )
-                    else:
-                        logger.info(f"Skipping diagnosis for {device_ip} {abnormal_type}: {reason}")
+                    except Exception as e:
+                        logger.error(
+                            f"Error creating case for sample {sample.id}: {e}",
+                            exc_info=True
+                        )
 
                 if triggered_count > 0:
-                    logger.info(f"Triggered {triggered_count} diagnoses for {site.site_code}")
-                    # 旧告警链路已下线：后续统一通过事件中心(/api/events/ingest)接入。
-                    logger.info("Legacy alert trigger disabled; use event ingest workflow instead")
+                    logger.info(f"Triggered {triggered_count} case pipelines for {site.site_code}")
                 else:
-                    logger.info(f"No diagnoses triggered for {site.site_code} (all filtered by abnormal tracker)")
+                    logger.info(f"No case pipelines triggered for {site.site_code}")
 
             except Exception as e:
                 logger.error(f"Error triggering diagnosis: {e}", exc_info=True)
@@ -641,45 +559,28 @@ class LogSampler:
         优先级：
         1) 严重事件实时触发；
         2) 普通事件按周期累计触发；
-        3) 其余交给原有异常类型阈值匹配。
+        3) 其余仅记录为观测信号，由多 Agent 在 case 中集中判断。
         """
-        from services.abnormal_tracker import abnormal_tracker
-
         immediate_cfg = collection_policy.get("immediate_trigger", {})
         periodic_cfg = collection_policy.get("periodic_trigger", {})
 
         # 1) 严重事件实时触发
         immediate_checks = [
-            ("critical_event_count", "CRITICAL_LOG_ALERT", "critical"),
-            ("hardware_alarm_count", "HARDWARE_ISSUE", "critical"),
-            ("auth_failure_count", "SECURITY_AUTH_FAILURE", "high"),
+            ("critical_event_count", "critical_log_alert", "严重日志告警", "critical"),
+            ("hardware_alarm_count", "hardware_issue", "硬件告警", "critical"),
+            ("auth_failure_count", "security_auth_failure", "认证失败", "high"),
         ]
-        for field, abnormal_type, risk_level in immediate_checks:
+        for field, signal_key, signal_title, risk_level in immediate_checks:
             val = int(stats.get(field, 0) or 0)
             threshold = int(immediate_cfg.get(field, 0) or 0)
             if threshold > 0 and val >= threshold:
-                should, reason = abnormal_tracker.should_trigger_with_policy(
-                    device_ip=device_ip,
-                    abnormal_type=abnormal_type,
-                    db=db,
-                    site_id=site_id,
-                    increment=val,
-                    threshold=1,
-                    window_minutes=60,
-                    dedup_window_minutes=10,
-                    cooldown_minutes=20
-                )
                 return {
-                    "should_trigger": should,
-                    "reason": f"[immediate] {reason}",
+                    "should_trigger": True,
+                    "reason": f"[immediate] {field} reached {val}/{threshold}",
                     "trigger_mode": "immediate",
-                    "matched_type_override": {
-                        "type_code": abnormal_type,
-                        "type_name": abnormal_type,
-                        "risk_level": risk_level,
-                        "enable_tracking": True,
-                        "tracking_config": {}
-                    }
+                    "signal_key": signal_key,
+                    "signal_title": signal_title,
+                    "risk_level": risk_level,
                 }
 
         # 2) 周期累计触发（例如接口up/down 30次/天）
@@ -690,41 +591,212 @@ class LogSampler:
 
             threshold = int(cfg.get("threshold", 0) or 0)
             window_minutes = int(cfg.get("window_minutes", 1440) or 1440)
-            abnormal_type = cfg.get("abnormal_type", field.upper())
+            signal_key = cfg.get("signal_key") or cfg.get("abnormal_type", field).lower()
             if threshold <= 0:
                 continue
 
-            should, reason = abnormal_tracker.should_trigger_with_policy(
-                device_ip=device_ip,
-                abnormal_type=abnormal_type,
-                db=db,
-                site_id=site_id,
-                increment=val,
-                threshold=threshold,
-                window_minutes=window_minutes,
-                dedup_window_minutes=min(120, max(15, int(window_minutes / 12))),
-                cooldown_minutes=min(240, max(30, int(window_minutes / 6)))
-            )
-            return {
-                "should_trigger": should,
-                "reason": f"[periodic:{field}] {reason}",
-                "trigger_mode": "periodic",
-                "matched_type_override": {
-                    "type_code": abnormal_type,
-                    "type_name": abnormal_type,
+            if val >= threshold:
+                return {
+                    "should_trigger": True,
+                    "reason": f"[periodic:{field}] {val}/{threshold} within {window_minutes}m",
+                    "trigger_mode": "periodic",
+                    "signal_key": signal_key,
+                    "signal_title": cfg.get("title", field),
                     "risk_level": cfg.get("risk_level", "medium"),
-                    "enable_tracking": True,
-                    "tracking_config": {}
                 }
-            }
 
-        # 3) 不拦截，让后续阈值匹配继续判断
+        # 3) 仅记录观察信号，不在采样层做根因判断
         return {
-            "should_trigger": True,
-            "reason": "fallthrough_to_threshold_match",
-            "trigger_mode": "fallback",
-            "matched_type_override": None
+            "should_trigger": False,
+            "reason": "observed_signal_only",
+            "trigger_mode": "observe",
+            "signal_key": None,
+            "signal_title": None,
+            "risk_level": "low",
         }
+
+    def _summarize_log_patterns(self, stats: Dict[str, Any]) -> Dict[str, Any]:
+        fingerprints: Dict[str, Dict[str, Any]] = {}
+        for message in stats.get("log_messages", [])[:100]:
+            fingerprint = fingerprint_generator.generate_fingerprint(message)
+            bucket = fingerprints.setdefault(
+                fingerprint,
+                {"fingerprint": fingerprint, "count": 0, "example": message[:300]},
+            )
+            bucket["count"] += 1
+
+        top_patterns = sorted(
+            fingerprints.values(),
+            key=lambda item: item["count"],
+            reverse=True,
+        )[:5]
+        return {
+            "message_count": len(stats.get("log_messages", [])),
+            "critical_examples": stats.get("critical_messages", [])[:5],
+            "top_patterns": top_patterns,
+        }
+
+    def _build_signal_summary(
+        self,
+        stats: Dict[str, Any],
+        policy_decision: Dict[str, Any],
+        pattern_summary: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        signal_defs = [
+            ("crc_error_count", "crc_errors", "CRC 错误", "high"),
+            ("flap_count", "interface_flap", "接口震荡", "medium"),
+            ("neighbor_change_count", "neighbor_change", "邻居变化", "medium"),
+            ("interface_state_change_count", "interface_state_change", "接口状态变化", "medium"),
+            ("routing_instability_count", "routing_instability", "路由抖动", "high"),
+            ("hardware_alarm_count", "hardware_alarm", "硬件告警", "critical"),
+            ("auth_failure_count", "auth_failure", "认证失败", "high"),
+            ("critical_event_count", "critical_events", "严重日志", "critical"),
+            ("other_error_count", "unknown_error_patterns", "未知错误模式", "medium"),
+        ]
+
+        signals: List[Dict[str, Any]] = []
+        score = 0.0
+        highest_risk = "low"
+        for field, key, title, risk in signal_defs:
+            count = int(stats.get(field, 0) or 0)
+            if count <= 0:
+                continue
+            signals.append(
+                {
+                    "field": field,
+                    "key": key,
+                    "title": title,
+                    "count": count,
+                    "risk_level": risk,
+                }
+            )
+            score += 1 + min(count / 20, 1.5)
+            if RISK_ORDER[risk] > RISK_ORDER[highest_risk]:
+                highest_risk = risk
+
+        policy_risk = policy_decision.get("risk_level") or highest_risk
+        if RISK_ORDER.get(policy_risk, 0) > RISK_ORDER[highest_risk]:
+            highest_risk = policy_risk
+
+        primary_signal = policy_decision.get("signal_key") or (signals[0]["key"] if signals else None)
+        signal_title = policy_decision.get("signal_title") or (signals[0]["title"] if signals else "观测信号")
+        should_create_case = bool(policy_decision.get("should_trigger")) or (
+            primary_signal is not None and RISK_ORDER.get(highest_risk, 0) >= RISK_ORDER["high"]
+        ) or score >= 3.0
+
+        return {
+            "primary_signal": primary_signal,
+            "signal_title": signal_title,
+            "risk_level": highest_risk,
+            "signal_score": round(score, 2),
+            "trigger_mode": policy_decision.get("trigger_mode", "observe"),
+            "trigger_reason": policy_decision.get("reason"),
+            "should_create_case": should_create_case,
+            "signals": signals,
+            "top_pattern": ((pattern_summary.get("top_patterns") or [{}])[0] if pattern_summary else {}),
+        }
+
+    async def create_case_for_sample(self, sample_id: int, rerun_pipeline: bool = False) -> Dict[str, Any]:
+        db = SessionLocal()
+        try:
+            sample = db.query(LogSample).filter(LogSample.id == sample_id).first()
+            if not sample:
+                raise ValueError(f"sample not found: {sample_id}")
+            site = db.query(Site).filter(Site.id == sample.site_id).first()
+            if not site:
+                raise ValueError(f"site not found: {sample.site_id}")
+            return await self._create_case_for_sample_with_db(db, site, sample, rerun_pipeline=rerun_pipeline)
+        finally:
+            db.close()
+
+    async def _create_case_for_sample_with_db(
+        self,
+        db: Session,
+        site: Site,
+        sample: LogSample,
+        *,
+        rerun_pipeline: bool,
+    ) -> Dict[str, Any]:
+        from engines.case_orchestrator import case_orchestrator
+
+        raw_data = deepcopy(sample.raw_data or {})
+        existing_case = raw_data.get("case") or {}
+        if existing_case.get("case_id") and existing_case.get("case_code") and not rerun_pipeline:
+            return existing_case
+
+        signal_summary = raw_data.get("signal_summary") or {}
+        pattern_summary = raw_data.get("pattern_summary") or {}
+        device_ip = raw_data.get("device_ip")
+        top_pattern = ((pattern_summary.get("top_patterns") or [{}])[0] if pattern_summary else {})
+        severity = signal_summary.get("risk_level") or "warning"
+        title = f"[{site.site_code}] {device_ip or sample.netbox_device_id or 'device'} 日志信号"
+        summary = (
+            f"{signal_summary.get('signal_title') or '日志模式异常'}"
+            f"，score={signal_summary.get('signal_score', 0)}"
+            f"，messages={pattern_summary.get('message_count', 0)}"
+        )
+        window_minutes = 15
+        if sample.time_window_start and sample.time_window_end:
+            try:
+                delta = sample.time_window_end - sample.time_window_start
+                window_minutes = max(15, min(1440, int(delta.total_seconds() / 60)))
+            except Exception:
+                window_minutes = 15
+
+        case = await case_orchestrator.intake_case(
+            db,
+            title=title,
+            source_type="log_signal",
+            source_system="ELK_SAMPLER",
+            dedup_key=f"log-sample:{sample.id}",
+            severity=severity,
+            site_id=sample.site_id,
+            netbox_device_id=sample.netbox_device_id,
+            device_ip=device_ip,
+            host=device_ip,
+            summary=summary,
+            occurred_at=sample.sampled_at,
+            raw_payload={
+                "sample_id": sample.id,
+                "batch_id": raw_data.get("batch_id"),
+                "stats": {
+                    "error_count": sample.error_count,
+                    "crc_error_count": sample.crc_error_count,
+                    "flap_count": sample.flap_count,
+                    "neighbor_change_count": sample.neighbor_change_count,
+                },
+                "log_messages": raw_data.get("log_messages", [])[:50],
+            },
+            normalized_payload={
+                "signal_summary": signal_summary,
+                "pattern_summary": pattern_summary,
+                "top_pattern": top_pattern,
+            },
+            case_metadata={
+                "source": "log_sampler",
+                "sample_id": sample.id,
+                "batch_id": raw_data.get("batch_id"),
+                "site_code": site.site_code,
+            },
+        )
+        if not existing_case.get("case_id") or rerun_pipeline:
+            await case_orchestrator.run_case_pipeline(
+                db,
+                case_id=case.id,
+                base_name=site.site_code.lower(),
+                log_query=device_ip,
+                time_range=f"-{max(window_minutes * 2, 15)}m,now",
+                log_limit=max(200, min(1000, pattern_summary.get("message_count", 200) or 200)),
+            )
+
+        raw_data["case"] = {
+            "case_id": case.id,
+            "case_code": case.case_code,
+            "created_at": datetime.now().isoformat(),
+        }
+        sample.raw_data = raw_data
+        db.commit()
+        return raw_data["case"]
     
     async def _get_device_id_from_netbox(self, device_ip: str, site_code: str) -> Optional[int]:
         """
@@ -799,18 +871,9 @@ class LogSampler:
                 for rule_result in rule_results:
                     # 转换规则结果为DecisionResult
                     diagnosis_result = rule_result["result"]
-
-                    # 根据异常持续性调整风险等级
-                    from services.abnormal_tracker import abnormal_tracker
                     base_severity = diagnosis_result.get("severity", "medium")
-                    adjusted_severity = abnormal_tracker.calculate_severity_based_on_persistence(
-                        device_ip=device_ip,
-                        abnormal_type=diagnosis_result.get("diagnosis_type", "UNKNOWN"),
-                        base_severity=base_severity,
-                        site_id=site_id
-                    )
-                    diagnosis_result["severity"] = adjusted_severity
-                    diagnosis_result["risk_level"] = adjusted_severity
+                    diagnosis_result["severity"] = base_severity
+                    diagnosis_result["risk_level"] = base_severity
 
                     decision_result = DecisionResult(
                         rule_id=rule_result["rule_id"],

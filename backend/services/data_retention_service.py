@@ -15,7 +15,6 @@ from models.automation import (
     AutomationActionLog,
     AutomationApproval,
     AutomationTaskFeedback,
-    AbnormalTrackerState,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,7 +32,6 @@ class DataRetentionService:
             "automation_action_log": 0,
             "automation_approval": 0,
             "automation_task_feedback": 0,
-            "abnormal_tracker_state": 0,
         }
 
         try:
@@ -44,8 +42,6 @@ class DataRetentionService:
             action_cutoff = now - timedelta(days=settings.retention_action_log_days)
             approval_cutoff = now - timedelta(days=settings.retention_approval_days)
             feedback_cutoff = now - timedelta(days=settings.retention_feedback_days)
-            tracker_cutoff = now - timedelta(days=settings.retention_tracker_state_days)
-
             summary["raw_anomaly"] = db.query(RawAnomaly).filter(
                 RawAnomaly.created_at < raw_cutoff
             ).delete(synchronize_session=False)
@@ -72,11 +68,6 @@ class DataRetentionService:
 
             summary["automation_task"] = db.query(AutomationTask).filter(
                 AutomationTask.created_at < task_cutoff
-            ).delete(synchronize_session=False)
-
-            summary["abnormal_tracker_state"] = db.query(AbnormalTrackerState).filter(
-                AbnormalTrackerState.last_abnormal_time.isnot(None),
-                AbnormalTrackerState.last_abnormal_time < tracker_cutoff,
             ).delete(synchronize_session=False)
 
             db.commit()

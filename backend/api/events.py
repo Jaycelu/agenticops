@@ -23,6 +23,7 @@ from api.schemas.events import (
 )
 from config.settings import settings
 from database import get_db
+from engines.case_orchestrator import case_orchestrator
 from models.automation import AlertEvent, AutomationTask, LocalTicket
 from services.decision_service import decision_service
 from services.event_skill_service import event_skill_service
@@ -69,6 +70,47 @@ def _build_dedup_key(payload: EventIngestRequest) -> str:
         bucket = datetime.utcnow().strftime("%Y%m%d%H%M")
         raw_key = f"{payload.source}|{payload.host}|{payload.name}|{bucket}"
     return hashlib.md5(raw_key.encode()).hexdigest()
+
+
+async def _ensure_case_for_event(db: Session, event: AlertEvent) -> Dict[str, Any]:
+    payload = dict(event.payload or {})
+    existing_case = payload.get("case") or {}
+    if existing_case.get("case_id") and existing_case.get("case_code"):
+        return existing_case
+
+    case = await case_orchestrator.intake_case(
+        db,
+        title=event.name,
+        source_type=payload.get("event_type") or "event",
+        source_system=event.source,
+        dedup_key=f"event:{event.dedup_key}",
+        severity=event.severity,
+        site_id=event.site_id,
+        netbox_device_id=event.netbox_device_id,
+        device_ip=event.host,
+        host=event.host,
+        summary=f"Event intake from {event.source}, severity={event.severity}",
+        occurred_at=event.occurred_at,
+        raw_payload=payload.get("raw") or payload,
+        normalized_payload={
+            "severity": event.severity,
+            "severity_level": event.severity_level,
+            "source": event.source,
+            "external_event_id": event.external_event_id,
+        },
+        case_metadata={
+            "linked_event_id": event.id,
+            "recommended_skill_code": payload.get("recommended_skill_code"),
+        },
+    )
+    payload["case"] = {
+        "case_id": case.id,
+        "case_code": case.case_code,
+        "created_at": datetime.now().isoformat(),
+    }
+    event.payload = payload
+    db.commit()
+    return payload["case"]
 
 
 def _upsert_event(db: Session, payload: EventIngestRequest) -> AlertEvent:
@@ -308,10 +350,13 @@ async def ingest_event(payload: EventIngestRequest, db: Session = Depends(get_db
     record = _upsert_event(db, payload)
     db.commit()
     db.refresh(record)
+    case_info = await _ensure_case_for_event(db, record)
     return {
         "accepted": True,
         "observe_only": settings.automation_observe_only,
         "event": record,
+        "case_id": case_info.get("case_id"),
+        "case_code": case_info.get("case_code"),
     }
 
 
@@ -329,10 +374,13 @@ async def ingest_splunk_event(
     record = _upsert_event(db, mapped)
     db.commit()
     db.refresh(record)
+    case_info = await _ensure_case_for_event(db, record)
     return {
         "accepted": True,
         "observe_only": settings.automation_observe_only,
         "event": record,
+        "case_id": case_info.get("case_id"),
+        "case_code": case_info.get("case_code"),
     }
 
 
@@ -350,6 +398,7 @@ async def ingest_eda_event(
     record = _upsert_event(db, mapped)
     db.commit()
     db.refresh(record)
+    case_info = await _ensure_case_for_event(db, record)
 
     dispatch_result = {"dispatched": False, "task_id": None, "message": "Auto dispatch disabled"}
     if payload.auto_dispatch_readonly:
@@ -365,6 +414,8 @@ async def ingest_eda_event(
         "observe_only": settings.automation_observe_only,
         "event": record,
         "dispatch": dispatch_result,
+        "case_id": case_info.get("case_id"),
+        "case_code": case_info.get("case_code"),
     }
 
 

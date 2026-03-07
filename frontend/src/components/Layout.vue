@@ -2,7 +2,9 @@
   <div class="layout">
     <TopNav />
     <div class="layout-content">
-      <router-view />
+      <div class="layout-workspace">
+        <router-view />
+      </div>
     </div>
   </div>
 </template>
@@ -14,10 +16,27 @@ import TopNav from '@/components/TopNav.vue'
 <style scoped>
 .layout {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: linear-gradient(180deg, #eff4fb 0%, #f8fafc 42%, #f1f5f9 100%);
+  display: flex;
 }
 
 .layout-content {
-  padding: 0;
+  flex: 1;
+  min-width: 0;
+  padding: 24px;
+}
+
+.layout-workspace {
+  min-height: calc(100vh - 48px);
+}
+
+@media (max-width: 980px) {
+  .layout {
+    flex-direction: column;
+  }
+
+  .layout-content {
+    padding: 16px;
+  }
 }
 </style>

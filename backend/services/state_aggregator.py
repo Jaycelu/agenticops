@@ -1,6 +1,6 @@
 """
 状态聚合服务
-分析多个时间窗口的日志采样数据，识别趋势性异常
+分析多个时间窗口的日志采样数据，识别趋势性信号。
 """
 import logging
 from datetime import datetime, timedelta
@@ -96,9 +96,9 @@ class StateAggregator:
             # 邻居变化分析
             neighbor_stability = self._analyze_neighbor_stability(samples)
 
-            # 判断是否需要升级为状态异常
+            # 判断是否形成持续性状态信号
             thresholds = self._get_thresholds_by_site_id(db, site_id)
-            is_state_abnormal, abnormal_type = self._check_state_abnormal(
+            is_state_signal, signal_key = self._check_state_signal(
                 crc_trend,
                 flap_frequency,
                 neighbor_stability,
@@ -120,10 +120,15 @@ class StateAggregator:
                 "crc_trend": crc_trend,
                 "flap_frequency": flap_frequency,
                 "neighbor_stability": neighbor_stability,
+                "state_signal": {
+                    "is_active": is_state_signal,
+                    "signal_key": signal_key,
+                    "signal_title": signal_key,
+                },
                 "state_abnormal": {
-                    "is_abnormal": is_state_abnormal,
-                    "abnormal_type": abnormal_type
-                }
+                    "is_abnormal": is_state_signal,
+                    "abnormal_type": signal_key,
+                },
             }
 
         except Exception as e:
@@ -274,7 +279,7 @@ class StateAggregator:
             "max_changes_in_sample": max(neighbor_changes)
         }
 
-    def _check_state_abnormal(
+    def _check_state_signal(
         self,
         crc_trend: Dict,
         flap_frequency: Dict,
@@ -282,7 +287,7 @@ class StateAggregator:
         thresholds: Dict
     ) -> Tuple[bool, Optional[str]]:
         """
-        检查是否为状态异常
+        检查是否形成持续性状态信号
 
         Args:
             crc_trend: CRC趋势分析结果
@@ -291,7 +296,7 @@ class StateAggregator:
             thresholds: 阈值配置
 
         Returns:
-            (是否异常, 异常类型)
+            (是否活跃, 信号键)
         """
         # CRC持续增长
         if crc_trend.get("has_crc_errors") and crc_trend.get("trend") == "increasing":

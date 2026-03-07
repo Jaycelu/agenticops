@@ -73,6 +73,8 @@ class EventIngestResponse(BaseModel):
     accepted: bool = True
     observe_only: bool
     event: AlertEventItem
+    case_id: Optional[int] = None
+    case_code: Optional[str] = None
 
 
 class EventIngestDispatchResult(BaseModel):
@@ -86,6 +88,8 @@ class EDAIngestResponse(BaseModel):
     observe_only: bool
     event: AlertEventItem
     dispatch: EventIngestDispatchResult
+    case_id: Optional[int] = None
+    case_code: Optional[str] = None
 
 
 class EventListResponse(BaseModel):
