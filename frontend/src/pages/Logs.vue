@@ -12,11 +12,11 @@
         </button>
       </div>
 
-      <!-- 基地选择 -->
+      <!-- 日志范围选择 -->
       <div class="base-section">
         <div class="section-header">
           <Building2 class="section-icon" :size="20" />
-          <h3>选择基地</h3>
+          <h3>选择日志范围</h3>
         </div>
         <div class="base-grid">
           <div 
@@ -73,7 +73,7 @@
             <input 
               v-model="customFilter" 
               class="filter-input-text" 
-              placeholder="输入筛选条件，如: hostname:10.128.*"
+              placeholder="输入筛选条件，如: hostname:10.*"
               @keyup.enter="loadLogs"
             />
           </div>
@@ -97,7 +97,7 @@
             <input 
               v-model="hostnameFilter" 
               class="filter-input-text" 
-              placeholder="输入主机IP筛选，如: 10.128.1.1"
+              placeholder="输入主机IP筛选，如: 10.0.0.1"
               @keyup.enter="applyHostnameFilter"
             />
           </div>
@@ -111,7 +111,7 @@
       <!-- 统计信息 -->
       <div v-if="selectedBase" class="stats-section">
         <div class="stat-item">
-          <span class="stat-label">基地:</span>
+          <span class="stat-label">范围:</span>
           <span class="stat-value">{{ selectedBaseName }}</span>
         </div>
         <div class="stat-item">
@@ -179,6 +179,13 @@
             <span class="aggregate-stat">总日志数: {{ aggregatedData.total_available || aggregatedData.total_logs }}</span>
             <span class="aggregate-stat">已聚合: {{ aggregatedData.total_logs }} 条</span>
             <span class="aggregate-stat">设备数: {{ aggregatedData.aggregated_groups.length }}</span>
+            <button
+              v-if="aggregatedData.case_id"
+              class="btn-open-case"
+              @click="openCase(aggregatedData.case_id)"
+            >
+              打开 Case {{ aggregatedData.case_code || `#${aggregatedData.case_id}` }}
+            </button>
             <span v-if="aggregatedData.has_more" class="aggregate-stat warning">
               <AlertTriangle :size="12" />
               还有 {{ (aggregatedData.total_available || 0) - aggregatedData.total_logs }} 条日志未聚合
@@ -227,6 +234,13 @@
                   <div v-if="deviceAnalysisMeta[deviceIndex]" class="analysis-meta">
                     <span class="meta-info">总日志: {{ deviceAnalysisMeta[deviceIndex].total_count }} 条</span>
                     <span class="meta-info">已分析: {{ deviceAnalysisMeta[deviceIndex].analyzed_count }} 条</span>
+                    <button
+                      v-if="deviceAnalysisMeta[deviceIndex].case_id"
+                      class="btn-open-case small"
+                      @click="openCase(deviceAnalysisMeta[deviceIndex].case_id)"
+                    >
+                      打开 Case {{ deviceAnalysisMeta[deviceIndex].case_code || `#${deviceAnalysisMeta[deviceIndex].case_id}` }}
+                    </button>
                     <span v-if="deviceAnalysisMeta[deviceIndex].has_more" class="meta-warning">
                       <AlertTriangle :size="12" />
                       日志数量过多，只分析了部分日志
@@ -288,7 +302,7 @@
         </div>
         <div v-else-if="!selectedBase" class="empty">
           <MapPinOff :size="48" />
-          <p>请先选择基地</p>
+          <p>请先选择日志范围</p>
         </div>
         <div v-else-if="logs.length === 0" class="empty">
           <div v-if="timeoutError" class="error-hint">
@@ -445,6 +459,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { logsApi, type AggregationParams, type AggregationResponse, type DeviceLogAnalysisRequest } from '@/api/logs'
 import { 
@@ -458,6 +473,9 @@ interface BaseConfig {
   name: string
   filter: string
   time_range: string
+  site_code?: string
+  site_name?: string
+  aliases?: string[]
 }
 
 interface LogEntry {
@@ -468,6 +486,15 @@ interface LogEntry {
   raw: any
 }
 
+interface DeviceAnalysisMeta {
+  total_count: number
+  analyzed_count: number
+  has_more: boolean
+  case_id?: number | null
+  case_code?: string | null
+}
+
+const router = useRouter()
 const loading = ref(false)
 const logs = ref<LogEntry[]>([])
 const totalLogs = ref(0)
@@ -494,7 +521,7 @@ const expandedDeviceGroups = ref<Record<number, boolean>>({})
 const expandedLevelGroups = ref<Record<string, boolean>>({})
 const deviceAnalyzing = ref<Record<number, boolean>>({})
 const deviceAnalysisResults = ref<Record<number, string>>({})
-const deviceAnalysisMeta = ref<Record<number, { total_count: number; analyzed_count: number; has_more: boolean }>>({})
+const deviceAnalysisMeta = ref<Record<number, DeviceAnalysisMeta>>({})
 
 const bases = ref<BaseConfig[]>([])
 
@@ -539,7 +566,7 @@ const visibleLogs = computed(() => {
 
 async function loadBases() {
   try {
-    const data = await logsApi.getBases()
+    const data = await logsApi.getScopes()
     bases.value = data.bases || []
   } catch (error) {
     console.error('Error loading bases:', error)
@@ -678,6 +705,10 @@ async function loadAggregatedData() {
       base_name: selectedBase.value,
       time_range: timeRange.value,
       filter: filter,
+      create_case: true,
+      run_pipeline: true,
+      host: selectedBase.value,
+      title: `[${selectedBaseName.value || selectedBase.value}] 日志聚合 Case`,
       aggregation: {
         by_device: true,
         by_level: true,
@@ -704,6 +735,14 @@ function toggleLevelGroup(deviceIndex: number, levelIndex: number) {
   expandedLevelGroups.value[key] = !expandedLevelGroups.value[key]
 }
 
+function openCase(caseId?: number | null) {
+  if (!caseId) return
+  void router.push({
+    path: '/cases',
+    query: { caseId: String(caseId) }
+  })
+}
+
 async function analyzeDeviceLogs(deviceIndex: number) {
   if (!aggregatedData.value) return
 
@@ -721,12 +760,24 @@ async function analyzeDeviceLogs(deviceIndex: number) {
       base_name: selectedBase.value,
       base_name_cn: selectedBaseName.value,
       device: group.device,
-      logs: allLogs
+      logs: allLogs,
+      create_case: true,
+      run_pipeline: true,
+      device_ip: group.device,
+      host: group.device,
+      title: `[${selectedBaseName.value || selectedBase.value}] 设备日志分析 ${group.device}`
     }
 
     const response = await logsApi.analyzeDeviceLogs(params)
     if (response.success && response.result) {
       deviceAnalysisResults.value[deviceIndex] = response.result
+      deviceAnalysisMeta.value[deviceIndex] = {
+        total_count: response.log_count,
+        analyzed_count: response.analyzed_count || response.log_count,
+        has_more: Boolean(response.has_more),
+        case_id: response.case_id,
+        case_code: response.case_code
+      }
     } else {
       throw new Error(response.error || '分析失败')
     }
@@ -1194,6 +1245,28 @@ onMounted(() => {
 .btn-analyze-device:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.btn-open-case {
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%);
+  color: #fff;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-open-case:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(20, 184, 166, 0.24);
+}
+
+.btn-open-case.small {
+  padding: 4px 10px;
+  font-size: 12px;
 }
 
 .device-expand-icon {

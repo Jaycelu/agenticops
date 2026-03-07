@@ -2,18 +2,22 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-from config.settings import settings
+from services.integration_config_service import integration_config_service
 
 
 class ZabbixAdapter:
-    def __init__(self):
-        self.url = settings.zabbix_api_url or settings.zabbix_url
-        self.username = settings.zabbix_username
-        self.password = settings.zabbix_password
+    def _get_runtime_config(self) -> Dict[str, Any]:
+        return integration_config_service.get_zabbix_runtime_config()
 
     @property
     def available(self) -> bool:
-        return bool(self.url and self.username and self.password)
+        config = self._get_runtime_config()
+        return bool(
+            config.get("enabled")
+            and (config.get("api_url") or config.get("url"))
+            and config.get("username")
+            and config.get("password")
+        )
 
     async def get_recent_alerts(
         self,
@@ -21,7 +25,9 @@ class ZabbixAdapter:
         host: Optional[str] = None,
         limit: int = 20,
     ) -> Dict[str, Any]:
-        if not self.available:
+        config = self._get_runtime_config()
+        url = config.get("api_url") or config.get("url")
+        if not (config.get("enabled") and url and config.get("username") and config.get("password")):
             return {"success": False, "error": "zabbix_not_configured", "alerts": []}
 
         try:
@@ -30,12 +36,12 @@ class ZabbixAdapter:
                     "jsonrpc": "2.0",
                     "method": "user.login",
                     "params": {
-                        "username": self.username,
-                        "password": self.password,
+                        "username": config["username"],
+                        "password": config["password"],
                     },
                     "id": 1,
                 }
-                login_resp = await client.post(self.url, json=login_payload)
+                login_resp = await client.post(url, json=login_payload)
                 login_resp.raise_for_status()
                 token = login_resp.json().get("result")
                 if not token:
@@ -59,7 +65,7 @@ class ZabbixAdapter:
                     "auth": token,
                     "id": 2,
                 }
-                resp = await client.post(self.url, json=problem_payload)
+                resp = await client.post(url, json=problem_payload)
                 resp.raise_for_status()
                 result = resp.json().get("result") or []
                 return {"success": True, "alerts": result}

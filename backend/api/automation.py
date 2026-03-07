@@ -8,15 +8,15 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 
 from database import get_db
+from models.agenticops import CaseRecord, ExecutionRun, MemoryEntry, MemoryType, RemediationPlan, RemediationPlanStatus
 from models.automation import (
     Site, LogSample, LogAnalysisResult,
-    AutomationPolicy, AutomationTask, AutomationTaskFeedback
+    AutomationApproval, AutomationPolicy, AutomationTask, AutomationTaskFeedback
 )
 from services.feedback_learning_service import feedback_learning_service
 from services.ssh_service import ssh_service
 from services.command_template_service import command_template_service
 from services.site_automation_service import site_automation_service
-from services.approval_service import approval_service
 from services.log_sampler import log_sampler
 from api.schemas.automation import (
     ApprovalDecisionRequest,
@@ -75,6 +75,188 @@ def _build_evidence_status(task: AutomationTask) -> Dict[str, Any]:
         "confidence": final_confidence,
         "message": inspection.get("error") or ""
     }
+
+
+def _build_plan_evidence_status(plan: RemediationPlan, execution: Optional[ExecutionRun]) -> Dict[str, Any]:
+    if execution and str(execution.status) in {"ExecutionRunStatus.FAILED", "failed"}:
+        return {
+            "status": "failed",
+            "topology_status": "success",
+            "inspection_status": "completed",
+            "final_status": "failed",
+            "confidence": None,
+            "message": execution.error_message or "",
+        }
+    if execution and str(execution.status) in {"ExecutionRunStatus.SUCCEEDED", "succeeded", "verified", "ExecutionRunStatus.VERIFIED"}:
+        return {
+            "status": "success",
+            "topology_status": "success",
+            "inspection_status": "completed",
+            "final_status": "success",
+            "confidence": None,
+            "message": "",
+        }
+    if str(plan.status) in {"RemediationPlanStatus.EXECUTING", "executing"}:
+        return {
+            "status": "partial",
+            "topology_status": "success",
+            "inspection_status": "completed",
+            "final_status": "running",
+            "confidence": None,
+            "message": "",
+        }
+    return {
+        "status": "skipped",
+        "topology_status": "success" if plan.case else "skipped",
+        "inspection_status": "completed" if plan.plan_payload else "skipped",
+        "final_status": "draft",
+        "confidence": None,
+        "message": "",
+    }
+
+
+def _map_plan_status(plan: RemediationPlan, execution: Optional[ExecutionRun]) -> str:
+    if execution:
+        execution_status = execution.status.value if hasattr(execution.status, "value") else str(execution.status)
+        status_map = {
+            "pending": "pending",
+            "running": "running",
+            "succeeded": "success",
+            "failed": "failed",
+            "verifying": "running",
+            "verified": "success",
+            "rolled_back": "aborted",
+        }
+        return status_map.get(execution_status, execution_status)
+
+    plan_status = plan.status.value if hasattr(plan.status, "value") else str(plan.status)
+    status_map = {
+        "draft": "pending",
+        "pending_approval": "waiting_approval",
+        "approved": "pending" if plan.execution_mode == "auto" else "waiting_confirm",
+        "executing": "running",
+        "succeeded": "success",
+        "failed": "failed",
+        "rolled_back": "aborted",
+        "cancelled": "cancelled",
+    }
+    return status_map.get(plan_status, plan_status)
+
+
+def _build_legacy_task_from_plan(plan: RemediationPlan) -> Dict[str, Any]:
+    latest_execution = None
+    if plan.execution_runs:
+        latest_execution = sorted(
+            plan.execution_runs,
+            key=lambda item: item.started_at or item.created_at,
+            reverse=True,
+        )[0]
+
+    case = plan.case
+    context = {
+        "case_id": plan.case_id,
+        "case_code": case.case_code if case else None,
+        "device_ip": case.device_ip if case else None,
+        "netbox_device_id": case.netbox_device_id if case else None,
+        "recommended_action_type": (plan.plan_payload or {}).get("action_type"),
+    }
+
+    return {
+        "id": int(plan.id),
+        "task_code": plan.plan_code,
+        "policy_id": None,
+        "site_id": case.site_id if case else None,
+        "netbox_device_id": case.netbox_device_id if case else None,
+        "status": _map_plan_status(plan, latest_execution),
+        "triggered_by": "agentic_case",
+        "trigger_event": {
+            "source": "remediation_plan",
+            "case_id": plan.case_id,
+            "execution_mode": plan.execution_mode,
+            "approval_status": plan.approval_status,
+        },
+        "decision_result": {
+            "summary": plan.summary,
+            "context": context,
+            "recommended_action_type": (plan.plan_payload or {}).get("action_type"),
+            "plan_payload": plan.plan_payload or {},
+            "rollback_payload": plan.rollback_payload or {},
+            "safety_checks": plan.safety_checks or {},
+        },
+        "execution_result": (latest_execution.result_payload if latest_execution else {}),
+        "audit_trail": (latest_execution.audit_trail if latest_execution else []),
+        "need_human_confirm": plan.approval_status not in {"approved", "not_required"},
+        "started_at": latest_execution.started_at if latest_execution else None,
+        "finished_at": latest_execution.finished_at if latest_execution else None,
+        "created_at": plan.created_at,
+        "updated_at": plan.updated_at,
+        "latest_feedback": None,
+        "evidence_status": _build_plan_evidence_status(plan, latest_execution),
+        "recommended_action_type": (plan.plan_payload or {}).get("action_type"),
+        "manual_intervention_required": plan.execution_mode != "auto" or plan.approval_status not in {"approved", "not_required"},
+        "device_ip": case.device_ip if case else None,
+        "case_id": plan.case_id,
+        "case_code": case.case_code if case else None,
+        "source_model": "remediation_plan",
+        "approval_status": plan.approval_status,
+        "risk_level": plan.risk_level,
+    }
+
+
+def _task_sort_key(item: Dict[str, Any]) -> float:
+    created_at = item.get("created_at")
+    if created_at is None:
+        return 0.0
+    try:
+        return created_at.timestamp()
+    except Exception:
+        return 0.0
+
+
+def _get_legacy_task_or_plan(db: Session, task_id: int) -> tuple[Optional[AutomationTask], Optional[RemediationPlan]]:
+    task = db.query(AutomationTask).filter(AutomationTask.id == task_id).first()
+    if task is not None:
+        return task, None
+    plan = db.query(RemediationPlan).filter(RemediationPlan.id == task_id).first()
+    return None, plan
+
+
+def _list_plan_feedback_entries(db: Session, plan: RemediationPlan) -> List[MemoryEntry]:
+    rows = (
+        db.query(MemoryEntry)
+        .filter(
+            MemoryEntry.case_id == plan.case_id,
+            MemoryEntry.memory_type == MemoryType.FEEDBACK,
+        )
+        .order_by(MemoryEntry.created_at.desc())
+        .all()
+    )
+    return [
+        item for item in rows
+        if isinstance(item.content, dict) and item.content.get("plan_id") == int(plan.id)
+    ]
+
+
+def _append_legacy_approval(task: AutomationTask, *, stage: str, payload: Dict[str, Any]) -> None:
+    trail = list(task.audit_trail or [])
+    trail.append(
+        {
+            "stage": "Approval",
+            "title": stage,
+            "payload": payload,
+        }
+    )
+    task.audit_trail = trail
+
+
+def _get_legacy_pending_approvals_query(db: Session, site_id: Optional[int], approver: Optional[str]):
+    query = db.query(AutomationTask).filter(AutomationTask.status == "waiting_approval")
+    if site_id is not None:
+        query = query.filter(AutomationTask.site_id == site_id)
+    if approver:
+        # Legacy model没有审批人分配字段，这里仅保留接口形态
+        query = query
+    return query
 
 
 # ============ 基地管理 ============
@@ -332,18 +514,18 @@ async def get_automation_tasks(
     db: Session = Depends(get_db)
 ):
     """获取自动化任务列表"""
-    query = db.query(AutomationTask)
+    legacy_query = db.query(AutomationTask)
 
     if site_id:
-        query = query.filter(AutomationTask.site_id == site_id)
+        legacy_query = legacy_query.filter(AutomationTask.site_id == site_id)
     if status:
-        query = query.filter(AutomationTask.status == status)
+        legacy_query = legacy_query.filter(AutomationTask.status == status)
     
     # 时间范围筛选
     if start_date:
         try:
             start_datetime = datetime.strptime(start_date, "%Y-%m-%d")
-            query = query.filter(AutomationTask.created_at >= start_datetime)
+            legacy_query = legacy_query.filter(AutomationTask.created_at >= start_datetime)
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid start_date format, use YYYY-MM-DD")
     
@@ -351,12 +533,11 @@ async def get_automation_tasks(
         try:
             # 结束日期包含当天，所以加一天
             end_datetime = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
-            query = query.filter(AutomationTask.created_at < end_datetime)
+            legacy_query = legacy_query.filter(AutomationTask.created_at < end_datetime)
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid end_date format, use YYYY-MM-DD")
 
-    total = query.count()
-    tasks = query.order_by(AutomationTask.created_at.desc()).offset(skip).limit(limit).all()
+    tasks = legacy_query.order_by(AutomationTask.created_at.desc()).all()
 
     # 添加设备IP信息
     tasks_with_device_ip = []
@@ -411,13 +592,32 @@ async def get_automation_tasks(
         
         tasks_with_device_ip.append(task_dict)
 
+    plan_query = db.query(RemediationPlan).join(CaseRecord, RemediationPlan.case_id == CaseRecord.id)
+    if site_id:
+        plan_query = plan_query.filter(CaseRecord.site_id == site_id)
+    if start_date:
+        start_datetime = datetime.strptime(start_date, "%Y-%m-%d")
+        plan_query = plan_query.filter(RemediationPlan.created_at >= start_datetime)
+    if end_date:
+        end_datetime = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        plan_query = plan_query.filter(RemediationPlan.created_at < end_datetime)
+
+    plan_items = [_build_legacy_task_from_plan(plan) for plan in plan_query.order_by(RemediationPlan.created_at.desc()).all()]
+    if status:
+        plan_items = [item for item in plan_items if item["status"] == status]
+
+    combined_tasks = tasks_with_device_ip + plan_items
+    combined_tasks.sort(key=_task_sort_key, reverse=True)
+    total = len(combined_tasks)
+    paged_tasks = combined_tasks[skip:skip + limit]
+
     return {
         "total": total,
         "skip": skip,
         "limit": limit,
-        "returned": len(tasks_with_device_ip),
-        "has_more": skip + len(tasks_with_device_ip) < total,
-        "tasks": tasks_with_device_ip
+        "returned": len(paged_tasks),
+        "has_more": skip + len(paged_tasks) < total,
+        "tasks": paged_tasks
     }
 
 
@@ -426,7 +626,24 @@ async def get_automation_task(task_id: int, db: Session = Depends(get_db)):
     """获取自动化任务详情"""
     task = db.query(AutomationTask).filter(AutomationTask.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        plan = db.query(RemediationPlan).filter(RemediationPlan.id == task_id).first()
+        if not plan:
+            raise HTTPException(status_code=404, detail="Task not found")
+        task_dict = _build_legacy_task_from_plan(plan)
+        task_dict["feedbacks"] = []
+        task_dict["execution_history"] = [
+            {
+                "id": execution.id,
+                "status": execution.status.value if hasattr(execution.status, "value") else str(execution.status),
+                "executor_type": execution.executor_type,
+                "executor_name": execution.executor_name,
+                "started_at": execution.started_at,
+                "finished_at": execution.finished_at,
+                "error_message": execution.error_message,
+            }
+            for execution in sorted(plan.execution_runs, key=lambda item: item.started_at or item.created_at, reverse=True)
+        ]
+        return task_dict
     
     try:
         feedbacks = db.query(AutomationTaskFeedback).filter(
@@ -490,19 +707,59 @@ async def initiate_task_approval(
     payload: ApprovalInitiateRequest,
     db: Session = Depends(get_db),
 ):
-    task = db.query(AutomationTask).filter(AutomationTask.id == task_id).first()
-    if not task:
+    task, plan = _get_legacy_task_or_plan(db, task_id)
+    if task is None and plan is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    result = await approval_service.initiate_approval(
-        task_id=task_id,
-        risk_level=(payload.risk_level or "medium").lower(),
-        initiator=payload.initiator or "operator",
-        db=db,
+    if plan is not None:
+        safety_checks = dict(plan.safety_checks or {})
+        approval_history = list(safety_checks.get("approval_history") or [])
+        approval_history.append(
+            {
+                "stage": "initiate",
+                "risk_level": (payload.risk_level or "medium").lower(),
+                "initiator": payload.initiator or "operator",
+                "created_at": datetime.now().isoformat(),
+            }
+        )
+        safety_checks["approval_history"] = approval_history
+        plan.safety_checks = safety_checks
+        plan.approval_status = "pending"
+        plan.status = RemediationPlanStatus.PENDING_APPROVAL
+        db.commit()
+        db.refresh(plan)
+        return {
+            "success": True,
+            "task_id": task_id,
+            "plan_id": int(plan.id),
+            "message": "Approval initiated for remediation plan",
+            "approval_status": plan.approval_status,
+            "status": plan.status.value if hasattr(plan.status, "value") else str(plan.status),
+        }
+
+    if task.status not in {"waiting_confirm", "pending"}:
+        raise HTTPException(status_code=400, detail=f"Task status {task.status} cannot initiate approval")
+
+    task.status = "waiting_approval"
+    task.need_human_confirm = True
+    task.updated_at = datetime.now()
+    _append_legacy_approval(
+        task,
+        stage="发起审批",
+        payload={
+            "initiator": payload.initiator or "operator",
+            "risk_level": (payload.risk_level or "medium").lower(),
+            "created_at": datetime.now().isoformat(),
+        },
     )
-    if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("message", "initiate approval failed"))
-    return result
+    db.commit()
+    db.refresh(task)
+    return {
+        "success": True,
+        "task_id": task_id,
+        "message": "Approval initiated for legacy automation task",
+        "status": task.status,
+    }
 
 
 @router.post("/tasks/{task_id}/approval/decision")
@@ -511,28 +768,116 @@ async def decide_task_approval(
     payload: ApprovalDecisionRequest,
     db: Session = Depends(get_db),
 ):
-    task = db.query(AutomationTask).filter(AutomationTask.id == task_id).first()
-    if not task:
+    task, plan = _get_legacy_task_or_plan(db, task_id)
+    if task is None and plan is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    result = await approval_service.approve_task(
+    if plan is not None:
+        decision = (payload.decision or "").lower()
+        if decision not in {"approved", "rejected"}:
+            raise HTTPException(status_code=400, detail="decision must be approved|rejected")
+
+        safety_checks = dict(plan.safety_checks or {})
+        approval_history = list(safety_checks.get("approval_history") or [])
+        approval_history.append(
+            {
+                "stage": "decision",
+                "decision": decision,
+                "approver": payload.approver,
+                "comment": payload.comment,
+                "created_at": datetime.now().isoformat(),
+            }
+        )
+        safety_checks["approval_history"] = approval_history
+        plan.safety_checks = safety_checks
+        plan.approval_status = decision
+        plan.approved_at = datetime.now() if decision == "approved" else None
+        plan.status = RemediationPlanStatus.APPROVED if decision == "approved" else RemediationPlanStatus.REJECTED
+        db.commit()
+        db.refresh(plan)
+        return {
+            "success": True,
+            "task_id": task_id,
+            "plan_id": int(plan.id),
+            "message": "Approval decision recorded for remediation plan",
+            "approval_status": plan.approval_status,
+            "status": plan.status.value if hasattr(plan.status, "value") else str(plan.status),
+        }
+
+    decision = (payload.decision or "").lower()
+    if decision not in {"approved", "rejected"}:
+        raise HTTPException(status_code=400, detail="decision must be approved|rejected")
+
+    duplicate = db.query(AutomationApproval).filter(
+        AutomationApproval.task_id == task_id,
+        AutomationApproval.approver == payload.approver,
+    ).first()
+    if duplicate:
+        raise HTTPException(status_code=400, detail="approver has already submitted a decision")
+
+    approval = AutomationApproval(
         task_id=task_id,
         approver=payload.approver,
-        decision=payload.decision,
+        decision=decision,
         comment=payload.comment,
-        db=db,
+        decided_at=datetime.now(),
     )
-    if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("message", "approve failed"))
-    return result
+    db.add(approval)
+
+    task.status = "pending" if decision == "approved" else "aborted"
+    task.updated_at = datetime.now()
+    _append_legacy_approval(
+        task,
+        stage="审批决策",
+        payload={
+            "approver": payload.approver,
+            "decision": decision,
+            "comment": payload.comment,
+            "created_at": datetime.now().isoformat(),
+        },
+    )
+    db.commit()
+    db.refresh(task)
+    db.refresh(approval)
+    return {
+        "success": True,
+        "task_id": task_id,
+        "message": "Approval decision recorded for legacy automation task",
+        "approval": {
+            "id": approval.id,
+            "approver": approval.approver,
+            "decision": approval.decision,
+            "comment": approval.comment,
+            "decided_at": approval.decided_at,
+        },
+        "status": task.status,
+    }
 
 
 @router.get("/tasks/{task_id}/approval/history")
 async def get_task_approval_history(task_id: int, db: Session = Depends(get_db)):
-    task = db.query(AutomationTask).filter(AutomationTask.id == task_id).first()
-    if not task:
+    task, plan = _get_legacy_task_or_plan(db, task_id)
+    if task is None and plan is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    history = await approval_service.get_approval_history(task_id, db=db)
+
+    if plan is not None:
+        history = list((plan.safety_checks or {}).get("approval_history") or [])
+        return {"task_id": task_id, "total": len(history), "approvals": history}
+
+    history_rows = db.query(AutomationApproval).filter(
+        AutomationApproval.task_id == task_id
+    ).order_by(AutomationApproval.created_at.asc()).all()
+    history = [
+        {
+            "id": item.id,
+            "approver": item.approver,
+            "decision": item.decision,
+            "comment": item.comment,
+            "created_at": item.created_at,
+            "decided_at": item.decided_at,
+        }
+        for item in history_rows
+    ]
     return {"task_id": task_id, "total": len(history), "approvals": history}
 
 
@@ -542,16 +887,69 @@ async def get_pending_approvals(
     approver: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    result = await approval_service.get_pending_approvals(site_id=site_id, approver=approver, db=db)
-    return {"total": len(result), "items": result}
+    items: List[Dict[str, Any]] = []
+
+    legacy_tasks = _get_legacy_pending_approvals_query(db, site_id=site_id, approver=approver).order_by(
+        AutomationTask.created_at.asc()
+    ).limit(200).all()
+    for task in legacy_tasks:
+        items.append(
+            {
+                "task_id": task.id,
+                "task_code": task.task_code,
+                "site_id": task.site_id,
+                "status": task.status,
+                "source_model": "automation_task",
+                "created_at": task.created_at,
+            }
+        )
+
+    plan_query = db.query(RemediationPlan).join(CaseRecord, RemediationPlan.case_id == CaseRecord.id).filter(
+        RemediationPlan.status == RemediationPlanStatus.PENDING_APPROVAL
+    )
+    if site_id is not None:
+        plan_query = plan_query.filter(CaseRecord.site_id == site_id)
+    plans = plan_query.order_by(RemediationPlan.created_at.asc()).limit(200).all()
+    for plan in plans:
+        items.append(
+            {
+                "task_id": int(plan.id),
+                "task_code": plan.plan_code,
+                "site_id": plan.case.site_id if plan.case else None,
+                "status": plan.status.value if hasattr(plan.status, "value") else str(plan.status),
+                "source_model": "remediation_plan",
+                "created_at": plan.created_at,
+            }
+        )
+
+    items.sort(key=lambda item: item.get("created_at") or datetime.min)
+    return {"total": len(items), "items": items}
 
 
 @router.get("/tasks/{task_id}/feedback", response_model=TaskFeedbackListResponse)
 async def get_task_feedback(task_id: int, db: Session = Depends(get_db)):
     """获取任务反馈列表"""
-    task = db.query(AutomationTask).filter(AutomationTask.id == task_id).first()
-    if not task:
+    task, plan = _get_legacy_task_or_plan(db, task_id)
+    if task is None and plan is None:
         raise HTTPException(status_code=404, detail="Task not found")
+
+    if plan is not None:
+        feedbacks = _list_plan_feedback_entries(db, plan)
+        return {
+            "task_id": task_id,
+            "total": len(feedbacks),
+            "feedbacks": [
+                {
+                    "id": int(feedback.id),
+                    "verdict": (feedback.content or {}).get("verdict"),
+                    "comment": (feedback.content or {}).get("comment"),
+                    "reviewer": (feedback.content or {}).get("reviewer"),
+                    "tags": feedback.tags or [],
+                    "created_at": feedback.created_at,
+                }
+                for feedback in feedbacks
+            ],
+        }
 
     feedbacks = db.query(AutomationTaskFeedback).filter(
         AutomationTaskFeedback.task_id == task_id
@@ -581,13 +979,51 @@ async def submit_task_feedback(
     db: Session = Depends(get_db)
 ):
     """提交任务人工反馈，用于研判闭环"""
-    task = db.query(AutomationTask).filter(AutomationTask.id == task_id).first()
-    if not task:
+    task, plan = _get_legacy_task_or_plan(db, task_id)
+    if task is None and plan is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
     allowed_verdicts = {"correct", "incorrect", "partial"}
     if payload.verdict not in allowed_verdicts:
         raise HTTPException(status_code=400, detail="verdict must be one of correct|incorrect|partial")
+
+    if plan is not None:
+        entry = MemoryEntry(
+            case_id=plan.case_id,
+            memory_type=MemoryType.FEEDBACK,
+            memory_key=f"plan-feedback:{plan.id}:{int(datetime.now().timestamp() * 1000)}",
+            title=f"Plan Feedback {plan.plan_code}",
+            summary=payload.comment or plan.summary or "",
+            source="automation_feedback",
+            tags=payload.tags or [],
+            confidence=0.75 if payload.verdict == "correct" else 0.45,
+            success_score=1.0 if payload.verdict == "correct" else 0.3,
+            content={
+                "plan_id": int(plan.id),
+                "plan_code": plan.plan_code,
+                "case_id": int(plan.case_id),
+                "verdict": payload.verdict,
+                "comment": payload.comment,
+                "reviewer": payload.reviewer or "operator",
+                "tags": payload.tags or [],
+            },
+        )
+        db.add(entry)
+        db.commit()
+        db.refresh(entry)
+        return {
+            "success": True,
+            "message": "Feedback submitted",
+            "feedback": {
+                "id": int(entry.id),
+                "task_id": task_id,
+                "verdict": payload.verdict,
+                "comment": payload.comment,
+                "reviewer": payload.reviewer or "operator",
+                "tags": payload.tags or [],
+                "created_at": entry.created_at,
+            },
+        }
 
     feedback = AutomationTaskFeedback(
         task_id=task_id,
@@ -818,6 +1254,27 @@ async def get_dashboard_summary(
     running_tasks_count = tasks_query.filter(AutomationTask.status == "running").count()
     success_tasks_count = tasks_query.filter(AutomationTask.status == "success").count()
     failed_tasks_count = tasks_query.filter(AutomationTask.status == "failed").count()
+
+    plan_query = db.query(RemediationPlan).join(CaseRecord, RemediationPlan.case_id == CaseRecord.id)
+    if site_id:
+        plan_query = plan_query.filter(CaseRecord.site_id == site_id)
+    if start_date:
+        try:
+            start_datetime = datetime.strptime(start_date, "%Y-%m-%d")
+            plan_query = plan_query.filter(RemediationPlan.created_at >= start_datetime)
+        except ValueError:
+            pass
+    if end_date:
+        try:
+            end_datetime = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+            plan_query = plan_query.filter(RemediationPlan.created_at < end_datetime)
+        except ValueError:
+            pass
+
+    tasks_count += plan_query.count()
+    running_tasks_count += plan_query.filter(RemediationPlan.status == RemediationPlanStatus.EXECUTING).count()
+    success_tasks_count += plan_query.filter(RemediationPlan.status == RemediationPlanStatus.SUCCEEDED).count()
+    failed_tasks_count += plan_query.filter(RemediationPlan.status == RemediationPlanStatus.FAILED).count()
 
     try:
         feedback_stats = feedback_learning_service.get_feedback_stats(

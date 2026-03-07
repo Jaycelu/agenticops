@@ -25,10 +25,7 @@ from config.settings import settings
 from database import get_db
 from engines.case_orchestrator import case_orchestrator
 from models.automation import AlertEvent, AutomationTask, LocalTicket
-from services.decision_service import decision_service
-from services.event_skill_service import event_skill_service
 from services.playbook_draft_service import playbook_draft_service
-from services.schemas import ExecutionResult as SchemaExecutionResult, TaskTriggerEvent
 from services.ticket_adapter import ticket_adapter
 
 router = APIRouter(prefix="/api/events", tags=["events"])
@@ -257,85 +254,51 @@ def _build_event_from_eda(payload: EDAWebhookRequest) -> EventIngestRequest:
 
 
 async def _dispatch_readonly_for_event(event: AlertEvent, reviewer: str, db: Session) -> Dict[str, Any]:
-    if event.site_id is None:
-        return {"success": False, "task_id": None, "message": "Event missing site_id, skip auto dispatch"}
-
-    built = event_skill_service.build_decision_for_event(event)
-    decision = built["decision"]
-    trigger_event = TaskTriggerEvent(
-        event_type="event",
-        source_id=event.id,
-        source_type="AlertEvent",
-        data={
-            "source": event.source,
-            "name": event.name,
-            "severity": event.severity,
-            "host": event.host,
-        },
-    )
-
-    task_id = await decision_service.create_decision_task(
-        site_id=event.site_id,
-        netbox_device_id=event.netbox_device_id,
-        device_ip=event.host or "unknown",
-        decision_result=decision,
-        trigger_event=trigger_event,
-        policy_id=None,
-    )
-    if not task_id:
-        return {"success": False, "task_id": None, "message": "Failed to create task"}
-
-    task = db.query(AutomationTask).filter(AutomationTask.id == task_id).first()
-    if task:
-        playbook_draft = playbook_draft_service.generate_for_event(event)
-        task.audit_trail = built["audit_trail"]
-        task.audit_trail.append(
-            {
-                "stage": "PlaybookDraft",
-                "title": "生成并校验Playbook草稿（check模式）",
-                "payload": {
-                    "check": playbook_draft.get("check", {}),
-                    "playbook_yaml": playbook_draft.get("playbook_yaml", ""),
-                    "observe_only": True,
-                },
-            }
-        )
-        decision_payload = task.decision_result or {}
-        decision_context = decision_payload.get("context") or {}
-        decision_context["playbook_draft"] = {
-            "check": playbook_draft.get("check", {}),
-            "generated_at": datetime.now().isoformat(),
+    case_info = await _ensure_case_for_event(db, event)
+    if not case_info.get("case_id"):
+        return {
+            "success": False,
+            "task_id": None,
+            "case_id": None,
+            "case_code": None,
+            "message": "Failed to resolve case for event",
         }
-        decision_payload["context"] = decision_context
-        task.decision_result = decision_payload
-        event_payload = dict(event.payload or {})
-        event_payload["task"] = {
-            "task_id": task_id,
-            "task_code": task.task_code,
-            "status": "waiting_confirm",
-            "created_at": datetime.now().isoformat(),
-        }
-        event_payload["playbook_draft"] = {
-            "check": playbook_draft.get("check", {}),
-            "generated_at": datetime.now().isoformat(),
-        }
-        event.payload = event_payload
-        db.commit()
 
-    await decision_service.update_task_status(
-        task_id=task_id,
-        status="waiting_confirm",
-        execution_result=SchemaExecutionResult(
-            status="success",
-            message=f"只读研判任务已创建，等待人工确认（reviewer={reviewer}）",
-            details={"event_id": event.id, "read_only": True},
-        ),
+    event_payload = dict(event.payload or {})
+    playbook_draft = playbook_draft_service.generate_for_event(event)
+    event_payload["playbook_draft"] = {
+        "check": playbook_draft.get("check", {}),
+        "generated_at": datetime.now().isoformat(),
+    }
+    event_payload["dispatch"] = {
+        "mode": "case_pipeline",
+        "reviewer": reviewer,
+        "read_only": True,
+        "case_id": case_info.get("case_id"),
+        "case_code": case_info.get("case_code"),
+        "dispatched_at": datetime.now().isoformat(),
+    }
+    event.payload = event_payload
+    event.acknowledged = True
+    if event.status == "open":
+        event.status = "acknowledged"
+    db.commit()
+
+    await case_orchestrator.run_case_pipeline(
+        db,
+        case_id=case_info["case_id"],
+        log_query=event.host or event.name,
+        time_range="-30m,now",
+        log_limit=300,
     )
+    db.refresh(event)
     return {
         "success": True,
-        "task_id": task_id,
-        "message": "Read-only diagnosis task created",
-        "playbook_check": (event.payload or {}).get("playbook_draft", {}).get("check", {}),
+        "task_id": None,
+        "case_id": case_info.get("case_id"),
+        "case_code": case_info.get("case_code"),
+        "message": "Read-only diagnosis rerouted to case pipeline",
+        "playbook_check": playbook_draft.get("check", {}),
     }
 
 
@@ -473,6 +436,8 @@ async def dispatch_readonly_diagnosis(
         "success": bool(result.get("success", False)),
         "message": result.get("message", ""),
         "task_id": result.get("task_id"),
+        "case_id": result.get("case_id"),
+        "case_code": result.get("case_code"),
         "playbook_check": result.get("playbook_check", {}),
     }
 
@@ -584,7 +549,7 @@ async def create_event_ticket(
 async def get_event_relations(event_id: int, db: Session = Depends(get_db)):
     event = db.query(AlertEvent).filter(AlertEvent.id == event_id).first()
     if not event:
-        return {"event_id": event_id, "ticket": {}, "linked_tasks": []}
+        return {"event_id": event_id, "ticket": {}, "linked_case": None, "linked_tasks": []}
 
     # Keep query DB-agnostic by filtering in python for JSON trigger_event fields.
     linked = []
@@ -623,8 +588,18 @@ async def get_event_relations(event_id: int, db: Session = Depends(get_db)):
         except Exception:
             ticket_info = ticket_info
 
+    case_info = (event.payload or {}).get("case") or {}
+    linked_case = None
+    if case_info.get("case_id") and case_info.get("case_code"):
+        linked_case = {
+            "case_id": case_info.get("case_id"),
+            "case_code": case_info.get("case_code"),
+            "created_at": case_info.get("created_at"),
+        }
+
     return {
         "event_id": event_id,
         "ticket": ticket_info,
+        "linked_case": linked_case,
         "linked_tasks": linked,
     }

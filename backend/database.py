@@ -59,4 +59,6 @@ def init_db():
         SourceEvent, CaseRecord, EvidenceItem, AgentRun, AgentClaim,
         MemoryEntry, RemediationPlan, ExecutionRun
     )
+    from models.integration_settings import IntegrationSetting
+    from models.log_scope import LogScope
     Base.metadata.create_all(bind=engine)

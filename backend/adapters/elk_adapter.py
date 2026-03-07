@@ -55,15 +55,17 @@ class ELKAdapter:
     async def collect_logs(
         self,
         *,
+        scope_key: Optional[str] = None,
         base_name: Optional[str] = None,
         query: Optional[str] = None,
         time_range: str = "-15m,now",
         limit: int = 200,
     ) -> Dict[str, Any]:
-        if base_name:
+        if scope_key or base_name:
             result = await self.client.execute(
                 {
                     "action": "query_logs_by_base",
+                    "scope_key": scope_key,
                     "base_name": base_name,
                     "time_range": time_range,
                     "limit": limit,
@@ -143,4 +145,3 @@ class ELKAdapter:
 
 
 elk_adapter = ELKAdapter()
-

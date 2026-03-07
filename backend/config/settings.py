@@ -4,14 +4,16 @@ from typing import Optional
 
 
 class Settings(BaseSettings):
+    app_secret_key: str = ""
+
     # NetBox Configuration
-    netbox_url: str = "http://10.128.206.209"
-    netbox_api_token: str = "487ace85b4cd9019ac8df81c41654e05a77ee031"
+    netbox_url: str = ""
+    netbox_api_token: str = ""
 
     # ELK Configuration
-    elk_url: str = "http://10.40.29.10:8090/api/v2/search/sheets/"
-    elk_username: str = "lujianzhong"
-    elk_password: str = "trinasolar2025"
+    elk_url: str = ""
+    elk_username: str = ""
+    elk_password: str = ""
 
     # Zabbix Configuration
     zabbix_url: str = ""
@@ -20,9 +22,9 @@ class Settings(BaseSettings):
     zabbix_password: str = ""
 
     # Local LLM Configuration
-    llm_model_name: str = "Qwen3-32B-AWQ"
+    llm_model_name: str = "Qwen/Qwen3-32B-AWQ"
     llm_api_key: str = ""
-    llm_api_url: str = "http://10.128.253.45:8000/v1"
+    llm_api_url: str = "http://localhost:8000/v1"
 
     # Backend Configuration
     backend_host: str = "0.0.0.0"
@@ -33,12 +35,12 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:5173"
 
     # Database Configuration
-    database_url: str = "postgresql://ljz:ljz2025@localhost:5432/netops"
+    database_url: str = "postgresql://user:password@localhost:5432/netops_agenticops"
     database_host: str = "localhost"
     database_port: int = 5432
-    database_user: str = "ljz"
-    database_password: str = "ljz2025"
-    database_name: str = "netops"
+    database_user: str = "user"
+    database_password: str = "password"
+    database_name: str = "netops_agenticops"
 
     # Automation DB / Retention
     # 建议为自动化中心使用独立数据库（同一PostgreSQL实例）

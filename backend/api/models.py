@@ -1,6 +1,18 @@
-from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
-from api.schemas.settings import ModelUpdateRequest, ModelCreateRequest
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from api.schemas.settings import (
+    IntegrationConfigPayload,
+    LogScopePayload,
+    ModelUpdateRequest,
+    ModelCreateRequest,
+)
+from database import get_db
+from services.integration_config_service import integration_config_service
+from services.log_scope_service import log_scope_service
+from config.settings import settings
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -12,8 +24,8 @@ _models_store = {
         "name": "默认模型",
         "provider": "vllm",
         "api_key": "",
-        "api_url": "http://10.128.253.45:8000/v1",
-        "model": "Qwen3-32B-AWQ",
+        "api_url": settings.llm_api_url,
+        "model": settings.llm_model_name,
         "is_active": True,
         "parameters": {
             "temperature": 0.7,
@@ -21,6 +33,103 @@ _models_store = {
         }
     }
 }
+
+
+@router.get("/integrations")
+async def list_integrations(db: Session = Depends(get_db)):
+    return {
+        "success": True,
+        "data": integration_config_service.list_public_configs(db),
+    }
+
+
+@router.get("/integrations/{integration_type}")
+async def get_integration(integration_type: str, db: Session = Depends(get_db)):
+    try:
+        return {
+            "success": True,
+            "data": integration_config_service.get_public_config(db, integration_type),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.put("/integrations/{integration_type}")
+async def upsert_integration(
+    integration_type: str,
+    payload: IntegrationConfigPayload,
+    db: Session = Depends(get_db),
+):
+    try:
+        return {
+            "success": True,
+            "data": integration_config_service.upsert_config(db, integration_type, payload.model_dump()),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/integrations/{integration_type}/test")
+async def test_integration(integration_type: str, db: Session = Depends(get_db)):
+    try:
+        result = await integration_config_service.test_config(integration_type, db=db)
+        return {
+            "success": result["success"],
+            "message": result["message"],
+            "details": result["details"],
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/ssh-security")
+async def get_ssh_security_status():
+    return {
+        "success": True,
+        "data": {
+            "app_secret_key_configured": bool((settings.app_secret_key or "").strip()),
+            "message": "SSH 凭据与集成密钥使用 APP_SECRET_KEY 加密，明文不会通过设置接口回显。",
+        },
+    }
+
+
+@router.get("/log-scopes")
+async def list_log_scopes(db: Session = Depends(get_db)):
+    return {"success": True, "data": log_scope_service.list_scopes(db)}
+
+
+@router.post("/log-scopes")
+async def create_log_scope(payload: LogScopePayload, db: Session = Depends(get_db)):
+    try:
+        return {"success": True, "data": log_scope_service.create_scope(db, payload.model_dump())}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.put("/log-scopes/{scope_id}")
+async def update_log_scope(scope_id: int, payload: LogScopePayload, db: Session = Depends(get_db)):
+    try:
+        return {"success": True, "data": log_scope_service.update_scope(db, scope_id, payload.model_dump())}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.delete("/log-scopes/{scope_id}")
+async def delete_log_scope(scope_id: int, db: Session = Depends(get_db)):
+    try:
+        log_scope_service.delete_scope(db, scope_id)
+        return {"success": True, "message": "日志范围已删除"}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/log-scopes/{scope_id}/test")
+async def test_log_scope(scope_id: int, db: Session = Depends(get_db)):
+    try:
+        result = await log_scope_service.test_scope(db, scope_id)
+        return result
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get("/models")

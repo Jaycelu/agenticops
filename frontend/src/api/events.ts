@@ -20,6 +20,8 @@ export interface EventItem {
   last_seen_at?: string
   payload: Record<string, any>
   recommended_skill_code?: string
+  case_id?: number
+  case_code?: string
   created_at?: string
   updated_at?: string
 }
@@ -38,6 +40,11 @@ export interface EventListResponse {
 export interface EventRelationsResponse {
   event_id: number
   ticket: Record<string, any>
+  linked_case?: {
+    case_id: number
+    case_code: string
+    created_at?: string
+  } | null
   linked_tasks: Array<{
     task_id: number
     task_code: string
@@ -83,7 +90,7 @@ export const eventsApi = {
   async dispatchReadonly(
     eventId: number,
     reviewer: string = 'operator'
-  ): Promise<{ success: boolean; message: string; task_id?: number; playbook_check?: Record<string, any> }> {
+  ): Promise<{ success: boolean; message: string; task_id?: number | null; case_id?: number | null; case_code?: string | null; playbook_check?: Record<string, any> }> {
     const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/events/${eventId}/dispatch-readonly` : `${API_BASE_URL}/events/${eventId}/dispatch-readonly`
     const response = await axios.post(apiUrl, { reviewer })
     return response.data

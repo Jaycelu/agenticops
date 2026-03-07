@@ -8,6 +8,9 @@ class BaseConfigItem(BaseModel):
     name: str
     filter: str
     time_range: str
+    site_code: Optional[str] = None
+    site_name: Optional[str] = None
+    aliases: List[str] = Field(default_factory=list)
 
 
 class BaseConfigsResponse(BaseModel):

@@ -12,34 +12,52 @@ from typing import Any, Dict, List, Optional
 
 import paramiko
 import pynetbox
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy.orm import Session
 
 from config.settings import settings
 from models.automation import SSHCredential, SSHCredentialDeviceBinding
+from services.integration_config_service import integration_config_service
 
 logger = logging.getLogger(__name__)
 
 
 class SSHService:
-    def __init__(self):
-        self.nb = pynetbox.api(settings.netbox_url, token=settings.netbox_api_token)
-        self._cipher = Fernet(self._build_secret_key())
-
     def _build_secret_key(self) -> bytes:
-        base = f"{settings.database_url}|{settings.netbox_api_token}|netops_ssh_secret"
+        secret = (settings.app_secret_key or "").strip()
+        if not secret:
+            raise ValueError("APP_SECRET_KEY is required for SSH credential encryption")
+        base = f"{secret}|netops_ssh_secret"
         digest = hashlib.sha256(base.encode("utf-8")).digest()
         return base64.urlsafe_b64encode(digest)
+
+    def _build_cipher(self) -> Fernet:
+        return Fernet(self._build_secret_key())
+
+    def _build_legacy_cipher(self) -> Optional[Fernet]:
+        return integration_config_service.build_legacy_ssh_cipher()
+
+    def _get_netbox_client(self):
+        config = integration_config_service.get_netbox_runtime_config()
+        if not config.get("enabled") or not config.get("url") or not config.get("api_token"):
+            raise ValueError("netbox_not_configured")
+        return pynetbox.api(config["url"], token=config["api_token"])
 
     def _encrypt(self, plaintext: Optional[str]) -> Optional[str]:
         if not plaintext:
             return None
-        return self._cipher.encrypt(plaintext.encode("utf-8")).decode("utf-8")
+        return self._build_cipher().encrypt(plaintext.encode("utf-8")).decode("utf-8")
 
     def _decrypt(self, ciphertext: Optional[str]) -> Optional[str]:
         if not ciphertext:
             return None
-        return self._cipher.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
+        try:
+            return self._build_cipher().decrypt(ciphertext.encode("utf-8")).decode("utf-8")
+        except InvalidToken:
+            legacy_cipher = self._build_legacy_cipher()
+            if not legacy_cipher:
+                raise
+            return legacy_cipher.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
 
     def _sanitize_credential(self, credential: SSHCredential) -> Dict[str, Any]:
         return {
@@ -126,6 +144,7 @@ class SSHService:
         vendor: Optional[str] = None,
         device_type: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
+        nb = self._get_netbox_client()
         filters: Dict[str, Any] = {}
         if site:
             filters["site"] = site
@@ -134,7 +153,7 @@ class SSHService:
         if name:
             filters["q"] = name
 
-        devices = self.nb.dcim.devices.filter(**filters)
+        devices = nb.dcim.devices.filter(**filters)
         results: List[Dict[str, Any]] = []
         for device in devices:
             device_vendor = (
@@ -269,7 +288,8 @@ class SSHService:
         raise ValueError("unsupported private key format")
 
     def _device_by_id(self, device_id: int) -> Any:
-        device = self.nb.dcim.devices.get(device_id)
+        nb = self._get_netbox_client()
+        device = nb.dcim.devices.get(device_id)
         if not device:
             raise ValueError(f"netbox device not found: {device_id}")
         return device

@@ -22,6 +22,163 @@
           </button>
         </div>
 
+        <div v-if="currentTab === 'integrations'" class="settings-content">
+          <div class="section-header">
+            <div class="section-title">
+              <Globe class="section-icon" :size="20" />
+              <h2>集成配置</h2>
+            </div>
+          </div>
+
+          <div class="helper-banner">
+            <div>
+              <strong>敏感字段不会明文回显。</strong>
+              <p>NetBox、ELK、Zabbix 的连接参数存入数据库，密钥字段使用服务器上的 <code>APP_SECRET_KEY</code> 加密。</p>
+            </div>
+            <span :class="['banner-status', sshSecurity?.app_secret_key_configured ? 'ok' : 'warn']">
+              {{ sshSecurity?.app_secret_key_configured ? '主密钥已配置' : '缺少 APP_SECRET_KEY' }}
+            </span>
+          </div>
+
+          <div class="integration-grid">
+            <div v-for="integration in integrationMeta" :key="integration.id" class="integration-card">
+              <div class="card-header">
+                <div class="model-info">
+                  <h3>{{ integration.name }}</h3>
+                  <p class="model-provider">
+                    <Server :size="14" />
+                    {{ integration.description }}
+                  </p>
+                </div>
+                <div class="card-actions">
+                  <button
+                    class="btn-test"
+                    :disabled="testingIntegrations[integration.id]"
+                    @click="testIntegrationConfig(integration.id)"
+                  >
+                    <Zap :size="14" />
+                    {{ testingIntegrations[integration.id] ? '测试中...' : '测试连接' }}
+                  </button>
+                  <button
+                    class="btn-primary"
+                    :disabled="savingIntegrations[integration.id]"
+                    @click="saveIntegrationConfig(integration.id)"
+                  >
+                    <Loader2 v-if="savingIntegrations[integration.id]" class="animate-spin" :size="14" />
+                    <Check v-else :size="14" />
+                    {{ savingIntegrations[integration.id] ? '保存中...' : '保存配置' }}
+                  </button>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="toggle-row">
+                  <label class="toggle-label">
+                    <input v-model="integrationForms[integration.id].enabled" type="checkbox" />
+                    <span>启用 {{ integration.name }}</span>
+                  </label>
+                  <span class="integration-source">
+                    来源：{{ integrationForms[integration.id].source === 'database' ? '设置中心' : integrationForms[integration.id].source === 'env' ? '环境变量兼容' : '未配置' }}
+                  </span>
+                </div>
+
+                <div class="integration-form-grid">
+                  <div v-for="field in integration.configFields" :key="`${integration.id}-${field.key}`" class="form-group">
+                    <label>{{ field.label }}</label>
+                    <input
+                      v-model="integrationForms[integration.id].config[field.key]"
+                      type="text"
+                      :placeholder="field.placeholder"
+                    />
+                  </div>
+
+                  <div v-for="field in integration.secretFields" :key="`${integration.id}-${field.key}`" class="form-group">
+                    <label>{{ field.label }}</label>
+                    <input
+                      v-model="integrationForms[integration.id].secrets[field.key]"
+                      type="password"
+                      :placeholder="integrationForms[integration.id].secretStatus[field.key] ? '已保存，如需更新请重新输入' : field.placeholder"
+                    />
+                    <p class="help-text">
+                      {{ integrationForms[integration.id].secretStatus[field.key] ? '密钥已保存' : '尚未配置' }}
+                    </p>
+                  </div>
+                </div>
+
+                <div class="integration-footer">
+                  <span class="help-text">
+                    最近更新：{{ integrationForms[integration.id].updatedAt || '尚未保存' }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-header log-scope-header">
+            <div class="section-title">
+              <FileText class="section-icon" :size="20" />
+              <h2>日志范围配置</h2>
+            </div>
+            <button class="btn-secondary" @click="resetLogScopeForm">新建范围</button>
+          </div>
+
+          <div class="ssh-layout">
+            <div class="ssh-credentials-panel">
+              <h3>范围列表</h3>
+              <div class="credential-list">
+                <button
+                  v-for="scope in logScopes"
+                  :key="scope.id"
+                  class="credential-item"
+                  :class="{ active: selectedLogScopeId === scope.id }"
+                  @click="selectLogScope(scope.id)"
+                >
+                  <div>
+                    <strong>{{ scope.display_name }}</strong>
+                    <div class="credential-meta">
+                      {{ scope.scope_key }}
+                      <span v-if="scope.site_name_snapshot"> / {{ scope.site_name_snapshot }}</span>
+                    </div>
+                  </div>
+                  <Trash2 :size="14" class="delete-credential-icon" @click.stop="removeLogScope(scope.id)" />
+                </button>
+              </div>
+            </div>
+
+            <div class="ssh-bindings-panel">
+              <h3>{{ selectedLogScopeId ? '编辑日志范围' : '新建日志范围' }}</h3>
+              <div class="ssh-form">
+                <input v-model="logScopeForm.scope_key" placeholder="范围标识，如 campus_a" />
+                <input v-model="logScopeForm.display_name" placeholder="显示名称，如 A 园区日志" />
+                <select v-model="selectedLogScopeSiteKey" @change="applySelectedLogScopeSite">
+                  <option value="">不绑定站点</option>
+                  <option v-for="site in siteOptions" :key="site.id" :value="String(site.id)">
+                    {{ site.name }} ({{ site.slug || 'no-slug' }})
+                  </option>
+                </select>
+                <input v-model="logScopeForm.site_code_snapshot" placeholder="站点代码快照，如 SITE_A" />
+                <input v-model="logScopeForm.site_name_snapshot" placeholder="站点名称快照，如 A 园区" />
+                <input v-model="logScopeForm.aliasesText" placeholder="别名，逗号分隔，如 campus-a,园区A" />
+                <input v-model="logScopeForm.default_time_range" placeholder="默认时间窗，如 -1d,now" />
+                <input v-model.number="logScopeForm.sort_order" type="number" placeholder="排序" />
+                <label class="toggle-label">
+                  <input v-model="logScopeForm.enabled" type="checkbox" />
+                  <span>启用该日志范围</span>
+                </label>
+                <textarea v-model="logScopeForm.query_filter" rows="6" placeholder="输入 ELK 查询过滤条件"></textarea>
+                <div style="display: flex; gap: 8px;">
+                  <button class="btn-primary" @click="saveLogScope" :disabled="savingLogScope">
+                    {{ savingLogScope ? '保存中...' : selectedLogScopeId ? '更新范围' : '创建范围' }}
+                  </button>
+                  <button class="btn-secondary" @click="testCurrentLogScope" :disabled="testingLogScope || !selectedLogScopeId">
+                    {{ testingLogScope ? '测试中...' : '测试查询' }}
+                  </button>
+                </div>
+                <p v-if="logScopeTestMessage" class="help-text">{{ logScopeTestMessage }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 模型设置 -->
         <div v-if="currentTab === 'models'" class="settings-content">
           <div class="section-header">
@@ -793,6 +950,7 @@
 import { computed, ref, onMounted } from 'vue'
 
 import axios from 'axios'
+import { settingsApi, type LogScope } from '@/api/settings'
 import {
   bindCredentialDevices,
   createSSHCredential,
@@ -841,13 +999,14 @@ interface Provider {
 }
 
 const tabs = [
+  { id: 'integrations', name: '集成配置', icon: Globe },
   { id: 'models', name: '模型设置', icon: Cpu },
   { id: 'ssh', name: 'SSH 管理', icon: ShieldCheck },
   { id: 'command_templates', name: '命令模板设置', icon: Server },
   { id: 'templates', name: '巡检模板', icon: FileText }
 ]
 
-const currentTab = ref('models')
+const currentTab = ref('integrations')
 const models = ref<ModelConfig[]>([])
 const providers = ref<Provider[]>([])
 const activeModel = ref<ModelConfig | null>(null)
@@ -866,6 +1025,109 @@ const modelForm = ref({
     temperature: 0.7,
     max_tokens: 4096
   }
+})
+
+interface IntegrationFieldMeta {
+  key: string
+  label: string
+  placeholder: string
+}
+
+interface IntegrationMeta {
+  id: string
+  name: string
+  description: string
+  configFields: IntegrationFieldMeta[]
+  secretFields: IntegrationFieldMeta[]
+}
+
+interface IntegrationFormState {
+  enabled: boolean
+  config: Record<string, string>
+  secrets: Record<string, string>
+  secretStatus: Record<string, boolean>
+  updatedAt: string
+  source: string
+}
+
+interface SiteOption {
+  id: number
+  name: string
+  slug?: string
+}
+
+const integrationMeta: IntegrationMeta[] = [
+  {
+    id: 'netbox',
+    name: 'NetBox',
+    description: '资产、角色、站点与拓扑数据源',
+    configFields: [{ key: 'url', label: 'NetBox URL', placeholder: 'https://netbox.example.com' }],
+    secretFields: [{ key: 'api_token', label: 'API Token', placeholder: '输入新的 API Token' }]
+  },
+  {
+    id: 'elk',
+    name: 'ELK',
+    description: '日志检索与聚合数据源',
+    configFields: [{ key: 'url', label: 'ELK API URL', placeholder: 'https://elk.example.com/api/v2/search/sheets/' }],
+    secretFields: [
+      { key: 'username', label: '用户名', placeholder: '输入 ELK 用户名' },
+      { key: 'password', label: '密码', placeholder: '输入 ELK 密码' }
+    ]
+  },
+  {
+    id: 'zabbix',
+    name: 'Zabbix',
+    description: '告警与指标数据源',
+    configFields: [
+      { key: 'url', label: 'Zabbix URL', placeholder: 'https://zabbix.example.com' },
+      { key: 'api_url', label: 'Zabbix API URL', placeholder: 'https://zabbix.example.com/api_jsonrpc.php' }
+    ],
+    secretFields: [
+      { key: 'username', label: '用户名', placeholder: '输入 Zabbix 用户名' },
+      { key: 'password', label: '密码', placeholder: '输入 Zabbix 密码' }
+    ]
+  }
+]
+
+function createIntegrationForm(meta: IntegrationMeta): IntegrationFormState {
+  return {
+    enabled: false,
+    config: Object.fromEntries(meta.configFields.map((field) => [field.key, ''])),
+    secrets: Object.fromEntries(meta.secretFields.map((field) => [field.key, ''])),
+    secretStatus: Object.fromEntries(meta.secretFields.map((field) => [field.key, false])),
+    updatedAt: '',
+    source: 'default'
+  }
+}
+
+const integrationForms = ref<Record<string, IntegrationFormState>>(
+  Object.fromEntries(integrationMeta.map((meta) => [meta.id, createIntegrationForm(meta)]))
+)
+const savingIntegrations = ref<Record<string, boolean>>(
+  Object.fromEntries(integrationMeta.map((meta) => [meta.id, false]))
+)
+const testingIntegrations = ref<Record<string, boolean>>(
+  Object.fromEntries(integrationMeta.map((meta) => [meta.id, false]))
+)
+const sshSecurity = ref<{ app_secret_key_configured: boolean; message: string } | null>(null)
+const siteOptions = ref<SiteOption[]>([])
+const logScopes = ref<LogScope[]>([])
+const selectedLogScopeId = ref<number | null>(null)
+const selectedLogScopeSiteKey = ref('')
+const savingLogScope = ref(false)
+const testingLogScope = ref(false)
+const logScopeTestMessage = ref('')
+const logScopeForm = ref({
+  scope_key: '',
+  display_name: '',
+  netbox_site_id: null as number | null,
+  site_code_snapshot: '',
+  site_name_snapshot: '',
+  aliasesText: '',
+  query_filter: '',
+  default_time_range: '-1d,now',
+  enabled: true,
+  sort_order: 100
 })
 
 interface InspectionTemplate {
@@ -1024,6 +1286,207 @@ const allCandidateSelected = computed(() => {
 const allCmdCandidateSelected = computed(() => {
   return commandTemplateDevices.value.length > 0 && selectedCommandTemplateDeviceIds.value.length === commandTemplateDevices.value.length
 })
+
+async function loadIntegrations() {
+  const [integrationsResponse, sshResponse] = await Promise.all([
+    settingsApi.getIntegrations(),
+    settingsApi.getSshSecurityStatus()
+  ])
+
+  if (integrationsResponse.success && integrationsResponse.data) {
+    for (const item of integrationsResponse.data) {
+      const meta = integrationMeta.find((entry) => entry.id === item.integration_type)
+      if (!meta) continue
+      const nextForm = createIntegrationForm(meta)
+      nextForm.enabled = item.enabled
+      nextForm.source = item.source
+      nextForm.updatedAt = item.updated_at || ''
+      nextForm.config = { ...nextForm.config, ...(item.config || {}) }
+      nextForm.secretStatus = { ...nextForm.secretStatus, ...(item.secret_status || {}) }
+      integrationForms.value[item.integration_type] = nextForm
+    }
+  }
+
+  if (sshResponse.success && sshResponse.data) {
+    sshSecurity.value = sshResponse.data
+  }
+}
+
+async function loadSiteOptions() {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/assets/sites`)
+    siteOptions.value = response.data?.sites || []
+  } catch (error) {
+    console.error('Error loading site options:', error)
+  }
+}
+
+async function loadLogScopes() {
+  const response = await settingsApi.getLogScopes()
+  if (!response.success || !response.data) {
+    return
+  }
+  logScopes.value = response.data
+  if (!selectedLogScopeId.value && logScopes.value.length > 0) {
+    selectLogScope(logScopes.value[0].id)
+  }
+}
+
+function resetLogScopeForm() {
+  selectedLogScopeId.value = null
+  selectedLogScopeSiteKey.value = ''
+  logScopeTestMessage.value = ''
+  logScopeForm.value = {
+    scope_key: '',
+    display_name: '',
+    netbox_site_id: null,
+    site_code_snapshot: '',
+    site_name_snapshot: '',
+    aliasesText: '',
+    query_filter: '',
+    default_time_range: '-1d,now',
+    enabled: true,
+    sort_order: 100
+  }
+}
+
+function selectLogScope(scopeId: number) {
+  const scope = logScopes.value.find((item) => item.id === scopeId)
+  if (!scope) return
+  selectedLogScopeId.value = scope.id
+  selectedLogScopeSiteKey.value = scope.netbox_site_id ? String(scope.netbox_site_id) : ''
+  logScopeTestMessage.value = ''
+  logScopeForm.value = {
+    scope_key: scope.scope_key,
+    display_name: scope.display_name,
+    netbox_site_id: scope.netbox_site_id ?? null,
+    site_code_snapshot: scope.site_code_snapshot || '',
+    site_name_snapshot: scope.site_name_snapshot || '',
+    aliasesText: (scope.aliases || []).join(', '),
+    query_filter: scope.query_filter,
+    default_time_range: scope.default_time_range,
+    enabled: scope.enabled,
+    sort_order: scope.sort_order
+  }
+}
+
+function applySelectedLogScopeSite() {
+  const siteId = selectedLogScopeSiteKey.value ? Number(selectedLogScopeSiteKey.value) : null
+  logScopeForm.value.netbox_site_id = siteId
+  const site = siteOptions.value.find((item) => item.id === siteId)
+  if (!site) return
+  if (!logScopeForm.value.site_name_snapshot) {
+    logScopeForm.value.site_name_snapshot = site.name
+  }
+  if (!logScopeForm.value.site_code_snapshot) {
+    logScopeForm.value.site_code_snapshot = (site.slug || site.name || '').toUpperCase().replace(/[^A-Z0-9_]+/g, '_')
+  }
+}
+
+function buildLogScopePayload() {
+  return {
+    scope_key: logScopeForm.value.scope_key.trim(),
+    display_name: logScopeForm.value.display_name.trim(),
+    netbox_site_id: logScopeForm.value.netbox_site_id,
+    site_code_snapshot: logScopeForm.value.site_code_snapshot.trim() || null,
+    site_name_snapshot: logScopeForm.value.site_name_snapshot.trim() || null,
+    aliases: logScopeForm.value.aliasesText.split(',').map((item) => item.trim()).filter(Boolean),
+    query_filter: logScopeForm.value.query_filter.trim(),
+    default_time_range: logScopeForm.value.default_time_range.trim() || '-1d,now',
+    enabled: logScopeForm.value.enabled,
+    sort_order: Number(logScopeForm.value.sort_order || 100),
+    scope_metadata: {}
+  }
+}
+
+async function saveLogScope() {
+  const payload = buildLogScopePayload()
+  if (!payload.scope_key || !payload.display_name || !payload.query_filter) {
+    alert('请填写范围标识、显示名称和查询过滤条件')
+    return
+  }
+  savingLogScope.value = true
+  try {
+    const response = selectedLogScopeId.value
+      ? await settingsApi.updateLogScope(selectedLogScopeId.value, payload)
+      : await settingsApi.createLogScope(payload)
+    if (!response.success) {
+      alert(response.error || '保存日志范围失败')
+      return
+    }
+    await loadLogScopes()
+    if (response.data) {
+      selectLogScope(response.data.id)
+    }
+    alert('日志范围已保存')
+  } finally {
+    savingLogScope.value = false
+  }
+}
+
+async function removeLogScope(scopeId: number) {
+  if (!confirm('确认删除该日志范围吗？')) return
+  const response = await settingsApi.deleteLogScope(scopeId)
+  if (!response.success) {
+    alert(response.error || '删除日志范围失败')
+    return
+  }
+  if (selectedLogScopeId.value === scopeId) {
+    resetLogScopeForm()
+  }
+  await loadLogScopes()
+}
+
+async function testCurrentLogScope() {
+  if (!selectedLogScopeId.value) return
+  testingLogScope.value = true
+  try {
+    const response = await settingsApi.testLogScope(selectedLogScopeId.value)
+    logScopeTestMessage.value = response.error || response.message || '测试完成'
+  } finally {
+    testingLogScope.value = false
+  }
+}
+
+async function saveIntegrationConfig(integrationType: string) {
+  savingIntegrations.value[integrationType] = true
+  try {
+    const form = integrationForms.value[integrationType]
+    const secrets = Object.fromEntries(
+      Object.entries(form.secrets).filter(([, value]) => String(value || '').trim() !== '')
+    )
+    const response = await settingsApi.updateIntegration(integrationType, {
+      enabled: form.enabled,
+      config: form.config,
+      secrets
+    })
+    if (!response.success) {
+      alert(response.error || '保存集成配置失败')
+      return
+    }
+    await loadIntegrations()
+    integrationForms.value[integrationType].secrets = Object.fromEntries(
+      Object.keys(integrationForms.value[integrationType].secrets).map((key) => [key, ''])
+    )
+    alert('集成配置已保存')
+  } finally {
+    savingIntegrations.value[integrationType] = false
+  }
+}
+
+async function testIntegrationConfig(integrationType: string) {
+  testingIntegrations.value[integrationType] = true
+  try {
+    const response = await settingsApi.testIntegration(integrationType)
+    if (response.success) {
+      alert(response.message || '连接测试成功')
+      return
+    }
+    alert(response.error || response.message || '连接测试失败')
+  } finally {
+    testingIntegrations.value[integrationType] = false
+  }
+}
 
 async function loadModels() {
   try {
@@ -1669,6 +2132,9 @@ function resetForm() {
 }
 
 onMounted(() => {
+  loadIntegrations()
+  loadSiteOptions()
+  loadLogScopes()
   loadModels()
   loadProviders()
   loadTemplates()
@@ -1761,6 +2227,85 @@ onMounted(() => {
 
 .settings-content {
   padding: 24px;
+}
+
+.helper-banner {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #eef6ff 0%, #f5fbff 100%);
+  border: 1px solid #cfe2ff;
+  margin-bottom: 20px;
+}
+
+.helper-banner p {
+  margin: 6px 0 0;
+  color: #5c6b7a;
+  font-size: 13px;
+}
+
+.banner-status {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.banner-status.ok {
+  background: rgba(56, 142, 60, 0.12);
+  color: #2e7d32;
+}
+
+.banner-status.warn {
+  background: rgba(245, 124, 0, 0.12);
+  color: #ef6c00;
+}
+
+.integration-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.integration-card {
+  border: 2px solid #e8eef5;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.integration-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.integration-source {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.integration-footer {
+  margin-top: 8px;
 }
 
 .section-header {

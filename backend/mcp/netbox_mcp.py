@@ -1,8 +1,8 @@
 import pynetbox
 from typing import Dict, Any, Optional
 from datetime import datetime
-from config.settings import settings
 from .base import BaseMCP, MCPResult
+from services.integration_config_service import integration_config_service
 
 
 class NetBoxMCP(BaseMCP):
@@ -11,7 +11,12 @@ class NetBoxMCP(BaseMCP):
 
     def __init__(self):
         super().__init__()
-        self.nb = pynetbox.api(settings.netbox_url, token=settings.netbox_api_token)
+
+    def _get_client(self):
+        config = integration_config_service.get_netbox_runtime_config()
+        if not config.get("enabled") or not config.get("url") or not config.get("api_token"):
+            raise RuntimeError("netbox_not_configured")
+        return pynetbox.api(config["url"], token=config["api_token"])
 
     def describe(self) -> Dict[str, Any]:
         return {
@@ -37,6 +42,7 @@ class NetBoxMCP(BaseMCP):
         action = params.get("action")
 
         try:
+            self.nb = self._get_client()
             if action == "query_devices":
                 return await self._query_devices(params)
             elif action == "query_ips":

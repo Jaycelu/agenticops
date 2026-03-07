@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from config.settings import settings
 from config.logging import setup_logging
 from api import (
     assets_router,
@@ -73,9 +74,16 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+allowed_origins = {
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:3000",
+    settings.frontend_url,
+}
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:3000", "http://10.128.206.214:5173", "http://10.128.206.214:5174", "http://10.128.206.214:3000"],
+    allow_origins=sorted(origin for origin in allowed_origins if origin),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

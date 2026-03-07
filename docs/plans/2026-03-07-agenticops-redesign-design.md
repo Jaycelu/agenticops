@@ -204,15 +204,27 @@
 - 阶段 4：`LogSample.abnormal_type` 已从 ORM 模型移除，兼容展示改为读取 `raw_data.signal_summary.primary_signal`
 - 阶段 4：`AbnormalTrackerState` 已从 ORM 与 retention 清理逻辑中移除
 - 阶段 4：`state_aggregator / abnormal_upgrader / diagnosis_service / context_aware_diagnosis` 已切换为 `signal_key / needs_escalation` 主语义，旧 `abnormal_type / needs_upgrade` 仅作兼容镜像
+- 阶段 4：旧自动化任务查询 API 已兼容映射到 `RemediationPlan / ExecutionRun`，旧 `/api/automation/tasks*` 可读取新 Fabric 数据
+- 阶段 4：事件中心、日志中心已支持直接打开关联 Case，旧入口的主操作流已进一步收敛到 `Case 中心`
+- 阶段 4：事件中心 `dispatch-readonly` 已改为重跑 `case pipeline`，不再为新流程创建旧 `AutomationTask`
+- 阶段 4：无活跃调用的 `diagnosis_service / context_aware_diagnosis` 已删除，避免旧研判链路回流
+- 阶段 4：`log_sampler` 中未接入主流程的旧 `rule_evaluator / llm_diagnosis / decision_task` 兼容链路已删除
+- 阶段 4：旧 `task approval / feedback` 接口已支持兼容映射到 `RemediationPlan / MemoryEntry`
+- 阶段 4：已新增历史补迁脚本 `backend/scripts/backfill_agenticops_data.py`，用于将旧 `AutomationTask / AutomationTaskFeedback` 回填到 `SourceEvent / CaseRecord / RemediationPlan / MemoryEntry`
+- 阶段 4：无运行层引用的 `approval_service / confirmation_service / decision_service / event_skill_service` 已删除
+- 阶段 4：README 已按新 AgenticOps 架构重写，并补充 `backend/.env.example` 与 `frontend/.env.example`
+- 阶段 4：NetBox / ELK / Zabbix 凭据已迁移到 `设置 -> 集成配置`，敏感字段改为数据库密文存储，使用 `APP_SECRET_KEY` 解密
+- 阶段 4：ELK 日志范围已从硬编码 `base_configs` 迁移到 `log_scope` 数据模型与设置中心，可绑定 NetBox Site、别名和自定义时间窗
+- 阶段 4：日志页已切换为“日志范围”视图，后端新增 `/api/settings/log-scopes` 与 `/api/logs/scopes`
+- 阶段 4：已新增 `backend/scripts/import_log_scopes.py`，支持从 JSON 导入日志范围配置
 
 ### 进行中
 
-- 阶段 4：旧自动化页面路由已完成重定向，但旧自动化任务 API 仍在兼容保留
+- 阶段 4：旧自动化页面路由已完成重定向，旧自动化任务 API 仍以兼容视图保留，尚未完全下线
 - 阶段 4：少量旧服务返回体仍带 `abnormal_type / needs_upgrade` 兼容字段，但主流程已切到 `signal` 语义
+- 阶段 4：`Execution/Fabric` 链路已覆盖新工作台主流程，但 `/api/automation` 兼容层仍保留部分 legacy 数据模型输出
+- 阶段 4：历史补迁脚本已完成，但当前环境未启动 PostgreSQL，尚未完成一次真实 dry-run/正式 backfill 验证
 
 ### 未开始
 
-- 用新的 Execution/Fabric 链路完全替代旧自动化任务页面与 API
-- 将旧 `diagnosis_service / context_aware_diagnosis` 的调用点进一步并入 `agents/`，减少并存链路
-- 将旧事件中心、日志中心的详情交互进一步收敛到 Case 中心工作流
-- 增加旧数据向 `case_record / memory_entry / remediation_plan` 的补迁与审计脚本
+- 执行一次真实的 PostgreSQL backfill dry-run / 正式补迁并核对结果

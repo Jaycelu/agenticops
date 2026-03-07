@@ -10,6 +10,7 @@ from database import SessionLocal
 from engines.case_orchestrator import case_orchestrator
 from api.schemas.common import MessageResponse, error_detail
 from api.schemas.logs import BaseConfigsResponse, LogsResponse, AggregationResponse
+from services.log_scope_service import log_scope_service
 
 router = APIRouter(prefix="/api/logs", tags=["logs"])
 elk_mcp = ELKMCP()
@@ -26,12 +27,17 @@ class LogQueryRequest(BaseModel):
 
 @router.get("/bases", response_model=BaseConfigsResponse)
 async def get_base_configs():
-    """获取所有基地配置"""
+    """获取所有日志范围配置（兼容旧 bases 接口）"""
     result = await elk_mcp.execute({"action": "get_base_configs"})
     if result.success:
         return result.data
     else:
         raise HTTPException(status_code=500, detail=error_detail("LOG_UPSTREAM_ERROR", result.error))
+
+
+@router.get("/scopes", response_model=BaseConfigsResponse)
+async def get_log_scopes():
+    return await get_base_configs()
 
 
 @router.get("/query", response_model=LogsResponse)
@@ -137,43 +143,16 @@ async def query_logs_by_base(
         raise HTTPException(status_code=500, detail=error_detail("LOG_UPSTREAM_ERROR", result.error))
 
 
-@router.get("/deyang", response_model=LogsResponse)
-async def query_deyang_logs(
-    time_range: Optional[str] = None,
-    limit: int = 100,
-    offset: int = 0
-):
-    """查询德阳基地日志数据"""
-    params = {
-        "action": "query_logs_by_base",
-        "base_name": "deyang",
-        "time_range": time_range,
-        "limit": limit,
-        "offset": offset
-    }
-
-    # 尝试从缓存获取
-    cached_data = netbox_cache.get("logs_deyang", params)
-    if cached_data is not None:
-        return cached_data
-
-    # 缓存未命中，请求ELK
-    result = await elk_mcp.execute(params)
-    if result.success:
-        # 缓存结果（60秒）
-        netbox_cache.set("logs_deyang", params, result.data, ttl=60)
-        return result.data
-    else:
-        raise HTTPException(status_code=500, detail=error_detail("LOG_UPSTREAM_ERROR", result.error))
-
-
 @router.post("/clear-cache", response_model=MessageResponse)
 async def clear_cache():
     """清除日志缓存"""
     netbox_cache.clear("logs")
-    for base_name in elk_mcp.base_configs.keys():
-        netbox_cache.clear(f"logs_{base_name}")
-    netbox_cache.clear("logs_deyang")
+    db = SessionLocal()
+    try:
+        for scope in log_scope_service.list_scopes(db, enabled_only=True):
+            netbox_cache.clear(f"logs_{scope['scope_key']}")
+    finally:
+        db.close()
     return {"message": "Cache cleared successfully"}
 
 

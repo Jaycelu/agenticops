@@ -8,6 +8,9 @@ export interface BaseConfig {
   name: string
   filter: string
   time_range: string
+  site_code?: string
+  site_name?: string
+  aliases?: string[]
 }
 
 export interface BaseConfigsResponse {
@@ -43,6 +46,13 @@ export interface AggregationParams {
   base_name: string
   time_range?: string
   filter?: string
+  create_case?: boolean
+  run_pipeline?: boolean
+  site_id?: number
+  netbox_device_id?: number
+  device_ip?: string
+  host?: string
+  title?: string
   aggregation: {
     by_device: boolean
     by_level: boolean
@@ -69,6 +79,8 @@ export interface AggregationResponse {
   total_available?: number
   aggregated_groups: AggregatedGroup[]
   has_more?: boolean
+  case_id?: number | null
+  case_code?: string | null
 }
 
 export interface DeviceLogAnalysisRequest {
@@ -76,6 +88,13 @@ export interface DeviceLogAnalysisRequest {
   base_name_cn?: string
   device: string
   logs: LogEntry[]
+  create_case?: boolean
+  run_pipeline?: boolean
+  site_id?: number
+  netbox_device_id?: number
+  device_ip?: string
+  host?: string
+  title?: string
 }
 
 export interface DeviceLogAnalysisResponse {
@@ -83,15 +102,22 @@ export interface DeviceLogAnalysisResponse {
   result?: string
   device: string
   log_count: number
+  analyzed_count?: number
+  has_more?: boolean
+  case_id?: number | null
+  case_code?: string | null
   error?: string
 }
 
 export const logsApi = {
-  async getBases(): Promise<BaseConfigsResponse> {
-    // 如果使用VITE_API_BASE_URL环境变量，则API路径应包含/api前缀
-    const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/logs/bases` : `${API_BASE_URL}/logs/bases`
+  async getScopes(): Promise<BaseConfigsResponse> {
+    const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/logs/scopes` : `${API_BASE_URL}/logs/scopes`
     const response = await axios.get(apiUrl)
     return response.data
+  },
+
+  async getBases(): Promise<BaseConfigsResponse> {
+    return this.getScopes()
   },
 
   async queryLogs(params?: LogQueryParams): Promise<LogsResponse> {
@@ -107,16 +133,6 @@ export const logsApi = {
   ): Promise<LogsResponse> {
     // 如果使用VITE_API_BASE_URL环境变量，则API路径应包含/api前缀
     const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/logs/base/${baseName}` : `${API_BASE_URL}/logs/base/${baseName}`
-    const response = await axios.get(
-      apiUrl,
-      { params }
-    )
-    return response.data
-  },
-
-  async queryDeyangLogs(params?: LogQueryParams): Promise<LogsResponse> {
-    // 如果使用VITE_API_BASE_URL环境变量，则API路径应包含/api前缀
-    const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/logs/deyang` : `${API_BASE_URL}/logs/deyang`
     const response = await axios.get(
       apiUrl,
       { params }

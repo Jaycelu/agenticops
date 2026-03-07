@@ -86,7 +86,7 @@
                 {{ formatTime(item.occurred_at) }}
               </div>
             </div>
-            <div class="alert-body">
+          <div class="alert-body">
               <div class="alert-host">
                 <Server :size="16" />
                 {{ item.host || 'unknown-host' }}
@@ -95,6 +95,7 @@
               <div class="event-meta">
                 <span>来源: {{ item.source }}</span>
                 <span>事件ID: {{ item.external_event_id || '-' }}</span>
+                <span v-if="getEventCase(item).caseCode">Case: {{ getEventCase(item).caseCode }}</span>
               </div>
             </div>
           </div>
@@ -115,9 +116,17 @@
         <div class="detail-row"><span>主机</span><strong>{{ selectedEvent.host || '-' }}</strong></div>
         <div class="detail-row"><span>级别</span><strong>{{ selectedEvent.severity }}</strong></div>
         <div class="detail-row"><span>状态</span><strong>{{ selectedEvent.status }}</strong></div>
+        <div class="detail-row"><span>关联Case</span><strong>{{ selectedEventCase.caseCode || relations.linked_case?.case_code || '-' }}</strong></div>
         <div class="detail-row"><span>推荐Skill</span><strong>{{ recommendedSkillCode || '-' }}</strong></div>
         <div class="detail-row"><span>发生时间</span><strong>{{ formatTime(selectedEvent.occurred_at) }}</strong></div>
         <div class="detail-actions">
+          <button
+            v-if="selectedEventCase.caseId || relations.linked_case?.case_id"
+            class="btn-action primary"
+            @click="openCaseDetail(selectedEventCase.caseId || relations.linked_case?.case_id)"
+          >
+            打开 Case
+          </button>
           <button class="btn-action primary" :disabled="actionLoading" @click="dispatchReadonlySelected">
             {{ actionLoading ? '处理中...' : '触发只读研判' }}
           </button>
@@ -146,6 +155,14 @@
           <pre v-if="playbookDraft.playbook_yaml" class="playbook-yaml">{{ playbookDraft.playbook_yaml }}</pre>
         </div>
         <div class="relation-panel">
+          <h4>关联 Case</h4>
+          <div v-if="relations.linked_case?.case_id" class="relation-item">
+            <div class="relation-task-main">
+              <span>Case: {{ relations.linked_case.case_code }}</span>
+              <button class="btn-link-task" @click="openCaseDetail(relations.linked_case.case_id)">查看 Case</button>
+            </div>
+          </div>
+          <div v-else class="relation-item muted">暂无 Case 关联</div>
           <h4>关联工单</h4>
           <div class="relation-item" v-if="relations.ticket && relations.ticket.ticket_id">
             工单号: {{ relations.ticket.ticket_id }} / 状态: {{ relations.ticket.status || '-' }}
@@ -185,6 +202,11 @@ interface LinkedTaskRelation {
 
 interface EventRelationsState {
   ticket: Record<string, unknown>
+  linked_case?: {
+    case_id: number
+    case_code: string
+    created_at?: string
+  } | null
   linked_tasks: LinkedTaskRelation[]
 }
 
@@ -203,6 +225,7 @@ const playbookDraft = ref<{ check: Record<string, any>; playbook_yaml: string }>
 })
 const relations = ref<EventRelationsState>({
   ticket: {},
+  linked_case: null,
   linked_tasks: []
 })
 const filters = ref({
@@ -223,9 +246,19 @@ const recommendedSkillCode = computed(() => {
   )
 })
 
+const selectedEventCase = computed(() => getEventCase(selectedEvent.value))
+
 function formatTime(value?: string): string {
   if (!value) return '-'
   return new Date(value).toLocaleString('zh-CN')
+}
+
+function getEventCase(item?: EventItem | null): { caseId?: number; caseCode?: string } {
+  const payloadCase = (item?.payload || {}).case || {}
+  return {
+    caseId: item?.case_id || payloadCase.case_id,
+    caseCode: item?.case_code || payloadCase.case_code
+  }
 }
 
 async function loadMode() {
@@ -266,7 +299,7 @@ function closeDetail() {
   selectedEvent.value = null
   actionMessage.value = ''
   playbookDraft.value = { check: {}, playbook_yaml: '' }
-  relations.value = { ticket: {}, linked_tasks: [] }
+  relations.value = { ticket: {}, linked_case: null, linked_tasks: [] }
 }
 
 async function dispatchReadonlySelected() {
@@ -275,11 +308,27 @@ async function dispatchReadonlySelected() {
   actionMessage.value = ''
   try {
     const result = await eventsApi.dispatchReadonly(selectedEvent.value.id, 'operator')
-    actionMessage.value = result.message + (result.task_id ? `，任务ID: ${result.task_id}` : '')
+    actionMessage.value = result.message
+      + (result.case_code ? `，Case: ${result.case_code}` : result.case_id ? `，Case ID: ${result.case_id}` : '')
+      + (result.task_id ? `，任务ID: ${result.task_id}` : '')
     if (result.playbook_check) {
       playbookDraft.value = {
         check: result.playbook_check,
         playbook_yaml: playbookDraft.value.playbook_yaml
+      }
+    }
+    if (selectedEvent.value && result.case_id) {
+      selectedEvent.value = {
+        ...selectedEvent.value,
+        case_id: result.case_id || undefined,
+        case_code: result.case_code || undefined,
+        payload: {
+          ...(selectedEvent.value.payload || {}),
+          case: {
+            case_id: result.case_id,
+            case_code: result.case_code
+          }
+        }
       }
     }
     await loadRelations()
@@ -330,6 +379,7 @@ async function loadRelations() {
   const data = await eventsApi.getRelations(selectedEvent.value.id)
   relations.value = {
     ticket: data.ticket || {},
+    linked_case: data.linked_case || null,
     linked_tasks: data.linked_tasks || []
   }
 }
@@ -344,7 +394,18 @@ function getTaskStatusClass(status: string): string {
 }
 
 function openTaskDetail(taskId: number) {
-  void router.push(`/automation/tasks/${taskId}`)
+  void router.push({
+    path: '/fabric',
+    query: { taskId: String(taskId) }
+  })
+}
+
+function openCaseDetail(caseId?: number | null) {
+  if (!caseId) return
+  void router.push({
+    path: '/cases',
+    query: { caseId: String(caseId) }
+  })
 }
 
 onMounted(async () => {

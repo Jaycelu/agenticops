@@ -1,14 +1,11 @@
 """
 基地配置文件
-定义各基地与ELK查询条件的映射
-直接复用ELKMCP中的base_configs
+定义站点与日志范围的映射
 """
 from typing import Dict, List, Optional
-from mcp.elk_mcp import ELKMCP
+from database import SessionLocal
+from services.log_scope_service import log_scope_service
 
-
-# 获取ELKMCP实例以访问base_configs
-elk_mcp = ELKMCP()
 
 # 默认采样配置（适用于所有基地）
 DEFAULT_SAMPLING_CONFIG = {
@@ -170,8 +167,7 @@ FEEDBACK_LEARNING_OVERRIDES: Dict[str, Dict] = {}
 
 def get_site_config(site_code: str) -> Optional[dict]:
     """
-    根据基地代码获取基地配置
-    直接从ELKMCP的base_configs获取，并附加采样和研判配置
+    根据站点代码获取绑定的日志范围配置，并附加采样和研判配置
 
     Args:
         site_code: 基地代码
@@ -179,22 +175,23 @@ def get_site_config(site_code: str) -> Optional[dict]:
     Returns:
         基地配置字典，如果不存在则返回None
     """
-    # 转换为小写以匹配ELKMCP的键
-    site_code_lower = site_code.lower()
-
-    if site_code_lower not in elk_mcp.base_configs:
+    db = SessionLocal()
+    try:
+        scope = log_scope_service.resolve_scope(db=db, site_code=site_code)
+    finally:
+        db.close()
+    if not scope:
         return None
-
-    base_config = elk_mcp.base_configs[site_code_lower]
 
     # 构建完整的基地配置
     config = {
         "site_code": site_code.upper(),
-        "site_name": base_config["name"],
-        "description": f"{base_config['name']}网络设备",
+        "site_name": scope["display_name"],
+        "description": f"{scope['display_name']}网络设备",
         "elk_query": {
-            "filter": base_config["filter"],
-            "time_range": base_config["time_range"]
+            "scope_key": scope["scope_key"],
+            "filter": scope["query_filter"],
+            "time_range": scope["default_time_range"],
         },
         "sampling": DEFAULT_SAMPLING_CONFIG,
         "diagnosis_policy": DEFAULT_DIAGNOSIS_POLICY
@@ -205,13 +202,12 @@ def get_site_config(site_code: str) -> Optional[dict]:
 
 def get_all_sites() -> List[str]:
     """
-    获取所有已配置的基地代码列表
-    直接从ELKMCP的base_configs获取
+    获取所有已绑定日志范围的站点代码列表
 
     Returns:
         基地代码列表（大写）
     """
-    return [code.upper() for code in elk_mcp.base_configs.keys()]
+    return log_scope_service.list_bound_site_codes()
 
 
 def get_elk_query_for_site(site_code: str) -> Optional[dict]:

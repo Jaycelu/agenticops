@@ -119,9 +119,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { casesApi, type CaseSummary } from '@/api/cases'
 
+const route = useRoute()
 const loading = ref(false)
 const message = ref('')
 const statusFilter = ref('')
@@ -131,6 +133,12 @@ const selectedCase = ref<any | null>(null)
 const evidence = ref<any[]>([])
 const agentRuns = ref<any[]>([])
 const plans = ref<any[]>([])
+
+function getRequestedCaseId(): number | null {
+  const raw = Array.isArray(route.query.caseId) ? route.query.caseId[0] : route.query.caseId
+  const caseId = Number(raw)
+  return Number.isInteger(caseId) && caseId > 0 ? caseId : null
+}
 
 async function loadCases() {
   loading.value = true
@@ -143,7 +151,7 @@ async function loadCases() {
     })
     cases.value = result.items || []
     if (cases.value.length > 0) {
-      const nextId = selectedCase.value?.id || cases.value[0].id
+      const nextId = getRequestedCaseId() || selectedCase.value?.id || cases.value[0].id
       await selectCase(nextId)
     } else {
       selectedCase.value = null
@@ -178,6 +186,15 @@ async function selectCase(caseId: number) {
 onMounted(async () => {
   await loadCases()
 })
+
+watch(
+  () => route.query.caseId,
+  async () => {
+    const caseId = getRequestedCaseId()
+    if (!caseId) return
+    await selectCase(caseId)
+  }
+)
 </script>
 
 <style scoped>

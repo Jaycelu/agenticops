@@ -80,6 +80,8 @@ class EventIngestResponse(BaseModel):
 class EventIngestDispatchResult(BaseModel):
     dispatched: bool = False
     task_id: Optional[int] = None
+    case_id: Optional[int] = None
+    case_code: Optional[str] = None
     message: str = ""
 
 
@@ -105,6 +107,8 @@ class EventDispatchResponse(BaseModel):
     success: bool
     message: str
     task_id: Optional[int] = None
+    case_id: Optional[int] = None
+    case_code: Optional[str] = None
     playbook_check: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -129,9 +133,16 @@ class EventTaskLinkItem(BaseModel):
     created_at: Optional[datetime] = None
 
 
+class EventCaseLinkItem(BaseModel):
+    case_id: int
+    case_code: str
+    created_at: Optional[str] = None
+
+
 class EventRelationsResponse(BaseModel):
     event_id: int
     ticket: Dict[str, Any] = Field(default_factory=dict)
+    linked_case: Optional[EventCaseLinkItem] = None
     linked_tasks: List[EventTaskLinkItem] = Field(default_factory=list)
 
 

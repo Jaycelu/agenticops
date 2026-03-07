@@ -150,13 +150,15 @@ class LogSampler:
             # 转换时间范围为ELK格式
             time_range = f"-{time_window_minutes}m,now"
 
-            # 转换为小写以匹配ELKMCP的base_configs
-            base_name = site_code.lower()
+            scope_key = site_config.get("elk_query", {}).get("scope_key")
+            if not scope_key:
+                logger.error(f"Log scope not found for {site_code}")
+                return
 
-            # 直接使用ELKMCP的query_logs_by_base方法，复用日志模块的筛选条件
+            # 直接使用 ELK scope 查询
             elk_result = await self.elk_mcp.execute({
                 "action": "query_logs_by_base",
-                "base_name": base_name,
+                "scope_key": scope_key,
                 "time_range": time_range,
                 "limit": 1000
             })
@@ -181,7 +183,9 @@ class LogSampler:
                 time_window_start=time_window_start,
                 time_window_end=time_window_end,
                 collection_policy=collection_policy,
-                batch_id=batch_id
+                batch_id=batch_id,
+                scope_key=scope_key,
+                scope_name=site_config.get("site_name"),
             )
 
             logger.info(f"Completed log sampling for {site_code}")
@@ -349,7 +353,9 @@ class LogSampler:
         time_window_start: datetime,
         time_window_end: datetime,
         collection_policy: Optional[Dict] = None,
-        batch_id: Optional[str] = None
+        batch_id: Optional[str] = None,
+        scope_key: Optional[str] = None,
+        scope_name: Optional[str] = None,
     ):
         """
         将采样数据写入数据库
@@ -426,6 +432,8 @@ class LogSampler:
                     raw_data={
                         "device_ip": device_ip,
                         "batch_id": batch_id,
+                        "scope_key": scope_key,
+                        "scope_name": scope_name,
                         "log_messages": stats["log_messages"],
                         "other_error_count": stats.get("other_error_count", 0),
                         "other_error_fingerprints": stats.get("other_error_fingerprints", []),
@@ -783,7 +791,7 @@ class LogSampler:
             await case_orchestrator.run_case_pipeline(
                 db,
                 case_id=case.id,
-                base_name=site.site_code.lower(),
+                base_name=raw_data.get("scope_key") or site.site_code.lower(),
                 log_query=device_ip,
                 time_range=f"-{max(window_minutes * 2, 15)}m,now",
                 log_limit=max(200, min(1000, pattern_summary.get("message_count", 200) or 200)),
@@ -831,128 +839,6 @@ class LogSampler:
         except Exception as e:
             logger.error(f"Error getting device ID from NetBox: {e}", exc_info=True)
             return None
-
-    async def _run_rule_engine_diagnosis(
-        self,
-        db: Session,
-        site_id: int,
-        netbox_device_id: Optional[int],
-        device_ip: str,
-        device_stats: Dict[str, Any],
-        log_sample: LogSample
-    ):
-        """
-        运行规则引擎诊断
-
-        Args:
-            db: 数据库会话
-            site_id: 基地ID
-            netbox_device_id: NetBox设备ID
-            device_ip: 设备IP
-            device_stats: 设备统计数据
-            log_sample: 日志采样对象
-        """
-        try:
-            # 导入规则评估器和决策服务
-            from services.rule_evaluator import rule_evaluator
-            from services.llm_diagnosis import llm_diagnosis_service
-            from services.decision_service import decision_service
-            from services.schemas import DecisionResult, TaskTriggerEvent
-
-            # 1. 运行规则引擎
-            rule_results = rule_evaluator.evaluate_log_sample(
-                site_id, device_ip, device_stats
-            )
-
-            # 2. 如果规则匹配，创建决策任务
-            if rule_results:
-                logger.info(f"Rule engine matched {len(rule_results)} rules for {device_ip}")
-
-                for rule_result in rule_results:
-                    # 转换规则结果为DecisionResult
-                    diagnosis_result = rule_result["result"]
-                    base_severity = diagnosis_result.get("severity", "medium")
-                    diagnosis_result["severity"] = base_severity
-                    diagnosis_result["risk_level"] = base_severity
-
-                    decision_result = DecisionResult(
-                        rule_id=rule_result["rule_id"],
-                        rule_name=rule_result["rule_name"],
-                        diagnosis=diagnosis_result,
-                        context=device_stats
-                    )
-
-                    # 创建触发事件
-                    trigger_event = TaskTriggerEvent(
-                        event_type="log_sample",
-                        source_id=log_sample.id,
-                        source_type="LogSample",
-                        data=device_stats
-                    )
-
-                    # 创建决策任务
-                    await decision_service.create_decision_task(
-                        site_id=site_id,
-                        netbox_device_id=netbox_device_id,
-                        device_ip=device_ip,
-                        decision_result=decision_result,
-                        trigger_event=trigger_event
-                    )
-
-            # 3. 如果没有规则匹配，使用LLM诊断
-            else:
-                logger.debug(f"No rules matched for {device_ip}, using LLM diagnosis")
-
-                # 获取设备信息
-                device_info = None
-                if netbox_device_id:
-                    try:
-                        from mcp.netbox_mcp import NetBoxMCP
-                        netbox_mcp = NetBoxMCP()
-                        result = await netbox_mcp.execute({
-                            "action": "get_device_by_id",
-                            "device_id": netbox_device_id
-                        })
-                        if result.success and result.data:
-                            device_info = result.data
-                    except Exception as e:
-                        logger.warning(f"Error getting device info from NetBox: {e}")
-
-                # 调用LLM诊断
-                llm_diagnosis = await llm_diagnosis_service.diagnose_log_sample(
-                    site_id=site_id,
-                    device_ip=device_ip,
-                    device_stats=device_stats,
-                    device_info=device_info
-                )
-
-                # 创建决策结果
-                decision_result = DecisionResult(
-                    rule_id=None,
-                    rule_name="LLM Diagnosis",
-                    diagnosis=llm_diagnosis,
-                    context=device_stats
-                )
-
-                # 创建触发事件
-                trigger_event = TaskTriggerEvent(
-                    event_type="log_sample",
-                    source_id=log_sample.id,
-                    source_type="LogSample",
-                    data=device_stats
-                )
-
-                # 创建决策任务
-                await decision_service.create_decision_task(
-                    site_id=site_id,
-                    netbox_device_id=netbox_device_id,
-                    device_ip=device_ip,
-                    decision_result=decision_result,
-                    trigger_event=trigger_event
-                )
-
-        except Exception as e:
-            logger.error(f"Error running rule engine diagnosis: {e}", exc_info=True)
 
     async def _check_and_create_raw_anomaly(
         self,

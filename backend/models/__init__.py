@@ -21,6 +21,8 @@ from models.agenticops import (
     RemediationPlan,
     ExecutionRun,
 )
+from models.integration_settings import IntegrationSetting
+from models.log_scope import LogScope
 
 __all__ = [
     "Site",
@@ -39,4 +41,6 @@ __all__ = [
     "MemoryEntry",
     "RemediationPlan",
     "ExecutionRun",
+    "IntegrationSetting",
+    "LogScope",
 ]
