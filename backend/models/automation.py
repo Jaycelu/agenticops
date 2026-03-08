@@ -421,26 +421,6 @@ class SSHCredentialDeviceBinding(Base):
     )
 
 
-class CommandTemplate(Base):
-    """厂商命令模板"""
-    __tablename__ = "command_template"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(120), nullable=False, index=True)
-    template_type = Column(String(80), nullable=False, default="diagnosis_default", index=True)
-    vendor = Column(String(120), nullable=False, index=True)
-    commands = Column(JSON, nullable=False, default=list)
-    description = Column(Text)
-    is_builtin = Column(Boolean, default=False)
-    enabled = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-
-    __table_args__ = (
-        Index("idx_command_template_vendor_type", "vendor", "template_type"),
-    )
-
-
 class RawAnomaly(Base):
     """原始异常表 - 捕获行为偏离正常基线的异常"""
     __tablename__ = "raw_anomaly"

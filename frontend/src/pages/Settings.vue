@@ -406,157 +406,6 @@
           </div>
         </div>
 
-        <!-- 命令模板设置 -->
-        <div v-if="currentTab === 'command_templates'" class="settings-content">
-          <div class="section-header">
-            <div class="section-title">
-              <Server class="section-icon" :size="20" />
-              <h2>命令模板设置</h2>
-            </div>
-          </div>
-          <div class="ssh-layout">
-            <div class="ssh-credentials-panel">
-              <h3>模板列表</h3>
-              <div class="credential-list">
-                <button
-                  v-for="item in commandTemplates"
-                  :key="item.id"
-                  class="credential-item"
-                  :class="{ active: selectedCommandTemplateId === item.id }"
-                  @click="selectCommandTemplate(item.id)"
-                >
-                  <div>
-                    <strong>{{ item.name }}</strong>
-                    <div class="credential-meta">{{ item.vendor }} / {{ item.template_type }}</div>
-                  </div>
-                  <Trash2 :size="14" class="delete-credential-icon" @click.stop="removeCommandTemplate(item.id)" />
-                </button>
-              </div>
-            </div>
-            <div class="ssh-bindings-panel">
-              <h3>{{ selectedCommandTemplateId ? '编辑模板' : '新建模板' }}</h3>
-              <div class="ssh-form">
-                <input v-model="commandTemplateForm.name" placeholder="模板名称，如基础信息采集" />
-                <input v-model="commandTemplateForm.vendor" placeholder="厂商，如Huawei/Cisco" />
-                <input v-model="commandTemplateForm.template_type" placeholder="模板类型，如diagnosis_default" />
-                <textarea v-model="commandTemplateForm.description" rows="2" placeholder="模板描述"></textarea>
-                <textarea v-model="commandTemplateForm.commandsText" rows="8" placeholder="每行一个命令"></textarea>
-                <div style="display: flex; gap: 8px;">
-                  <button class="btn-primary" @click="saveCommandTemplate">{{ selectedCommandTemplateId ? '更新模板' : '创建模板' }}</button>
-                  <button class="btn-secondary" @click="resetCommandTemplateForm">重置</button>
-                </div>
-              </div>
-
-              <h3 style="margin-top: 12px;">批量下发校验</h3>
-              <div class="device-filter-grid">
-                <input v-model="cmdDeviceNameFilter" placeholder="按设备名称搜索" />
-                <select v-model="cmdDeviceSiteFilter">
-                  <option value="">全部站点</option>
-                  <option v-for="site in cmdFilterOptions.sites" :key="site" :value="site">{{ site }}</option>
-                </select>
-                <select v-model="cmdDeviceTypeFilter">
-                  <option value="">全部设备类型</option>
-                  <option v-for="item in cmdFilterOptions.types" :key="item" :value="item">{{ item }}</option>
-                </select>
-                <select v-model="cmdDeviceVendorFilter">
-                  <option value="">全部厂商</option>
-                  <option v-for="item in cmdFilterOptions.vendors" :key="item" :value="item">{{ item }}</option>
-                </select>
-                <select v-model="cmdDeviceRoleFilter">
-                  <option value="">全部角色</option>
-                  <option v-for="item in cmdFilterOptions.roles" :key="item" :value="item">{{ item }}</option>
-                </select>
-                <input v-model="cmdDeviceTagFilter" placeholder="Tag过滤(可选)" />
-                <button class="btn-secondary" @click="loadCommandTemplateDevices">加载设备</button>
-              </div>
-              <div class="candidate-toolbar">
-                <label class="select-all">
-                  <input type="checkbox" :checked="allCmdCandidateSelected" @change="toggleAllCommandTemplateDevices" />
-                  <span>全选当前列表</span>
-                </label>
-                <span class="selected-count">已选 {{ selectedCommandTemplateDeviceIds.length }} / {{ commandTemplateDevices.length }}</span>
-              </div>
-              <div class="candidate-list">
-                <label v-for="device in commandTemplateDevices" :key="device.id" class="candidate-item">
-                  <input v-model="selectedCommandTemplateDeviceIds" type="checkbox" :value="device.id" />
-                  <span>{{ device.name }} ({{ device.vendor || '-' }})</span>
-                  <small>{{ device.primary_ip || '-' }} / {{ device.site || '-' }} / {{ device.role || '-' }} / {{ device.device_type || '-' }}</small>
-                </label>
-              </div>
-              <button class="btn-primary" @click="runCommandTemplateValidation">校验模板与设备厂商匹配</button>
-              <div v-if="commandTemplateValidationResult" style="margin-top: 8px;">
-                <div v-if="commandTemplateValidationResult.is_all_matched" class="binding-status success">全部匹配，可下发</div>
-                <div v-else class="binding-status failed">存在厂商不匹配设备：{{ commandTemplateValidationResult.mismatched.length }} 台</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 巡检模板设置 -->
-        <div v-if="currentTab === 'templates'" class="settings-content">
-          <div class="section-header">
-            <div class="section-title">
-              <FileText class="section-icon" :size="20" />
-              <h2>巡检模板</h2>
-            </div>
-            <div class="section-actions">
-              <p class="section-desc">配置和管理网络设备巡检模板，支持连接测试</p>
-              <button @click="openCreateTemplateModal" class="btn-primary">
-                <Plus :size="16" />
-                添加模板
-              </button>
-            </div>
-          </div>
-
-          <!-- 模板列表 -->
-          <div class="templates-list">
-            <div
-              v-for="template in templates"
-              :key="template.id"
-              class="template-card"
-            >
-              <div class="template-header">
-                <div class="template-info">
-                  <h3>{{ template.name }}</h3>
-                  <p class="template-role">{{ template.device_role }}</p>
-                </div>
-                <div class="template-actions">
-                  <button @click="viewTemplateDetail(template.id)" class="btn-view">
-                    <Info :size="14" />
-                    详情
-                  </button>
-                  <button @click="openTestModal(template.id)" class="btn-test">
-                    <Zap :size="14" />
-                    测试
-                  </button>
-                  <button @click="editTemplate(template.id)" class="btn-edit">
-                    <Pencil :size="14" />
-                    编辑
-                  </button>
-                  <button @click="deleteTemplate(template.id)" class="btn-delete">
-                    <Trash2 :size="14" />
-                    删除
-                  </button>
-                </div>
-              </div>
-              <div class="template-body">
-                <p class="template-desc">{{ template.description }}</p>
-                <div class="template-meta">
-                  <span class="meta-item">
-                    <Hash :size="12" />
-                    {{ template.item_count }} 个巡检项
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="templates.length === 0" class="empty-state">
-            <FileText class="empty-icon" :size="64" />
-            <h3>暂无巡检模板</h3>
-            <p>系统正在加载巡检模板...</p>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -961,13 +810,6 @@ import {
   testSSHConnectivity,
 } from '@/api/ssh'
 import {
-  createCommandTemplate,
-  deleteCommandTemplate,
-  listCommandTemplates,
-  updateCommandTemplate,
-  validateTemplateDeployment
-} from '@/api/command_templates'
-import {
   Settings, Cpu, Plus, Server, Globe, Box, Sliders, CheckCircle2, Zap,
   Power, Pencil, Trash2, Building2, Key, Thermometer, Hash, X, Info,
   Loader2, Check, PlusCircle, FileText, ShieldCheck, User, XCircle
@@ -1001,9 +843,7 @@ interface Provider {
 const tabs = [
   { id: 'integrations', name: '集成配置', icon: Globe },
   { id: 'models', name: '模型设置', icon: Cpu },
-  { id: 'ssh', name: 'SSH 管理', icon: ShieldCheck },
-  { id: 'command_templates', name: '命令模板设置', icon: Server },
-  { id: 'templates', name: '巡检模板', icon: FileText }
+  { id: 'ssh', name: 'SSH 管理', icon: ShieldCheck }
 ]
 
 const currentTab = ref('integrations')
@@ -1224,35 +1064,6 @@ const sshForm = ref({
   port: 22
 })
 
-interface CommandTemplateItem {
-  id: number
-  name: string
-  template_type: string
-  vendor: string
-  commands: string[]
-  description?: string
-  enabled: boolean
-}
-
-const commandTemplates = ref<CommandTemplateItem[]>([])
-const selectedCommandTemplateId = ref<number | null>(null)
-const commandTemplateForm = ref({
-  name: '',
-  template_type: 'diagnosis_default',
-  vendor: '',
-  description: '',
-  commandsText: ''
-})
-const commandTemplateDevices = ref<any[]>([])
-const cmdDeviceSiteFilter = ref('')
-const cmdDeviceTagFilter = ref('')
-const cmdDeviceNameFilter = ref('')
-const cmdDeviceRoleFilter = ref('')
-const cmdDeviceVendorFilter = ref('')
-const cmdDeviceTypeFilter = ref('')
-const selectedCommandTemplateDeviceIds = ref<number[]>([])
-const commandTemplateValidationResult = ref<any>(null)
-
 const sshFilterOptions = computed(() => {
   const sites = [...new Set(candidateDevices.value.map((d: any) => d.site).filter(Boolean))] as string[]
   const roles = [...new Set(candidateDevices.value.map((d: any) => d.role).filter(Boolean))] as string[]
@@ -1266,25 +1077,8 @@ const sshFilterOptions = computed(() => {
   }
 })
 
-const cmdFilterOptions = computed(() => {
-  const sites = [...new Set(commandTemplateDevices.value.map((d: any) => d.site).filter(Boolean))] as string[]
-  const roles = [...new Set(commandTemplateDevices.value.map((d: any) => d.role).filter(Boolean))] as string[]
-  const vendors = [...new Set(commandTemplateDevices.value.map((d: any) => d.vendor).filter(Boolean))] as string[]
-  const types = [...new Set(commandTemplateDevices.value.map((d: any) => d.device_type).filter(Boolean))] as string[]
-  return {
-    sites: sites.sort((a, b) => a.localeCompare(b)),
-    roles: roles.sort((a, b) => a.localeCompare(b)),
-    vendors: vendors.sort((a, b) => a.localeCompare(b)),
-    types: types.sort((a, b) => a.localeCompare(b))
-  }
-})
-
 const allCandidateSelected = computed(() => {
   return candidateDevices.value.length > 0 && selectedDeviceIds.value.length === candidateDevices.value.length
-})
-
-const allCmdCandidateSelected = computed(() => {
-  return commandTemplateDevices.value.length > 0 && selectedCommandTemplateDeviceIds.value.length === commandTemplateDevices.value.length
 })
 
 async function loadIntegrations() {
@@ -1634,111 +1428,6 @@ function statusText(status: string) {
     unknown: '未检查'
   }
   return map[status] || status
-}
-
-async function loadCommandTemplates() {
-  const response = await listCommandTemplates()
-  commandTemplates.value = response.data || []
-}
-
-function resetCommandTemplateForm() {
-  selectedCommandTemplateId.value = null
-  commandTemplateForm.value = {
-    name: '',
-    template_type: 'diagnosis_default',
-    vendor: '',
-    description: '',
-    commandsText: ''
-  }
-}
-
-function selectCommandTemplate(id: number) {
-  selectedCommandTemplateId.value = id
-  const item = commandTemplates.value.find(i => i.id === id)
-  if (!item) return
-  commandTemplateForm.value = {
-    name: item.name,
-    template_type: item.template_type,
-    vendor: item.vendor,
-    description: item.description || '',
-    commandsText: (item.commands || []).join('\n')
-  }
-}
-
-async function saveCommandTemplate() {
-  const commands = commandTemplateForm.value.commandsText
-    .split('\n')
-    .map(s => s.trim())
-    .filter(Boolean)
-  const payload = {
-    name: commandTemplateForm.value.name,
-    template_type: commandTemplateForm.value.template_type,
-    vendor: commandTemplateForm.value.vendor,
-    description: commandTemplateForm.value.description,
-    commands
-  }
-  if (!payload.name || !payload.vendor || commands.length === 0) {
-    alert('请填写模板名称、厂商和至少一条命令')
-    return
-  }
-  if (selectedCommandTemplateId.value) {
-    await updateCommandTemplate(selectedCommandTemplateId.value, payload)
-  } else {
-    await createCommandTemplate(payload)
-  }
-  await loadCommandTemplates()
-  resetCommandTemplateForm()
-}
-
-async function removeCommandTemplate(id: number) {
-  if (!confirm('确认删除该命令模板吗？')) return
-  await deleteCommandTemplate(id)
-  if (selectedCommandTemplateId.value === id) {
-    resetCommandTemplateForm()
-  }
-  await loadCommandTemplates()
-}
-
-async function loadCommandTemplateDevices() {
-  const response = await queryNetBoxDevices({
-    site: cmdDeviceSiteFilter.value || undefined,
-    tag: cmdDeviceTagFilter.value || undefined,
-    name: cmdDeviceNameFilter.value || undefined,
-    role: cmdDeviceRoleFilter.value || undefined,
-    vendor: cmdDeviceVendorFilter.value || undefined,
-    device_type: cmdDeviceTypeFilter.value || undefined
-  })
-  commandTemplateDevices.value = response.data || []
-  selectedCommandTemplateDeviceIds.value = selectedCommandTemplateDeviceIds.value.filter((id) =>
-    commandTemplateDevices.value.some((device: any) => device.id === id)
-  )
-}
-
-function toggleAllCommandTemplateDevices() {
-  if (allCmdCandidateSelected.value) {
-    selectedCommandTemplateDeviceIds.value = []
-    return
-  }
-  selectedCommandTemplateDeviceIds.value = commandTemplateDevices.value.map((item: any) => item.id)
-}
-
-async function runCommandTemplateValidation() {
-  if (!selectedCommandTemplateId.value) {
-    alert('请先选择模板')
-    return
-  }
-  if (selectedCommandTemplateDeviceIds.value.length === 0) {
-    alert('请勾选设备')
-    return
-  }
-  const response = await validateTemplateDeployment(
-    selectedCommandTemplateId.value,
-    selectedCommandTemplateDeviceIds.value
-  )
-  commandTemplateValidationResult.value = response.data
-  if (!response.data.is_all_matched) {
-    alert(`存在${response.data.mismatched.length}台设备厂商不匹配，请调整后再下发`)
-  }
 }
 
 async function loadProviders() {
@@ -2140,8 +1829,6 @@ onMounted(() => {
   loadTemplates()
   loadSSHCredentials()
   loadNetBoxDeviceCandidates()
-  loadCommandTemplates()
-  loadCommandTemplateDevices()
 })
 </script>
 

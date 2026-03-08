@@ -244,14 +244,14 @@ class IntegrationConfigService:
         finally:
             local_db.close()
 
-    def get_netbox_runtime_config(self) -> dict[str, Any]:
-        return self.get_runtime_config("netbox")
+    def get_netbox_runtime_config(self, *, db: Session | None = None) -> dict[str, Any]:
+        return self.get_runtime_config("netbox", db=db)
 
-    def get_elk_runtime_config(self) -> dict[str, Any]:
-        return self.get_runtime_config("elk")
+    def get_elk_runtime_config(self, *, db: Session | None = None) -> dict[str, Any]:
+        return self.get_runtime_config("elk", db=db)
 
-    def get_zabbix_runtime_config(self) -> dict[str, Any]:
-        return self.get_runtime_config("zabbix")
+    def get_zabbix_runtime_config(self, *, db: Session | None = None) -> dict[str, Any]:
+        return self.get_runtime_config("zabbix", db=db)
 
     def build_legacy_ssh_cipher(self) -> Fernet | None:
         netbox_token = self.get_netbox_runtime_config().get("api_token", "")

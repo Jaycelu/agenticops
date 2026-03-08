@@ -42,35 +42,45 @@ class BaselineCalculator:
             should_close = False
 
         try:
-            # 查询过去7天的采样数据
+            # 查询过去7天的采样数据，从raw_data JSON中提取fingerprint和log_count
             sql = text("""
                 SELECT
                     site_id,
                     netbox_device_id,
-                    log_fingerprint,
-                    AVG(log_count)::NUMERIC(10,2) AS baseline_avg_5m,
-                    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY log_count) AS baseline_p95_5m,
-                    COUNT(*) AS baseline_count_7d
+                    raw_data->>'log_fingerprint' AS log_fingerprint,
+                    jsonb_array_length(raw_data::jsonb->'log_messages') AS log_count,
+                    sampled_at
                 FROM log_sample
                 WHERE
                     site_id = :site_id
-                    AND netbox_device_id = :netbox_device_id
-                    AND log_fingerprint = :log_fingerprint
+                    AND (netbox_device_id = :netbox_device_id OR :netbox_device_id IS NULL)
+                    AND raw_data->>'log_fingerprint' = :log_fingerprint
                     AND sampled_at >= NOW() - INTERVAL '7 days'
-                GROUP BY site_id, netbox_device_id, log_fingerprint
+                ORDER BY sampled_at DESC
             """)
 
-            result = db.execute(sql, {
+            results = db.execute(sql, {
                 'site_id': site_id,
                 'netbox_device_id': netbox_device_id,
                 'log_fingerprint': log_fingerprint
-            }).fetchone()
+            }).fetchall()
             
-            if result:
+            if results:
+                # 计算统计信息
+                log_counts = [row[2] for row in results if row[2] is not None]
+                if log_counts:
+                    baseline_avg_5m = sum(log_counts) / len(log_counts)
+                    sorted_counts = sorted(log_counts)
+                    p95_index = int(len(sorted_counts) * 0.95)
+                    baseline_p95_5m = sorted_counts[p95_index] if p95_index < len(sorted_counts) else sorted_counts[-1]
+                else:
+                    baseline_avg_5m = None
+                    baseline_p95_5m = None
+                
                 return {
-                    'baseline_avg_5m': float(result[2]) if result[2] else None,
-                    'baseline_p95_5m': float(result[3]) if result[3] else None,
-                    'baseline_count_7d': int(result[4]) if result[4] else 0
+                    'baseline_avg_5m': baseline_avg_5m,
+                    'baseline_p95_5m': baseline_p95_5m,
+                    'baseline_count_7d': len(results)
                 }
             else:
                 # 没有历史数据，返回默认值

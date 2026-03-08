@@ -435,6 +435,7 @@ class LogSampler:
                         "scope_key": scope_key,
                         "scope_name": scope_name,
                         "log_messages": stats["log_messages"],
+                        "log_fingerprint": log_fingerprint,  # 添加fingerprint到raw_data
                         "other_error_count": stats.get("other_error_count", 0),
                         "other_error_fingerprints": stats.get("other_error_fingerprints", []),
                         "collection_policy_decision": policy_decision,

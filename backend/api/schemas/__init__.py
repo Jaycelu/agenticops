@@ -2,7 +2,6 @@
 
 from .automation import *
 from .assets import *
-from .command_template import *
 from .common import *
 from .events import *
 from .logs import *

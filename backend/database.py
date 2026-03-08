@@ -53,7 +53,7 @@ def init_db():
         AutomationPolicy, AutomationTask, AutomationActionLog,
         AutomationApproval, RawAnomaly, AutomationTaskFeedback,
         SSHCredential, SSHCredentialDeviceBinding,
-        AssetDevice, AlertEvent, LocalTicket, CommandTemplate
+        AssetDevice, AlertEvent, LocalTicket
     )
     from models.agenticops import (
         SourceEvent, CaseRecord, EvidenceItem, AgentRun, AgentClaim,

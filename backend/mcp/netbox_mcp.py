@@ -244,6 +244,20 @@ class NetBoxMCP(BaseMCP):
             site_filter = params["site"]
             racks = [r for r in racks if r.site and site_filter in str(r.site.name)]
 
+        # 处理width字段，从字符串中提取数字
+        def parse_width(width_value):
+            if width_value is None:
+                return None
+            if isinstance(width_value, int):
+                return width_value
+            if isinstance(width_value, str):
+                # 从字符串中提取数字，如 "19 inches" -> 19
+                import re
+                match = re.search(r'\d+', width_value)
+                if match:
+                    return int(match.group())
+            return None
+
         result = {
             "count": len(racks),
             "racks": [
@@ -254,7 +268,7 @@ class NetBoxMCP(BaseMCP):
                     "location": rack.location.name if rack.location else None,
                     "status": rack.status.label if rack.status else None,
                     "u_height": rack.u_height,
-                    "width": rack.width,
+                    "width": parse_width(rack.width),
                     "role": rack.role.name if rack.role else None,
                     "serial": rack.serial,
                     "asset_tag": rack.asset_tag

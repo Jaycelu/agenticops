@@ -14,7 +14,6 @@ from api import (
 )
 from api.automation import router as automation_router
 from api.ssh_management import router as ssh_management_router
-from api.command_templates import router as command_templates_router
 from api.events import router as events_router
 from api.tickets import router as tickets_router
 from utils.cache import netbox_cache
@@ -58,11 +57,20 @@ async def lifespan(app: FastAPI):
     # 启动数据保留清理任务
     retention_cleanup_task = asyncio.create_task(data_retention_cleanup_task())
 
+    # 启动日志采样服务
+    from services.log_sampler import log_sampler
+    await log_sampler.start()
+    logger.info("Log sampler started successfully")
+
     yield
 
     # 清理任务
     cleanup_task.cancel()
     retention_cleanup_task.cancel()
+
+    # 停止日志采样服务
+    from services.log_sampler import log_sampler
+    await log_sampler.stop()
 
     logger.info("Shutting down NetOps AI Platform...")
 
@@ -94,7 +102,6 @@ app.include_router(logs_router)
 app.include_router(models_router)
 app.include_router(automation_router)
 app.include_router(ssh_management_router)
-app.include_router(command_templates_router)
 app.include_router(events_router)
 app.include_router(tickets_router)
 app.include_router(cases_router)

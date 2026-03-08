@@ -15,7 +15,6 @@ from models.automation import (
 )
 from services.feedback_learning_service import feedback_learning_service
 from services.ssh_service import ssh_service
-from services.command_template_service import command_template_service
 from services.site_automation_service import site_automation_service
 from services.log_sampler import log_sampler
 from api.schemas.automation import (
@@ -1506,16 +1505,4 @@ async def trigger_diagnosis(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/resolve-commands")
-async def resolve_commands_for_device(
-    device_id: int,
-    template_type: str = "diagnosis_default",
-    db: Session = Depends(get_db)
-):
-    """自动化中心：根据device_id和模板类型返回厂商命令集"""
-    result = await command_template_service.resolve_commands_for_device(
-        db=db,
-        device_id=device_id,
-        template_type=template_type,
-    )
-    return {"success": True, "data": result}
+
