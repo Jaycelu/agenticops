@@ -2,7 +2,7 @@
 
 ## 1. 适用范围
 
-本手册用于 NetOps 事件中心迁移后的日常运行、验证、排障与发布，覆盖后端 FastAPI、前端 Vue、事件链路与自动化中心联动。
+本手册用于 NetOps 事件中心迁移后的日常运行、验证、排障与发布，覆盖后端 FastAPI、前端 Vue、事件链路与 Case/Fabric 联动。
 
 ## 2. 运行前检查
 
@@ -74,6 +74,7 @@ npm run build
 2. 注入测试事件：
 - `POST /api/events/ingest`
 - 最小体：`source`, `event_type`, `name`。
+- 仅接受：`source=ELK,event_type=log_signal` 或 `source=ZABBIX,event_type=zabbix_alert`。
 
 3. 查询事件：
 - `GET /api/events?limit=20`
@@ -81,11 +82,11 @@ npm run build
 
 4. 触发只读研判：
 - `POST /api/events/{id}/dispatch-readonly`
-- 期望返回 `task_id`。
+- 期望返回 `case_id/case_code`，并进入 Case pipeline。
 
 5. 查看关联：
 - `GET /api/events/{id}/relations`
-- 期望 `linked_tasks` 包含对应任务，状态进入 `waiting_confirm` 或后续状态。
+- 期望 `linked_case` 与 `linked_tasks` 返回 Case/Fabric 关联结果。
 
 6. 创建工单：
 - `POST /api/events/{id}/ticket`
@@ -98,7 +99,7 @@ npm run build
 7. 前端联动核对：
 - 事件详情显示 `recommended_skill_code`
 - 任务状态徽标可见
-- 点击“查看任务详情”可跳转 `/automation/tasks/:id`
+- 点击“查看执行建议”进入 `/fabric`
 
 ## 7. 故障排查
 
@@ -113,17 +114,17 @@ pip3 install -r requirements.txt
 
 ### 7.2 只读派发失败：`Event missing site_id`
 
-原因：事件没有 `site_id`，无法创建自动化任务。
+原因：事件没有 `site_id`，无法补齐完整 Case/Fabric 上下文。
 处理：
 1. 事件接入时补齐 `site_id`
 2. 或先建立事件到站点映射规则后再派发
 
-### 7.3 dispatch 成功但 relations 无任务
+### 7.3 dispatch 成功但 relations 无结果
 
 排查：
-1. 检查 `automation_task` 是否创建成功
-2. 确认 `trigger_event.source_type == AlertEvent`
-3. 确认 `trigger_event.source_id == event_id`
+1. 检查 `source_event` 详情是否已写入 `case / dispatch / ticket` 摘要
+2. 确认 `source_event.normalized_payload.case.case_id` 已写入
+3. 确认 `fabric` 侧 `remediation_plan / execution_run` 已生成
 
 ### 7.4 动作被 observe-only 阻断
 

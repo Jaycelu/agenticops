@@ -58,3 +58,5 @@ class AggregationResponse(BaseModel):
     has_more: bool = False
     case_id: Optional[int] = None
     case_code: Optional[str] = None
+    event_id: Optional[int] = None
+    source_event_id: Optional[int] = None

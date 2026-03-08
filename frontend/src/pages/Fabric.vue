@@ -1,39 +1,40 @@
 <template>
-  <div class="workspace-page">
-    <div class="page-header">
-      <div>
+  <div class="workspace-page app-page">
+    <div class="page-header app-page-header">
+      <div class="app-page-copy">
         <h1>执行中心</h1>
         <p>统一查看修复计划、执行运行记录和 Automation Fabric 总览。</p>
+        <span v-if="requestedCaseId" class="app-badge app-badge-primary">聚焦 Case #{{ requestedCaseId }}</span>
       </div>
-      <button class="btn-refresh" :disabled="loading" @click="loadData">
+      <button class="app-button app-button-secondary" :disabled="loading" @click="loadData">
         {{ loading ? '刷新中...' : '刷新' }}
       </button>
     </div>
 
     <section class="overview-grid">
-      <article class="metric-card">
-        <span>计划总数</span>
-        <strong>{{ overview.total_plans }}</strong>
+      <article class="metric-card app-stat-card">
+        <span class="app-kpi-label">计划总数</span>
+        <strong class="app-kpi-value">{{ overview.total_plans }}</strong>
       </article>
-      <article class="metric-card">
-        <span>已批准计划</span>
-        <strong>{{ overview.approved_plans }}</strong>
+      <article class="metric-card app-stat-card">
+        <span class="app-kpi-label">已批准计划</span>
+        <strong class="app-kpi-value">{{ overview.approved_plans }}</strong>
       </article>
-      <article class="metric-card">
-        <span>失败执行</span>
-        <strong>{{ overview.failed_executions }}</strong>
+      <article class="metric-card app-stat-card">
+        <span class="app-kpi-label">失败执行</span>
+        <strong class="app-kpi-value">{{ overview.failed_executions }}</strong>
       </article>
     </section>
 
     <div class="panel-grid">
-      <section class="panel-card">
+      <section class="panel-card app-panel">
         <h2>最近计划</h2>
-        <div v-if="plans.length === 0" class="empty">暂无计划</div>
+        <div v-if="plans.length === 0" class="empty app-empty">暂无计划</div>
         <div v-else class="card-list">
-          <div v-for="plan in plans" :key="plan.id" class="info-card">
+          <div v-for="plan in plans" :key="plan.id" class="info-card app-subcard">
             <div class="info-head">
               <strong>{{ plan.plan_code }}</strong>
-              <span class="pill">{{ plan.status }}</span>
+              <span class="pill app-pill">{{ plan.status }}</span>
             </div>
             <p>{{ plan.summary || '暂无摘要' }}</p>
             <div class="meta-row">
@@ -41,18 +42,28 @@
               <span>{{ plan.approval_status }}</span>
               <span>{{ plan.risk_level }}</span>
             </div>
+            <div v-if="plan.plan_payload?.recommended_actions?.length" class="recommended-list">
+              <div
+                v-for="action in plan.plan_payload.recommended_actions.slice(0, 3)"
+                :key="`${plan.id}-${action.priority_order}-${action.action_type}`"
+                class="recommended-item"
+              >
+                <strong>{{ action.priority_order }}. {{ action.title }}</strong>
+                <span>{{ action.reason }}</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section class="panel-card">
+      <section class="panel-card app-panel">
         <h2>最近执行</h2>
-        <div v-if="executions.length === 0" class="empty">暂无执行记录</div>
+        <div v-if="executions.length === 0" class="empty app-empty">暂无执行记录</div>
         <div v-else class="card-list">
-          <div v-for="item in executions" :key="item.id" class="info-card">
+          <div v-for="item in executions" :key="item.id" class="info-card app-subcard">
             <div class="info-head">
               <strong>{{ item.executor_name }}</strong>
-              <span class="pill">{{ item.status }}</span>
+              <span class="pill app-pill">{{ item.status }}</span>
             </div>
             <p>{{ item.command_summary || '暂无命令摘要' }}</p>
             <div class="meta-row">
@@ -65,14 +76,16 @@
       </section>
     </div>
 
-    <div v-if="message" class="message">{{ message }}</div>
+    <div v-if="message" class="message app-message">{{ message }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { fabricApi } from '@/api/fabric'
 
+const route = useRoute()
 const loading = ref(false)
 const message = ref('')
 const overview = ref({
@@ -84,6 +97,11 @@ const overview = ref({
 })
 const plans = ref<any[]>([])
 const executions = ref<any[]>([])
+const requestedCaseId = computed(() => {
+  const raw = Array.isArray(route.query.caseId) ? route.query.caseId[0] : route.query.caseId
+  const caseId = Number(raw)
+  return Number.isInteger(caseId) && caseId > 0 ? caseId : null
+})
 
 function formatTime(value?: string): string {
   if (!value) return '-'
@@ -96,8 +114,8 @@ async function loadData() {
   try {
     const [overviewRes, plansRes, executionsRes] = await Promise.all([
       fabricApi.getOverview(),
-      fabricApi.listPlans({ limit: 20 }),
-      fabricApi.listExecutions({ limit: 20 })
+      fabricApi.listPlans({ case_id: requestedCaseId.value || undefined, limit: 20 }),
+      fabricApi.listExecutions({ case_id: requestedCaseId.value || undefined, limit: 20 })
     ])
     overview.value = overviewRes
     plans.value = plansRes.items || []
@@ -112,6 +130,13 @@ async function loadData() {
 onMounted(async () => {
   await loadData()
 })
+
+watch(
+  () => route.query.caseId,
+  async () => {
+    await loadData()
+  }
+)
 </script>
 
 <style scoped>
@@ -133,19 +158,6 @@ onMounted(async () => {
   align-items: flex-start;
 }
 
-.page-header p {
-  margin-top: 6px;
-  color: #64748b;
-}
-
-.btn-refresh {
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  border-radius: 10px;
-  padding: 10px 14px;
-  cursor: pointer;
-}
-
 .overview-grid,
 .panel-grid {
   display: grid;
@@ -157,24 +169,6 @@ onMounted(async () => {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.metric-card,
-.panel-card {
-  background: #fff;
-  border: 1px solid #dbe2ea;
-  border-radius: 18px;
-  padding: 18px;
-}
-
-.metric-card span {
-  color: #64748b;
-}
-
-.metric-card strong {
-  display: block;
-  margin-top: 10px;
-  font-size: 30px;
-}
-
 .card-list {
   display: flex;
   flex-direction: column;
@@ -182,36 +176,41 @@ onMounted(async () => {
   margin-top: 12px;
 }
 
-.info-card {
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  padding: 14px;
-}
-
 .info-card p {
   margin-top: 8px;
-  color: #475569;
+  color: #43566f;
 }
 
 .meta-row {
   margin-top: 10px;
-  color: #64748b;
+  color: #5e738f;
   font-size: 13px;
   flex-wrap: wrap;
 }
 
-.pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  background: #e2e8f0;
-  border-radius: 999px;
-  font-size: 12px;
+.recommended-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
 }
 
-.empty,
-.message {
-  color: #64748b;
+.recommended-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(15, 90, 224, 0.06);
+}
+
+.recommended-item strong {
+  font-size: 13px;
+}
+
+.recommended-item span {
+  color: #5e738f;
+  font-size: 12px;
 }
 
 @media (max-width: 980px) {

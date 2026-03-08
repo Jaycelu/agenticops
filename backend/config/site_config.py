@@ -137,8 +137,6 @@ DEFAULT_DIAGNOSIS_POLICY = {
         "auto_action_types": ["config_optimization"],
         # 这些动作类型强制进入人工确认流
         "manual_action_types": ["replace_hardware", "manual_investigation"],
-        # 自动执行前要求现场检查成功
-        "require_inspection_success_for_auto": True
     }
 }
 

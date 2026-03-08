@@ -60,46 +60,14 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/Logs.vue')
       },
       {
+        path: 'zabbix',
+        name: 'Zabbix',
+        component: () => import('@/pages/Zabbix.vue')
+      },
+      {
         path: 'settings',
         name: 'Settings',
         component: () => import('@/pages/Settings.vue')
-      },
-      {
-        path: 'automation',
-        name: 'Automation',
-        redirect: '/automation/dashboard'
-      },
-      {
-        path: 'automation/dashboard',
-        redirect: '/fabric'
-      },
-      {
-        path: 'automation/samples',
-        redirect: '/logs'
-      },
-      {
-        path: 'automation/tasks',
-        redirect: '/fabric'
-      },
-      {
-        path: 'automation/tasks/:id',
-        redirect: '/fabric'
-      },
-      {
-        path: 'automation/analysis-results',
-        redirect: '/cases'
-      },
-      {
-        path: 'automation/policies',
-        redirect: '/fabric'
-      },
-      {
-        path: 'automation/audit',
-        redirect: '/fabric'
-      },
-      {
-        path: 'automation/abnormal-types',
-        redirect: '/cases'
       }
     ]
   }

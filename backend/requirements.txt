@@ -46,14 +46,5 @@ reportlab==4.0.7
 # Utilities
 python-dateutil==2.8.2
 
-# LangChain - AI Agent Framework
-langchain==0.1.20
-langchain-openai==0.1.7
-langchain-core==0.1.53
-langchain-community==0.0.38
-
-# Streamlit - Conversational UI
-streamlit>=1.31.0
-
 # SSH Tools
 napalm>=4.1.0

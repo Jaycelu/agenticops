@@ -11,6 +11,7 @@ class LocalTicketItem(BaseModel):
     ticket_code: str
     provider: str
     event_id: Optional[int] = None
+    source_event_id: Optional[int] = None
     title: str
     description: Optional[str] = None
     priority: str

@@ -68,11 +68,10 @@ class AlertTriageAgent(BaseOpsAgent):
                 "severity": severity,
                 "hot_devices": hot_devices,
                 "requires_topology": bool(context.netbox_device_id),
-                "requires_ssh": bool(context.netbox_device_id),
+                "requires_execution_channel": False,
             },
             metadata={"priority": priority},
         )
 
 
 alert_triage_agent = AlertTriageAgent()
-

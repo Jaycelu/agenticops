@@ -4,6 +4,7 @@ from agents.base import BaseOpsAgent
 from agents.schemas import AgentDecision, AgentExecutionContext
 from config.settings import settings
 from models.agenticops import AgentType
+from services.remediation_recommendation_service import remediation_recommendation_service
 
 
 class AutonomousRemediationAgent(BaseOpsAgent):
@@ -16,12 +17,22 @@ class AutonomousRemediationAgent(BaseOpsAgent):
         triage_claim = next((item for item in prior_claims if item.get("claim_type") == "triage_assessment"), {})
 
         root_cause = ((insight_claim.get("output_payload") or {}).get("root_cause")) or "unknown"
+        impact_scope = ((insight_claim.get("output_payload") or {}).get("impact_scope")) or "single_device"
+        signal_family = str(root_cause).split(":")[0] if ":" in str(root_cause) else root_cause
         priority = ((triage_claim.get("metadata") or {}).get("priority")) or "P3"
         confidence = float(insight_claim.get("confidence") or triage_claim.get("confidence") or 0.4)
+        cross_source = bool(context.runtime.get("log_summary")) and bool(context.runtime.get("zabbix_alerts"))
         recommendations: List[str] = list(((insight_claim.get("output_payload") or {}).get("recommendations")) or [])
+        recommended_actions = remediation_recommendation_service.build_actions(
+            root_cause=root_cause,
+            signal_family=signal_family,
+            impact_scope=impact_scope,
+            priority=priority,
+            cross_source=cross_source,
+        )
 
         if not recommendations:
-            recommendations = ["保留现场，继续观察", "补充设备现场证据", "必要时人工介入复核"]
+            recommendations = [item["title"] for item in recommended_actions[:3]]
 
         execution_mode = "manual"
         approval_status = "required"
@@ -44,9 +55,11 @@ class AutonomousRemediationAgent(BaseOpsAgent):
             gaps=[],
             output_payload={
                 "root_cause": root_cause,
+                "impact_scope": impact_scope,
                 "execution_mode": execution_mode,
                 "approval_status": approval_status,
                 "recommendations": recommendations,
+                "recommended_actions": recommended_actions,
                 "safety_checks": {
                     "observe_only": settings.automation_observe_only,
                     "requires_approval": approval_status == "required",
@@ -62,4 +75,3 @@ class AutonomousRemediationAgent(BaseOpsAgent):
 
 
 autonomous_remediation_agent = AutonomousRemediationAgent()
-

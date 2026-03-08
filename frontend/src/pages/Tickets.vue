@@ -1,13 +1,16 @@
 <template>
-  <div class="page">
+  <div class="page app-page">
     <div class="page-content">
-      <div class="page-header">
-        <h1>本地工单</h1>
-        <button class="btn-refresh" :disabled="loading" @click="loadTickets">刷新</button>
+      <div class="page-header app-page-header">
+        <div class="app-page-copy">
+          <h1>本地工单</h1>
+          <p>查看人工接管闭环和本地状态流转，保持 Case 与工单同步。</p>
+        </div>
+        <button class="app-button app-button-secondary" :disabled="loading" @click="loadTickets">刷新</button>
       </div>
 
       <div class="filter-section">
-        <select v-model="statusFilter" class="filter-input" @change="loadTickets">
+        <select v-model="statusFilter" class="filter-input app-select" @change="loadTickets">
           <option value="">全部状态</option>
           <option value="open">open</option>
           <option value="in_progress">in_progress</option>
@@ -16,31 +19,31 @@
         </select>
       </div>
 
-      <div v-if="loading" class="loading">加载中...</div>
-      <div v-else-if="tickets.length === 0" class="empty">暂无工单</div>
+      <div v-if="loading" class="loading app-empty">加载中...</div>
+      <div v-else-if="tickets.length === 0" class="empty app-empty">暂无工单</div>
       <div v-else class="ticket-list">
-        <div v-for="item in tickets" :key="item.ticket_code" class="ticket-card">
+        <div v-for="item in tickets" :key="item.ticket_code" class="ticket-card app-panel">
           <div class="card-head">
             <strong>{{ item.ticket_code }}</strong>
-            <span class="status">{{ item.status }}</span>
+            <span class="status app-badge">{{ item.status }}</span>
           </div>
           <div class="card-body">
             <div class="title">{{ item.title }}</div>
             <div class="meta">优先级: {{ item.priority }} | 请求人: {{ item.requester }}</div>
-            <div class="meta">事件ID: {{ item.event_id || '-' }} | 创建时间: {{ formatTime(item.created_at) }}</div>
+            <div class="meta">事件ID: {{ item.event_id || '-' }} | SourceEvent: {{ item.source_event_id || '-' }} | 创建时间: {{ formatTime(item.created_at) }}</div>
           </div>
           <div class="card-actions">
-            <select v-model="statusMap[item.ticket_code]" class="status-select">
+            <select v-model="statusMap[item.ticket_code]" class="status-select app-select">
               <option value="open">open</option>
               <option value="in_progress">in_progress</option>
               <option value="resolved">resolved</option>
               <option value="closed">closed</option>
             </select>
-            <button class="btn-update" @click="updateStatus(item.ticket_code)">更新状态</button>
+            <button class="app-button app-button-primary" @click="updateStatus(item.ticket_code)">更新状态</button>
           </div>
         </div>
       </div>
-      <div v-if="message" class="message">{{ message }}</div>
+      <div v-if="message" class="message app-message">{{ message }}</div>
     </div>
   </div>
 </template>
@@ -99,56 +102,23 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.page {
-  min-height: calc(100vh - 64px);
-  background: #f5f7fa;
-  padding: 24px;
-}
-
 .page-content {
   max-width: 1200px;
   margin: 0 auto;
-}
-
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.btn-refresh,
-.btn-update {
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  border-radius: 8px;
-  padding: 8px 12px;
-  cursor: pointer;
 }
 
 .filter-section {
   margin-bottom: 16px;
 }
 
-.filter-input,
 .status-select {
-  height: 36px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  padding: 0 10px;
+  min-width: 180px;
 }
 
 .ticket-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.ticket-card {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 12px;
 }
 
 .card-head {
@@ -158,21 +128,17 @@ onMounted(async () => {
 }
 
 .status {
-  font-size: 12px;
-  border-radius: 999px;
-  background: #e2e8f0;
-  color: #334155;
-  padding: 2px 8px;
+  background: rgba(59, 130, 246, 0.12);
+  color: #0f5ae0;
 }
 
 .title {
   font-weight: 600;
-  color: #0f172a;
 }
 
 .meta {
   margin-top: 4px;
-  color: #64748b;
+  color: #5e738f;
   font-size: 12px;
 }
 
@@ -180,11 +146,6 @@ onMounted(async () => {
   margin-top: 10px;
   display: flex;
   gap: 8px;
-}
-
-.loading,
-.empty,
-.message {
-  color: #475569;
+  align-items: center;
 }
 </style>

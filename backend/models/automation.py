@@ -137,7 +137,8 @@ class LocalTicket(Base):
     id = Column(Integer, primary_key=True, index=True)
     ticket_code = Column(String(64), nullable=False, unique=True, index=True)
     provider = Column(String(32), nullable=False, default="local", index=True)
-    event_id = Column(BigInteger, ForeignKey("alert_event.id"), nullable=True, index=True)
+    event_id = Column(BigInteger, nullable=True, index=True)
+    source_event_id = Column(BigInteger, ForeignKey("source_event.id"), nullable=True, index=True)
     title = Column(String(512), nullable=False)
     description = Column(Text)
     priority = Column(String(30), nullable=False, default="P3", index=True)
@@ -148,11 +149,10 @@ class LocalTicket(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    event = relationship("AlertEvent")
-
     __table_args__ = (
         Index("idx_local_ticket_status_time", "status", "created_at"),
         Index("idx_local_ticket_event_provider", "event_id", "provider"),
+        Index("idx_local_ticket_source_event_provider", "source_event_id", "provider"),
     )
 
 

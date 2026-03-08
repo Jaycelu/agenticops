@@ -1,19 +1,24 @@
 <template>
-  <div class="page">
+  <div class="page app-page">
     <div class="page-content">
-      <div class="page-header">
-        <div class="page-title">
-          <FileSearch class="title-icon" :size="28" />
-          <h1>日志分析</h1>
+      <div class="page-header app-page-header">
+        <div class="page-title app-page-title">
+          <span class="app-page-title-icon">
+            <FileSearch class="title-icon" :size="24" />
+          </span>
+          <div class="app-page-copy">
+            <h1>日志分析</h1>
+            <p>按日志范围进行检索、聚合和设备级分析，直接接入 Case 处理链路。</p>
+          </div>
         </div>
-        <button @click="refreshData" class="btn-refresh" :disabled="loading">
+        <button @click="refreshData" class="btn-refresh app-button app-button-secondary" :disabled="loading">
           <RefreshCw :size="16" :class="{ 'animate-spin': loading }" />
           刷新
         </button>
       </div>
 
       <!-- 日志范围选择 -->
-      <div class="base-section">
+      <div class="base-section app-panel">
         <div class="section-header">
           <Building2 class="section-icon" :size="20" />
           <h3>选择日志范围</h3>
@@ -44,7 +49,7 @@
               <Clock :size="14" />
               时间范围:
             </label>
-            <select v-model="timeRange" class="filter-input" @change="loadLogs">
+            <select v-model="timeRange" class="filter-input app-select" @change="loadLogs">
               <optgroup label="最近">
                 <option value="-10m,now">最近10分钟</option>
                 <option value="-30m,now">最近30分钟</option>
@@ -72,7 +77,7 @@
             </label>
             <input 
               v-model="customFilter" 
-              class="filter-input-text" 
+              class="filter-input-text app-input" 
               placeholder="输入筛选条件，如: hostname:10.*"
               @keyup.enter="loadLogs"
             />
@@ -82,7 +87,7 @@
               <List :size="14" />
               每页显示:
             </label>
-            <select v-model="limit" class="filter-input" @change="loadLogs">
+            <select v-model="limit" class="filter-input app-select" @change="loadLogs">
               <option value="50">50条</option>
               <option value="100">100条</option>
               <option value="200">200条</option>
@@ -96,12 +101,12 @@
             </label>
             <input 
               v-model="hostnameFilter" 
-              class="filter-input-text" 
+              class="filter-input-text app-input" 
               placeholder="输入主机IP筛选，如: 10.0.0.1"
               @keyup.enter="applyHostnameFilter"
             />
           </div>
-          <button @click="loadLogs" class="btn-search">
+          <button @click="loadLogs" class="btn-search app-button app-button-primary">
             <Search :size="16" />
             查询
           </button>
@@ -109,7 +114,7 @@
       </div>
 
       <!-- 统计信息 -->
-      <div v-if="selectedBase" class="stats-section">
+      <div v-if="selectedBase" class="stats-section app-panel">
         <div class="stat-item">
           <span class="stat-label">范围:</span>
           <span class="stat-value">{{ selectedBaseName }}</span>
@@ -134,7 +139,7 @@
             <Layers :size="14" />
             日志级别:
           </label>
-          <select v-model="levelFilter" class="stat-level-select">
+          <select v-model="levelFilter" class="stat-level-select app-select">
             <option v-for="level in logLevels" :key="level.value" :value="level.value">
               {{ level.label }} ({{ getLevelCount(level.value) }})
             </option>
@@ -143,13 +148,13 @@
       </div>
 
       <!-- 日志聚合设置 -->
-      <div v-if="selectedBase && !showAggregatedView" class="aggregate-section">
+      <div v-if="selectedBase && !showAggregatedView" class="aggregate-section app-panel">
         <div class="aggregate-header">
           <div class="section-header">
             <LayoutGrid class="section-icon" :size="20" />
             <h3>日志聚合</h3>
           </div>
-          <button @click="toggleAggregateView" class="btn-aggregate">
+          <button @click="toggleAggregateView" class="btn-aggregate app-button app-button-ghost">
             <LayoutGrid :size="16" />
             查看聚合视图
           </button>
@@ -158,13 +163,13 @@
       </div>
 
       <!-- 聚合视图 -->
-      <div v-if="showAggregatedView" class="aggregate-view-section">
+      <div v-if="showAggregatedView" class="aggregate-view-section app-panel">
         <div class="aggregate-controls">
           <div class="section-header">
             <LayoutGrid class="section-icon" :size="20" />
             <h3>日志聚合视图</h3>
           </div>
-          <button @click="toggleAggregateView" class="btn-close">
+          <button @click="toggleAggregateView" class="btn-close app-button app-button-secondary">
             <X :size="16" />
           </button>
         </div>
@@ -181,7 +186,7 @@
             <span class="aggregate-stat">设备数: {{ aggregatedData.aggregated_groups.length }}</span>
             <button
               v-if="aggregatedData.case_id"
-              class="btn-open-case"
+              class="btn-open-case app-button app-button-primary"
               @click="openCase(aggregatedData.case_id)"
             >
               打开 Case {{ aggregatedData.case_code || `#${aggregatedData.case_id}` }}
@@ -206,7 +211,7 @@
                 <div class="device-group-actions">
                   <button 
                     @click.stop="analyzeDeviceLogs(deviceIndex)" 
-                    class="btn-analyze-device"
+                    class="btn-analyze-device app-button app-button-ghost"
                     :disabled="deviceAnalyzing[deviceIndex]"
                   >
                     <Bot :size="14" />
@@ -227,7 +232,7 @@
                       <Bot :size="16" />
                       AI 分析结果
                     </span>
-                    <button @click="closeDeviceAnalysis(deviceIndex)" class="btn-close-small">
+                    <button @click="closeDeviceAnalysis(deviceIndex)" class="btn-close-small app-button app-button-secondary">
                       <X :size="14" />
                     </button>
                   </div>
@@ -236,7 +241,7 @@
                     <span class="meta-info">已分析: {{ deviceAnalysisMeta[deviceIndex].analyzed_count }} 条</span>
                     <button
                       v-if="deviceAnalysisMeta[deviceIndex].case_id"
-                      class="btn-open-case small"
+                      class="btn-open-case small app-button app-button-primary"
                       @click="openCase(deviceAnalysisMeta[deviceIndex].case_id)"
                     >
                       打开 Case {{ deviceAnalysisMeta[deviceIndex].case_code || `#${deviceAnalysisMeta[deviceIndex].case_id}` }}
@@ -294,17 +299,17 @@
       </div>
       
       <!-- 日志列表 -->
-      <div class="logs-section">
-        <div v-if="loading" class="loading">
+      <div class="logs-section app-panel">
+        <div v-if="loading" class="loading app-empty">
           <Loader2 class="animate-spin" :size="40" />
           <p>正在查询日志数据，请稍候...</p>
           <p class="loading-hint">如果查询时间较长，可能是筛选条件较复杂，请耐心等待</p>
         </div>
-        <div v-else-if="!selectedBase" class="empty">
+        <div v-else-if="!selectedBase" class="empty app-empty">
           <MapPinOff :size="48" />
           <p>请先选择日志范围</p>
         </div>
-        <div v-else-if="logs.length === 0" class="empty">
+        <div v-else-if="logs.length === 0" class="empty app-empty">
           <div v-if="timeoutError" class="error-hint">
             <div class="error-icon">
               <AlertCircle :size="48" />
@@ -359,7 +364,7 @@
             <div class="log-actions">
               <button 
                 @click="analyzeSingleLog(log, index)" 
-                class="btn-analyze-single"
+                class="btn-analyze-single app-button app-button-ghost"
                 :disabled="singleAnalyzing[index]"
               >
                 <Bot :size="14" />
@@ -402,7 +407,7 @@
                     <Bot :size="16" />
                     AI 分析结果
                   </span>
-                  <button @click="closeSingleAnalysis(index)" class="btn-close-small">
+                  <button @click="closeSingleAnalysis(index)" class="btn-close-small app-button app-button-secondary">
                     <X :size="14" />
                   </button>
                 </div>
@@ -416,7 +421,7 @@
         <div v-if="logs.length > 0 && totalLogs > limit" class="pagination">
           <button 
             @click="previousPage" 
-            class="btn-page"
+            class="btn-page app-button app-button-secondary"
             :disabled="offset === 0"
           >
             <ChevronLeft :size="16" />
@@ -429,7 +434,7 @@
             <input 
               type="number" 
               v-model="jumpPage" 
-              class="page-jump-input"
+              class="page-jump-input app-input"
               :min="1"
               :max="totalPages"
               @keyup.enter="goToPage"
@@ -437,7 +442,7 @@
             <span class="page-jump-text">/ {{ totalPages }} 页</span>
             <button 
               @click="goToPage" 
-              class="btn-page-jump"
+              class="btn-page-jump app-button app-button-primary"
               :disabled="!jumpPage || jumpPage < 1 || jumpPage > totalPages"
             >
               跳转
@@ -445,7 +450,7 @@
           </div>
           <button 
             @click="nextPage" 
-            class="btn-page"
+            class="btn-page app-button app-button-secondary"
             :disabled="offset + limit >= totalLogs"
           >
             下一页
@@ -817,62 +822,12 @@ onMounted(() => {
   box-sizing: border-box;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.page-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
 .title-icon {
-  color: #4a9eff;
-}
-
-.page-header h1 {
-  color: #333;
-  margin: 0;
-  font-size: 24px;
-  font-weight: 700;
-}
-
-.btn-refresh {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #4a9eff 0%, #2196f3 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.3s;
-  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.3);
-}
-
-.btn-refresh:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
-}
-
-.btn-refresh:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+  color: currentColor;
 }
 
 .base-section {
-  background: white;
-  border-radius: 16px;
-  padding: 24px;
   margin-bottom: 24px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
 .section-header {
@@ -883,12 +838,11 @@ onMounted(() => {
 }
 
 .section-icon {
-  color: #4a9eff;
+  color: #0f5ae0;
 }
 
 .section-header h3 {
   margin: 0;
-  color: #333;
   font-size: 16px;
   font-weight: 600;
 }
@@ -900,10 +854,10 @@ onMounted(() => {
 }
 
 .base-card {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  border: 2px solid transparent;
-  border-radius: 12px;
-  padding: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(241, 247, 255, 0.92));
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  padding: 18px;
   cursor: pointer;
   transition: all 0.3s;
   display: flex;
@@ -912,22 +866,22 @@ onMounted(() => {
 }
 
 .base-card:hover {
-  background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(233, 244, 255, 0.96));
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 18px 34px rgba(15, 23, 42, 0.1);
 }
 
 .base-card.active {
-  border-color: #4a9eff;
-  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.25);
+  border-color: rgba(15, 90, 224, 0.32);
+  background: linear-gradient(180deg, rgba(236, 246, 255, 0.98), rgba(225, 241, 255, 0.94));
+  box-shadow: 0 18px 34px rgba(15, 90, 224, 0.16);
 }
 
 .base-icon {
   width: 48px;
   height: 48px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #4a9eff 0%, #2196f3 100%);
+  border-radius: 16px;
+  background: linear-gradient(135deg, #0f5ae0 0%, #0f766e 100%);
   color: white;
   display: flex;
   align-items: center;
@@ -942,15 +896,10 @@ onMounted(() => {
 .base-name {
   font-size: 15px;
   font-weight: 600;
-  color: #333;
 }
 
 .filter-section {
-  background: white;
-  border-radius: 16px;
-  padding: 24px;
   margin-bottom: 24px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
 .filter-group {
@@ -972,53 +921,16 @@ onMounted(() => {
   gap: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: #666;
+  color: #5e738f;
 }
 
 .filter-input,
 .filter-input-text {
-  padding: 10px 14px;
-  border: 2px solid #e8eef5;
-  border-radius: 10px;
-  font-size: 14px;
-  transition: all 0.3s;
   min-width: 160px;
 }
 
-.filter-input:focus,
-.filter-input-text:focus {
-  outline: none;
-  border-color: #4a9eff;
-  box-shadow: 0 0 0 4px rgba(74, 158, 255, 0.1);
-}
-
-.btn-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #4a9eff 0%, #2196f3 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.3s;
-  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.3);
-}
-
-.btn-search:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
-}
-
 .stats-section {
-  background: white;
-  border-radius: 16px;
-  padding: 20px 24px;
   margin-bottom: 24px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-wrap: wrap;
   gap: 20px;
@@ -1033,42 +945,28 @@ onMounted(() => {
 
 .stat-label {
   font-size: 13px;
-  color: #666;
+  color: #5e738f;
   font-weight: 500;
 }
 
 .stat-value {
   font-size: 15px;
   font-weight: 600;
-  color: #333;
 }
 
 .stat-divider {
   width: 1px;
   height: 24px;
-  background: #e8eef5;
+  background: rgba(148, 163, 184, 0.24);
 }
 
 .stat-level-select {
-  padding: 8px 12px;
-  border: 2px solid #e8eef5;
-  border-radius: 8px;
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.3s;
-}
-
-.stat-level-select:focus {
-  outline: none;
-  border-color: #4a9eff;
 }
 
 .aggregate-section {
-  background: white;
-  border-radius: 16px;
-  padding: 24px;
   margin-bottom: 24px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
 .aggregate-header {
@@ -1077,39 +975,14 @@ onMounted(() => {
   align-items: center;
 }
 
-.btn-aggregate {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #4a9eff 0%, #2196f3 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.3s;
-  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.3);
-}
-
-.btn-aggregate:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
-}
-
 .aggregate-hint {
   margin: 0;
-  color: #666;
+  color: #5e738f;
   font-size: 14px;
 }
 
 .aggregate-view-section {
-  background: white;
-  border-radius: 16px;
-  padding: 24px;
   margin-bottom: 24px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
 .aggregate-controls {
@@ -1117,26 +990,6 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
-}
-
-.btn-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f5f5f5;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  color: #666;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  transition: all 0.3s;
-}
-
-.btn-close:hover {
-  background: #e8eef5;
-  color: #333;
 }
 
 .aggregate-stats {
@@ -1148,11 +1001,11 @@ onMounted(() => {
 
 .aggregate-stat {
   padding: 8px 14px;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.12);
+  border-radius: 12px;
   font-size: 13px;
   font-weight: 500;
-  color: #333;
+  color: #24405f;
 }
 
 .aggregate-stat.warning {
@@ -1170,15 +1023,15 @@ onMounted(() => {
 }
 
 .device-group {
-  border: 2px solid #e8eef5;
-  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 16px;
   overflow: hidden;
   transition: all 0.3s;
 }
 
 .device-group:hover {
-  border-color: #4a9eff;
-  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.15);
+  border-color: rgba(15, 90, 224, 0.28);
+  box-shadow: 0 18px 34px rgba(15, 23, 42, 0.08);
 }
 
 .device-group-header {
@@ -1186,13 +1039,13 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(239, 245, 252, 0.9));
   cursor: pointer;
   transition: all 0.3s;
 }
 
 .device-group-header:hover {
-  background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(231, 241, 252, 0.95));
 }
 
 .device-group-info {
@@ -1204,12 +1057,11 @@ onMounted(() => {
 .device-name {
   font-size: 15px;
   font-weight: 600;
-  color: #333;
 }
 
 .device-count {
   padding: 4px 10px;
-  background: linear-gradient(135deg, #4a9eff 0%, #2196f3 100%);
+  background: linear-gradient(135deg, #0f5ae0 0%, #0f766e 100%);
   color: white;
   border-radius: 20px;
   font-size: 12px;
@@ -1222,50 +1074,14 @@ onMounted(() => {
   gap: 12px;
 }
 
-.btn-analyze-device {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  background: linear-gradient(135deg, #4a9eff 0%, #2196f3 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.3s;
-}
-
-.btn-analyze-device:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
-}
-
 .btn-analyze-device:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.btn-open-case {
-  border: none;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%);
-  color: #fff;
-  padding: 8px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s;
-}
-
-.btn-open-case:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 14px rgba(20, 184, 166, 0.24);
-}
-
 .btn-open-case.small {
-  padding: 4px 10px;
+  min-height: 34px;
+  padding: 6px 12px;
   font-size: 12px;
 }
 
@@ -1278,11 +1094,11 @@ onMounted(() => {
 }
 
 .device-analysis-result {
-  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(230, 244, 255, 0.96), rgba(216, 236, 255, 0.88));
+  border-radius: 16px;
   padding: 16px;
   margin-bottom: 16px;
-  border-left: 4px solid #4a9eff;
+  border-left: 4px solid #0f5ae0;
 }
 
 .analysis-result-header {
@@ -1298,27 +1114,7 @@ onMounted(() => {
   gap: 8px;
   font-size: 14px;
   font-weight: 600;
-  color: #1976d2;
-}
-
-.btn-close-small {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.5);
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  color: #666;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  transition: all 0.3s;
-}
-
-.btn-close-small:hover {
-  background: rgba(255, 255, 255, 0.8);
-  color: #333;
+  color: #0f5ae0;
 }
 
 .analysis-meta {
@@ -1334,7 +1130,7 @@ onMounted(() => {
   border-radius: 10px;
   font-size: 12px;
   font-weight: 500;
-  color: #1976d2;
+  color: #0f5ae0;
 }
 
 .meta-warning {
@@ -1351,7 +1147,7 @@ onMounted(() => {
 
 .analysis-result-content {
   background: rgba(255, 255, 255, 0.8);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 12px;
   font-size: 13px;
   white-space: pre-wrap;
@@ -1360,8 +1156,8 @@ onMounted(() => {
 }
 
 .level-group {
-  border: 1px solid #e8eef5;
-  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 14px;
   overflow: hidden;
   margin-bottom: 10px;
 }
@@ -1371,13 +1167,13 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: #f8f9fa;
+  background: rgba(248, 250, 252, 0.86);
   cursor: pointer;
   transition: all 0.3s;
 }
 
 .level-group-header:hover {
-  background: #e9ecef;
+  background: rgba(235, 241, 248, 0.92);
 }
 
 .level-group-info {
@@ -1424,12 +1220,11 @@ onMounted(() => {
 .level-count {
   font-size: 13px;
   font-weight: 600;
-  color: #333;
 }
 
 .level-time {
   font-size: 12px;
-  color: #666;
+  color: #64748b;
 }
 
 .level-expand-icon {
@@ -1442,7 +1237,7 @@ onMounted(() => {
 
 .log-item-compact {
   padding: 8px 0;
-  border-bottom: 1px solid #e8eef5;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .log-item-compact:last-child {
@@ -1451,38 +1246,26 @@ onMounted(() => {
 
 .log-time-compact {
   font-size: 12px;
-  color: #666;
+  color: #64748b;
   margin-bottom: 4px;
 }
 
 .log-message-compact {
   font-size: 13px;
-  color: #333;
+  color: #0f172a;
   word-break: break-word;
 }
 
 .log-more-hint {
   text-align: center;
   padding: 8px;
-  color: #666;
+  color: #64748b;
   font-size: 12px;
-}
-
-.logs-section {
-  background: white;
-  border-radius: 16px;
-  padding: 24px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
 .loading,
 .empty {
-  text-align: center;
   padding: 80px 20px;
-  color: #999;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
   gap: 16px;
 }
 
@@ -1494,7 +1277,7 @@ onMounted(() => {
 
 .loading-hint {
   font-size: 13px;
-  color: #666;
+  color: #64748b;
   margin: 0;
 }
 
@@ -1513,7 +1296,7 @@ onMounted(() => {
 }
 
 .error-hint p {
-  color: #666;
+  color: #64748b;
   margin: 0;
 }
 
@@ -1534,15 +1317,16 @@ onMounted(() => {
 }
 
 .no-logs-hint p {
-  color: #666;
+  color: #64748b;
   margin: 0 0 16px 0;
 }
 
 .hint-details {
   text-align: left;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: rgba(248, 250, 252, 0.82);
   padding: 16px;
-  border-radius: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
 }
 
 .hint-details p {
@@ -1569,15 +1353,15 @@ onMounted(() => {
 }
 
 .log-item {
-  border: 2px solid #e8eef5;
-  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
   overflow: hidden;
   transition: all 0.3s;
 }
 
 .log-item:hover {
-  border-color: #4a9eff;
-  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.15);
+  border-color: rgba(15, 90, 224, 0.24);
+  box-shadow: 0 18px 34px rgba(15, 23, 42, 0.08);
 }
 
 .log-main {
@@ -1587,7 +1371,7 @@ onMounted(() => {
 }
 
 .log-main:hover {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.88), rgba(234, 243, 252, 0.84));
 }
 
 .log-header {
@@ -1603,7 +1387,7 @@ onMounted(() => {
   gap: 6px;
   font-size: 14px;
   font-weight: 600;
-  color: #333;
+  color: #0f172a;
 }
 
 .log-time {
@@ -1611,7 +1395,7 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: #666;
+  color: #64748b;
 }
 
 .log-expand-icon {
@@ -1620,35 +1404,15 @@ onMounted(() => {
 
 .log-message {
   font-size: 14px;
-  color: #333;
+  color: #0f172a;
   line-height: 1.6;
   word-break: break-word;
 }
 
 .log-actions {
   padding: 12px 20px;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  border-top: 1px solid #e8eef5;
-}
-
-.btn-analyze-single {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  background: linear-gradient(135deg, #4a9eff 0%, #2196f3 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.3s;
-}
-
-.btn-analyze-single:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.82), rgba(235, 241, 248, 0.9));
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
 }
 
 .btn-analyze-single:disabled {
@@ -1658,8 +1422,8 @@ onMounted(() => {
 
 .log-detail {
   padding: 20px;
-  background: #fafbfc;
-  border-top: 1px solid #e8eef5;
+  background: rgba(248, 250, 252, 0.78);
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
 }
 
 .detail-section {
@@ -1675,15 +1439,15 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   margin: 0 0 12px 0;
-  color: #333;
+  color: #0f172a;
   font-size: 14px;
   font-weight: 600;
 }
 
 .detail-section pre {
-  background: white;
-  border: 1px solid #e8eef5;
-  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 14px;
   padding: 12px;
   font-size: 13px;
   word-break: break-word;
@@ -1706,21 +1470,21 @@ onMounted(() => {
 
 .detail-label {
   font-size: 12px;
-  color: #666;
+  color: #64748b;
   font-weight: 600;
 }
 
 .detail-value {
   font-size: 14px;
-  color: #333;
+  color: #0f172a;
   font-weight: 500;
 }
 
 .log-analysis-result {
-  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(230, 244, 255, 0.96), rgba(216, 236, 255, 0.88));
+  border-radius: 16px;
   padding: 16px;
-  border-left: 4px solid #4a9eff;
+  border-left: 4px solid #0f5ae0;
 }
 
 .pagination {
@@ -1730,38 +1494,13 @@ onMounted(() => {
   gap: 16px;
   margin-top: 24px;
   padding-top: 24px;
-  border-top: 1px solid #e8eef5;
-}
-
-.btn-page {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  background: #f5f5f5;
-  color: #333;
-  border: 2px solid #e8eef5;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.3s;
-}
-
-.btn-page:hover:not(:disabled) {
-  background: #e8eef5;
-  border-color: #4a9eff;
-}
-
-.btn-page:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
 }
 
 .page-info {
   font-size: 14px;
   font-weight: 500;
-  color: #333;
+  color: #0f172a;
 }
 
 .page-jump {
@@ -1772,43 +1511,13 @@ onMounted(() => {
 
 .page-jump-input {
   width: 60px;
-  padding: 8px;
-  border: 2px solid #e8eef5;
-  border-radius: 8px;
   font-size: 14px;
   text-align: center;
 }
 
-.page-jump-input:focus {
-  outline: none;
-  border-color: #4a9eff;
-}
-
 .page-jump-text {
   font-size: 14px;
-  color: #666;
-}
-
-.btn-page-jump {
-  padding: 8px 14px;
-  background: linear-gradient(135deg, #4a9eff 0%, #2196f3 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.3s;
-}
-
-.btn-page-jump:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
-}
-
-.btn-page-jump:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  color: #64748b;
 }
 
 .animate-spin {

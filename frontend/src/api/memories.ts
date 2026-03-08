@@ -15,12 +15,5 @@ export const memoriesApi = {
   async list(params?: { memory_type?: string; case_id?: number; skip?: number; limit?: number }) {
     const response = await axios.get(buildUrl('/api/memories'), { params })
     return response.data
-  },
-
-  async backfillFeedback(limit: number = 200) {
-    const response = await axios.post(buildUrl('/api/memories/backfill-feedback'), null, {
-      params: { limit }
-    })
-    return response.data
   }
 }

@@ -86,8 +86,8 @@ nohup python3 main.py > ../logs/backend.log 2>&1 &
 
 **启动前端**:
 ```bash
-cd /opt/netops/frontend/streamlit
-echo "" | nohup streamlit run app.py --server.port 5173 --server.address 0.0.0.0 --server.headless true > ../../logs/streamlit.log 2>&1 &
+cd /opt/netops/frontend
+nohup npm run dev -- --host 0.0.0.0 --port 5173 > ../logs/frontend.log 2>&1 &
 ```
 
 ---
@@ -105,11 +105,11 @@ BACKEND_PORT=8000
 
 ### 前端配置
 
-**文件**: `/opt/netops/frontend/streamlit/.streamlit/config.toml`
+**目录**: `/opt/netops/frontend`
 
-Streamlit 通过启动参数配置端口：
+Vue 前端通过 Vite 启动参数配置端口：
 ```bash
-streamlit run app.py --server.port 5173 --server.address 0.0.0.0
+npm run dev -- --host 0.0.0.0 --port 5173
 ```
 
 ### systemd 服务配置
@@ -120,9 +120,9 @@ streamlit run app.py --server.port 5173 --server.address 0.0.0.0
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/netops/frontend/streamlit
+WorkingDirectory=/opt/netops/frontend
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
-ExecStart=/usr/local/bin/streamlit run app.py --server.port 5173 --server.address 0.0.0.0 --server.headless true
+ExecStart=/usr/bin/env npm run preview -- --host 0.0.0.0 --port 5173
 Restart=always
 ```
 

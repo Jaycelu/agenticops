@@ -6,11 +6,22 @@ from pydantic import BaseModel, ConfigDict, Field
 from api.schemas.common import PageMeta
 
 
-class AlertEventItem(BaseModel):
+class EventRecord(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    source_event_id: Optional[int] = None
     source: str
+    source_label: Optional[str] = None
+    source_category: Optional[str] = None
+    event_type: Optional[str] = None
+    signal_key: Optional[str] = None
+    disposition: Optional[str] = None
+    disposition_reason: Optional[str] = None
+    decision_confidence: Optional[float] = None
+    cluster_key: Optional[str] = None
+    correlation_key: Optional[str] = None
+    signal_family: Optional[str] = None
     external_event_id: Optional[str] = None
     dedup_key: str
     site_id: Optional[int] = None
@@ -25,13 +36,15 @@ class AlertEventItem(BaseModel):
     resolved_at: Optional[datetime] = None
     last_seen_at: Optional[datetime] = None
     payload: Dict[str, Any] = Field(default_factory=dict)
+    case_id: Optional[int] = None
+    case_code: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
 
 class EventIngestRequest(BaseModel):
-    source: str = Field(default="SPLUNK", max_length=50)
-    event_type: str = Field(default="unknown", max_length=100)
+    source: str = Field(default="ELK", max_length=50, description="Only ELK or ZABBIX are accepted")
+    event_type: str = Field(default="log_signal", max_length=100, description="Only log_signal or zabbix_alert are accepted")
     external_event_id: Optional[str] = Field(default=None, max_length=128)
     site_id: Optional[int] = None
     netbox_device_id: Optional[int] = None
@@ -44,63 +57,78 @@ class EventIngestRequest(BaseModel):
     tags: List[str] = Field(default_factory=list)
     raw_payload: Dict[str, Any] = Field(default_factory=dict)
 
-
-class SplunkWebhookRequest(BaseModel):
-    search_name: Optional[str] = None
-    sid: Optional[str] = None
-    host: Optional[str] = None
-    source: Optional[str] = None
-    sourcetype: Optional[str] = None
-    time: Optional[str] = None
-    event: Dict[str, Any] = Field(default_factory=dict)
-    result: Dict[str, Any] = Field(default_factory=dict)
-
-
-class EDAWebhookRequest(BaseModel):
-    rulebook: Optional[str] = None
-    rule_name: Optional[str] = None
-    event_id: Optional[str] = None
-    source: Optional[str] = None
-    occurred_at: Optional[str] = None
-    severity: Optional[str] = None
-    event: Dict[str, Any] = Field(default_factory=dict)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    auto_dispatch_readonly: bool = True
-    reviewer: Optional[str] = "eda-system"
-
-
 class EventIngestResponse(BaseModel):
     accepted: bool = True
     observe_only: bool
-    event: AlertEventItem
-    case_id: Optional[int] = None
-    case_code: Optional[str] = None
-
-
-class EventIngestDispatchResult(BaseModel):
-    dispatched: bool = False
-    task_id: Optional[int] = None
-    case_id: Optional[int] = None
-    case_code: Optional[str] = None
-    message: str = ""
-
-
-class EDAIngestResponse(BaseModel):
-    accepted: bool = True
-    observe_only: bool
-    event: AlertEventItem
-    dispatch: EventIngestDispatchResult
+    event: EventRecord
     case_id: Optional[int] = None
     case_code: Optional[str] = None
 
 
 class EventListResponse(BaseModel):
     page: PageMeta
-    events: List[AlertEventItem] = Field(default_factory=list)
+    events: List[EventRecord] = Field(default_factory=list)
+
+
+class EventClusterItem(BaseModel):
+    cluster_key: str
+    correlation_key: str
+    title: str
+    event_count: int
+    source_categories: List[str] = Field(default_factory=list)
+    dispositions: Dict[str, int] = Field(default_factory=dict)
+    case_count: int = 0
+    ticket_count: int = 0
+    highest_severity: str = "warning"
+    host: Optional[str] = None
+    site_id: Optional[int] = None
+    netbox_device_id: Optional[int] = None
+    latest_occurred_at: Optional[datetime] = None
+    signal_family: Optional[str] = None
+    device_name: Optional[str] = None
+    device_role: Optional[str] = None
+    site_name: Optional[str] = None
+    topology_hint: Optional[str] = None
+    root_cause_candidate: Optional[str] = None
+    adjacent_devices: List[str] = Field(default_factory=list)
+    link_count: int = 0
+    impact_scope: Optional[str] = None
+
+
+class EventClusterListResponse(BaseModel):
+    clusters: List[EventClusterItem] = Field(default_factory=list)
+
+
+class RootCauseCandidateItem(BaseModel):
+    candidate_key: str
+    title: str
+    root_cause_candidate: str
+    site_name: Optional[str] = None
+    signal_family: Optional[str] = None
+    score: float
+    ranking_reason: str
+    merged_cluster_count: int = 0
+    event_count: int = 0
+    case_count: int = 0
+    ticket_count: int = 0
+    source_categories: List[str] = Field(default_factory=list)
+    adjacent_devices: List[str] = Field(default_factory=list)
+    representative_device: Optional[str] = None
+    impact_scope: Optional[str] = None
+    recommended_actions: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class RootCauseCandidateListResponse(BaseModel):
+    items: List[RootCauseCandidateItem] = Field(default_factory=list)
 
 
 class EventDispatchRequest(BaseModel):
     reviewer: Optional[str] = "system"
+
+
+class EventDispositionRequest(BaseModel):
+    disposition: str = Field(..., description="noise|ticket_only|case_required")
+    reason: Optional[str] = None
 
 
 class EventDispatchResponse(BaseModel):
@@ -130,6 +158,8 @@ class EventTaskLinkItem(BaseModel):
     task_id: int
     task_code: str
     status: str
+    source_model: Optional[str] = None
+    case_id: Optional[int] = None
     created_at: Optional[datetime] = None
 
 
@@ -156,3 +186,7 @@ class EventPlaybookDraftResponse(BaseModel):
     event_id: int
     playbook_check: Dict[str, Any] = Field(default_factory=dict)
     playbook_yaml: str = ""
+
+
+# Backward-compatible alias during event-domain migration.
+AlertEventItem = EventRecord

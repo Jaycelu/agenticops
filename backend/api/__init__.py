@@ -1,7 +1,8 @@
 from .assets import router as assets_router
 from .logs import router as logs_router
-from .models import router as models_router
-from .automation import router as automation_router
+from .compat import router as compat_router
+from .settings import router as settings_router
+from .sites import router as sites_router
 from .ssh_management import router as ssh_management_router
 from .events import router as events_router
 from .tickets import router as tickets_router
@@ -9,12 +10,14 @@ from .cases import router as cases_router
 from .agents import router as agents_router
 from .memories import router as memories_router
 from .fabric import router as fabric_router
+from .zabbix import router as zabbix_router
 
 __all__ = [
     "assets_router",
     "logs_router",
-    "models_router",
-    "automation_router",
+    "compat_router",
+    "settings_router",
+    "sites_router",
     "ssh_management_router",
     "events_router",
     "tickets_router",
@@ -22,4 +25,5 @@ __all__ = [
     "agents_router",
     "memories_router",
     "fabric_router",
+    "zabbix_router",
 ]

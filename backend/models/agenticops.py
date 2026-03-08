@@ -94,6 +94,7 @@ class SourceEvent(Base):
     __tablename__ = "source_event"
 
     id = Column(BigInteger, primary_key=True, index=True)
+    legacy_event_id = Column(BigInteger, unique=True, index=True)
     source_type = Column(String(50), nullable=False, index=True)
     source_system = Column(String(50), nullable=False, index=True)
     external_event_id = Column(String(128), index=True)
@@ -116,6 +117,7 @@ class SourceEvent(Base):
     cases = relationship("CaseRecord", back_populates="source_event")
 
     __table_args__ = (
+        Index("idx_source_event_legacy_event_id", "legacy_event_id"),
         Index("idx_source_event_source_status", "source_system", "status", "occurred_at"),
         Index("idx_source_event_site_device", "site_id", "netbox_device_id", "occurred_at"),
     )

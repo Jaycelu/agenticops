@@ -11,11 +11,8 @@ from models.automation import (
     RawAnomaly,
     LogSample,
     LogAnalysisResult,
-    AutomationTask,
-    AutomationActionLog,
-    AutomationApproval,
-    AutomationTaskFeedback,
 )
+from models.agenticops import AgentRun, ExecutionRun, MemoryEntry, MemoryType
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +25,9 @@ class DataRetentionService:
             "raw_anomaly": 0,
             "log_sample": 0,
             "log_analysis_result": 0,
-            "automation_task": 0,
-            "automation_action_log": 0,
-            "automation_approval": 0,
-            "automation_task_feedback": 0,
+            "agent_run": 0,
+            "execution_run": 0,
+            "memory_feedback": 0,
         }
 
         try:
@@ -40,7 +36,6 @@ class DataRetentionService:
             analysis_cutoff = now - timedelta(days=settings.retention_analysis_days)
             task_cutoff = now - timedelta(days=settings.retention_automation_task_days)
             action_cutoff = now - timedelta(days=settings.retention_action_log_days)
-            approval_cutoff = now - timedelta(days=settings.retention_approval_days)
             feedback_cutoff = now - timedelta(days=settings.retention_feedback_days)
             summary["raw_anomaly"] = db.query(RawAnomaly).filter(
                 RawAnomaly.created_at < raw_cutoff
@@ -54,20 +49,17 @@ class DataRetentionService:
                 LogAnalysisResult.created_at < analysis_cutoff
             ).delete(synchronize_session=False)
 
-            summary["automation_action_log"] = db.query(AutomationActionLog).filter(
-                AutomationActionLog.executed_at < action_cutoff
+            summary["agent_run"] = db.query(AgentRun).filter(
+                AgentRun.created_at < task_cutoff
             ).delete(synchronize_session=False)
 
-            summary["automation_approval"] = db.query(AutomationApproval).filter(
-                AutomationApproval.created_at < approval_cutoff
+            summary["execution_run"] = db.query(ExecutionRun).filter(
+                ExecutionRun.created_at < action_cutoff
             ).delete(synchronize_session=False)
 
-            summary["automation_task_feedback"] = db.query(AutomationTaskFeedback).filter(
-                AutomationTaskFeedback.created_at < feedback_cutoff
-            ).delete(synchronize_session=False)
-
-            summary["automation_task"] = db.query(AutomationTask).filter(
-                AutomationTask.created_at < task_cutoff
+            summary["memory_feedback"] = db.query(MemoryEntry).filter(
+                MemoryEntry.memory_type == MemoryType.FEEDBACK,
+                MemoryEntry.created_at < feedback_cutoff
             ).delete(synchronize_session=False)
 
             db.commit()

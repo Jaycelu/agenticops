@@ -14,11 +14,13 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from database import SessionLocal
 from models.automation import Site, LogSample, RawAnomaly
+from models.agenticops import SourceEvent, SourceEventStatus
 from mcp.elk_mcp import ELKMCP
 from config.site_config import get_site_config, get_log_collection_policy
 from services.fingerprint_generator import fingerprint_generator
 from services.baseline_calculator import baseline_calculator
 from services.site_automation_service import site_automation_service
+from services.source_event_projection import attach_event_projection, upsert_source_event
 
 logger = logging.getLogger(__name__)
 
@@ -346,6 +348,133 @@ class LogSampler:
         unstable_tokens = ["down", "reset", "flap", "change", "timeout"]
         return any(r in msg for r in routing_tokens) and any(u in msg for u in unstable_tokens)
 
+    def _upsert_sample_signal_event(
+        self,
+        db: Session,
+        *,
+        site: Site,
+        sample: LogSample,
+        device_ip: str,
+        signal_summary: Dict[str, Any],
+        pattern_summary: Dict[str, Any],
+        scope_key: Optional[str],
+        scope_name: Optional[str],
+        batch_id: Optional[str],
+        case_id: Optional[int] = None,
+        case_code: Optional[str] = None,
+    ) -> Optional[SourceEvent]:
+        if float(signal_summary.get("signal_score") or 0) <= 0:
+            return None
+
+        dedup_key = f"log-sample-event:{sample.id}"
+        severity = str(signal_summary.get("risk_level") or "warning").lower()
+        severity_level_map = {
+            "critical": 5,
+            "high": 4,
+            "warning": 2,
+            "medium": 2,
+            "low": 1,
+            "info": 1,
+        }
+        summary = (
+            f"{signal_summary.get('signal_title') or '日志信号'}"
+            f"，score={signal_summary.get('signal_score', 0)}"
+            f"，patterns={len(pattern_summary.get('top_patterns') or [])}"
+        )
+        payload: Dict[str, Any] = {}
+        payload.update(
+            {
+                "event_type": "log_signal",
+                "source_category": "log_signal",
+                "signal_key": signal_summary.get("primary_signal") or f"log_signal:{site.site_code}:{device_ip}",
+                "summary": summary,
+                "signal_summary": signal_summary,
+                "pattern_summary": {
+                    "message_count": pattern_summary.get("message_count", 0),
+                    "critical_examples": (pattern_summary.get("critical_examples") or [])[:3],
+                    "top_patterns": (pattern_summary.get("top_patterns") or [])[:3],
+                },
+                "sample": {
+                    "sample_id": sample.id,
+                    "batch_id": batch_id,
+                    "scope_key": scope_key,
+                    "scope_name": scope_name,
+                    "site_code": site.site_code,
+                    "time_window_start": sample.time_window_start.isoformat() if sample.time_window_start else None,
+                    "time_window_end": sample.time_window_end.isoformat() if sample.time_window_end else None,
+                },
+                "raw": {
+                    "site_code": site.site_code,
+                    "device_ip": device_ip,
+                    "counts": {
+                        "error_count": sample.error_count,
+                        "crc_error_count": sample.crc_error_count,
+                        "flap_count": sample.flap_count,
+                        "neighbor_change_count": sample.neighbor_change_count,
+                    },
+                },
+            }
+        )
+        if case_id and case_code:
+            payload["case"] = {
+                "case_id": case_id,
+                "case_code": case_code,
+                "created_at": datetime.now().isoformat(),
+            }
+            payload["event_decision"] = {
+                "disposition": "case_required",
+                "reason": "log_sample_case_created",
+                "confidence": 0.99,
+                "updated_at": datetime.now().isoformat(),
+            }
+
+        source_event = upsert_source_event(
+            db,
+            dedup_key=f"log-sample:{sample.id}",
+            source_type="log_signal",
+            source_system="ELK_SAMPLER",
+            external_event_id=f"log-sample:{sample.id}",
+            site_id=sample.site_id,
+            netbox_device_id=sample.netbox_device_id,
+            device_ip=device_ip,
+            host=device_ip,
+            title=f"[{site.site_code}] {device_ip or sample.netbox_device_id or 'device'} 日志信号",
+            severity=severity,
+            occurred_at=sample.sampled_at or datetime.now(),
+            collected_at=datetime.now(),
+            raw_payload=payload.get("raw") or {},
+            normalized_payload={
+                "severity": severity,
+                "severity_level": severity_level_map.get(severity, 2),
+                "source_category": "log_signal",
+                "event_type": "log_signal",
+                "signal_key": payload.get("signal_key"),
+                "summary": summary,
+                "signal_summary": signal_summary,
+                "pattern_summary": payload.get("pattern_summary") or {},
+                "sample": payload.get("sample") or {},
+                "event_decision": payload.get("event_decision") or {},
+                "case": payload.get("case") or {},
+                "ticket": payload.get("ticket") or {},
+            },
+            status=SourceEventStatus.CASE_CREATED if case_id and case_code else SourceEventStatus.NEW,
+        )
+        attach_event_projection(
+            source_event,
+            legacy_dedup_key=dedup_key,
+            legacy_source="ELK",
+            name=f"[{site.site_code}] {device_ip or sample.netbox_device_id or 'device'} 日志信号",
+            host=device_ip,
+            severity=severity,
+            severity_level=severity_level_map.get(severity, 2),
+            status="open",
+            acknowledged=False,
+            occurred_at=sample.sampled_at or datetime.now(),
+            last_seen_at=datetime.now(),
+            payload={**payload, "source_event_id": int(source_event.id) if source_event.id is not None else None},
+        )
+        return source_event
+
     async def _write_samples_to_db(
         self,
         site_code: str,
@@ -449,6 +578,18 @@ class LogSampler:
                 db.add(log_sample)
                 db.flush()  # 确保log_sample有ID
                 total_samples_count += 1
+
+                self._upsert_sample_signal_event(
+                    db,
+                    site=site,
+                    sample=log_sample,
+                    device_ip=device_ip,
+                    signal_summary=signal_summary,
+                    pattern_summary=pattern_summary,
+                    scope_key=scope_key,
+                    scope_name=scope_name,
+                    batch_id=batch_id,
+                )
 
                 if signal_summary["should_create_case"]:
                     triggered_abnormal_sample_ids.append(log_sample.id)
@@ -804,6 +945,19 @@ class LogSampler:
             "created_at": datetime.now().isoformat(),
         }
         sample.raw_data = raw_data
+        self._upsert_sample_signal_event(
+            db,
+            site=site,
+            sample=sample,
+            device_ip=device_ip or "",
+            signal_summary=signal_summary,
+            pattern_summary=pattern_summary,
+            scope_key=raw_data.get("scope_key"),
+            scope_name=raw_data.get("scope_name"),
+            batch_id=raw_data.get("batch_id"),
+            case_id=case.id,
+            case_code=case.case_code,
+        )
         db.commit()
         return raw_data["case"]
     

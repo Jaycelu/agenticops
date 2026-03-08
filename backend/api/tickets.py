@@ -17,17 +17,19 @@ router = APIRouter(prefix="/api/tickets", tags=["tickets"])
 
 
 def _to_ticket_item(ticket: LocalTicket):
+    metadata = ticket.ticket_metadata or {}
     return {
         "id": ticket.id,
         "ticket_code": ticket.ticket_code,
         "provider": ticket.provider,
         "event_id": ticket.event_id,
+        "source_event_id": ticket.source_event_id or metadata.get("source_event_id"),
         "title": ticket.title,
         "description": ticket.description,
         "priority": ticket.priority,
         "requester": ticket.requester,
         "status": ticket.status,
-        "metadata": ticket.ticket_metadata or {},
+        "metadata": metadata,
         "closed_at": ticket.closed_at,
         "created_at": ticket.created_at,
         "updated_at": ticket.updated_at,
@@ -38,6 +40,7 @@ def _to_ticket_item(ticket: LocalTicket):
 async def list_tickets(
     status: Optional[str] = None,
     event_id: Optional[int] = None,
+    source_event_id: Optional[int] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
@@ -47,9 +50,18 @@ async def list_tickets(
         query = query.filter(LocalTicket.status == status)
     if event_id is not None:
         query = query.filter(LocalTicket.event_id == event_id)
+    if source_event_id is not None:
+        query = query.filter(LocalTicket.source_event_id == source_event_id)
 
-    total = query.count()
-    records = query.order_by(LocalTicket.created_at.desc()).offset(skip).limit(limit).all()
+    records = query.order_by(LocalTicket.created_at.desc()).all()
+    if source_event_id is not None:
+        records = [
+            item for item in records
+            if (item.source_event_id == source_event_id) or ((item.ticket_metadata or {}).get("source_event_id") == source_event_id)
+        ]
+
+    total = len(records)
+    records = records[skip : skip + limit]
     returned = len(records)
     return {
         "page": PageMeta(
