@@ -116,5 +116,35 @@ class SiteAutomationService:
             # 降级返回，避免前端无响应
             return bool(enabled)
 
+    def list_sites_view(self, db: Session, *, skip: int = 0, limit: int = 100) -> Dict[str, object]:
+        sites = db.query(Site).offset(skip).limit(limit).all()
+        enabled_map = self.get_site_enabled_map(db)
+        return {
+            "total": db.query(Site).count(),
+            "sites": [
+                {
+                    "id": site.id,
+                    "site_code": site.site_code,
+                    "site_name": site.site_name,
+                    "description": site.description,
+                    "automation_enabled": enabled_map.get(site.id, False),
+                }
+                for site in sites
+            ],
+        }
+
+    def get_site_view(self, db: Session, site_id: int) -> Optional[Dict[str, object]]:
+        site = db.query(Site).filter(Site.id == site_id).first()
+        if not site:
+            return None
+        enabled_map = self.get_site_enabled_map(db)
+        return {
+            "id": site.id,
+            "site_code": site.site_code,
+            "site_name": site.site_name,
+            "description": site.description,
+            "automation_enabled": enabled_map.get(site.id, False),
+        }
+
 
 site_automation_service = SiteAutomationService()

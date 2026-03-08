@@ -21,14 +21,13 @@ from database import SessionLocal
 from models.agenticops import (
     CaseRecord,
     CaseStatus,
-    MemoryEntry,
-    MemoryType,
     RemediationPlan,
     RemediationPlanStatus,
     SourceEvent,
     SourceEventStatus,
 )
 from models.automation import AutomationTask, AutomationTaskFeedback
+from services.memory_ingestion_service import memory_ingestion_service
 
 
 def map_case_status(task: AutomationTask) -> CaseStatus:
@@ -184,62 +183,50 @@ def ensure_remediation_plan(db: Session, task: AutomationTask, case: CaseRecord)
 
 def ensure_episode_memory(db: Session, task: AutomationTask, case: CaseRecord) -> bool:
     key = f"legacy-task-episode:{task.id}"
-    entry = db.query(MemoryEntry).filter(MemoryEntry.memory_key == key).first()
-    if entry is not None:
-        return False
-
-    db.add(
-        MemoryEntry(
-            case_id=case.id,
-            memory_type=MemoryType.EPISODE,
-            memory_key=key,
-            title=f"Legacy Task Episode {task.task_code}",
-            summary=build_summary(task),
-            source="backfill_legacy_task",
-            tags=[task.status or "unknown", task.triggered_by or "legacy"],
-            confidence=0.7,
-            success_score=1.0 if task.status == "success" else 0.3,
-            content={
-                "legacy_task_id": task.id,
-                "legacy_task_code": task.task_code,
-                "trigger_event": task.trigger_event or {},
-                "decision_result": task.decision_result or {},
-                "execution_result": task.execution_result or {},
-            },
-        )
+    _, created = memory_ingestion_service.remember_episode(
+        db,
+        case_id=case.id,
+        memory_key=key,
+        title=f"Legacy Task Episode {task.task_code}",
+        summary=build_summary(task),
+        source="backfill_legacy_task",
+        tags=[task.status or "unknown", task.triggered_by or "legacy"],
+        confidence=0.7,
+        success_score=1.0 if task.status == "success" else 0.3,
+        content={
+            "legacy_task_id": task.id,
+            "legacy_task_code": task.task_code,
+            "trigger_event": task.trigger_event or {},
+            "decision_result": task.decision_result or {},
+            "execution_result": task.execution_result or {},
+        },
     )
-    return True
+    return created
 
 
 def ensure_feedback_memory(db: Session, task: AutomationTask, case: CaseRecord, feedback: AutomationTaskFeedback) -> bool:
     key = f"legacy-task-feedback:{feedback.id}"
-    entry = db.query(MemoryEntry).filter(MemoryEntry.memory_key == key).first()
-    if entry is not None:
-        return False
-
-    db.add(
-        MemoryEntry(
-            case_id=case.id,
-            memory_type=MemoryType.FEEDBACK,
-            memory_key=key,
-            title=f"Legacy Feedback {task.task_code}",
-            summary=feedback.comment or build_summary(task),
-            source="backfill_legacy_feedback",
-            tags=feedback.tags or [],
-            confidence=0.75 if feedback.verdict == "correct" else 0.45,
-            success_score=1.0 if feedback.verdict == "correct" else 0.3,
-            content={
-                "legacy_task_id": task.id,
-                "legacy_task_code": task.task_code,
-                "feedback_id": feedback.id,
-                "verdict": feedback.verdict,
-                "comment": feedback.comment,
-                "reviewer": feedback.reviewer,
-                "tags": feedback.tags or [],
-            },
-        )
+    _, created = memory_ingestion_service.remember_feedback(
+        db,
+        case_id=case.id,
+        memory_key=key,
+        title=f"Legacy Feedback {task.task_code}",
+        summary=feedback.comment or build_summary(task),
+        source="backfill_legacy_feedback",
+        tags=feedback.tags or [],
+        confidence=0.75 if feedback.verdict == "correct" else 0.45,
+        success_score=1.0 if feedback.verdict == "correct" else 0.3,
+        content={
+            "legacy_task_id": task.id,
+            "legacy_task_code": task.task_code,
+            "feedback_id": feedback.id,
+            "verdict": feedback.verdict,
+            "comment": feedback.comment,
+            "reviewer": feedback.reviewer,
+            "tags": feedback.tags or [],
+        },
     )
-    return True
+    return created
 
 
 def run(limit: Optional[int], dry_run: bool) -> None:

@@ -1,10 +1,15 @@
 <template>
-  <div class="page">
+  <div class="page app-page">
     <div class="page-content">
-      <div class="page-header">
-        <div class="page-title">
-          <Server class="title-icon" :size="28" />
-          <h1>资产视图</h1>
+      <div class="page-header app-page-header">
+        <div class="page-title app-page-title">
+          <span class="app-page-title-icon">
+            <Server class="title-icon" :size="24" />
+          </span>
+          <div class="app-page-copy">
+            <h1>资产视图</h1>
+            <p>查看设备、IP、机柜、VLAN 与前缀信息，并与 Case 上下文联动。</p>
+          </div>
         </div>
         <button @click="showColumnSettings = true" class="btn-column-settings">
           <Settings2 class="btn-icon" :size="16" />
@@ -1789,14 +1794,7 @@ onMounted(() => {
 }
 
 .title-icon {
-  color: #4a9eff;
-}
-
-.page-header h1 {
-  color: #333;
-  margin: 0;
-  font-size: 24px;
-  font-weight: 700;
+  color: currentColor;
 }
 
 .btn-column-settings {
@@ -1804,19 +1802,19 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
-  background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.78) 0%, rgba(30, 41, 59, 0.88) 100%);
   color: white;
-  border: none;
-  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 14px;
   cursor: pointer;
   font-weight: 500;
   transition: all 0.3s;
-  box-shadow: 0 2px 8px rgba(108, 117, 125, 0.3);
+  box-shadow: 0 14px 24px rgba(15, 23, 42, 0.14);
 }
 
 .btn-column-settings:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(108, 117, 125, 0.4);
+  box-shadow: 0 18px 34px rgba(15, 23, 42, 0.18);
 }
 
 .vendor-badge {
@@ -1873,13 +1871,16 @@ onMounted(() => {
 
 .sidebar {
   width: 260px;
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  background:
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.14), transparent 34%),
+    linear-gradient(180deg, #071120 0%, #0f172a 45%, #111c32 100%);
+  border-radius: 22px;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  color: #f8fafc;
 }
 
 .nav-item {
@@ -1893,18 +1894,18 @@ onMounted(() => {
 }
 
 .nav-item:hover {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: rgba(255, 255, 255, 0.06);
   transform: translateX(4px);
 }
 
 .nav-item.active {
-  background: linear-gradient(135deg, #4a9eff 0%, #2196f3 100%);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(13, 148, 136, 0.16));
   color: white;
-  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.3);
+  box-shadow: 0 16px 28px rgba(15, 90, 224, 0.12);
 }
 
 .nav-icon {
-  color: #4a9eff;
+  color: #7dd3fc;
   flex-shrink: 0;
 }
 
@@ -1929,9 +1930,10 @@ onMounted(() => {
 
 .main-area {
   flex: 1;
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.92));
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 22px;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1946,8 +1948,8 @@ onMounted(() => {
 
 .filter-section {
   padding: 20px 24px;
-  border-bottom: 1px solid #e8eef5;
-  background: #fafbfc;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  background: linear-gradient(180deg, rgba(250, 251, 252, 0.92), rgba(242, 247, 252, 0.9));
 }
 
 .filter-group {
@@ -1974,17 +1976,17 @@ onMounted(() => {
 .filter-input {
   width: 100%;
   padding: 10px 12px 10px 40px;
-  border: 2px solid #e8eef5;
-  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 14px;
   font-size: 14px;
   transition: all 0.3s;
-  background: white;
+  background: rgba(255, 255, 255, 0.84);
 }
 
 .filter-input:focus {
   outline: none;
-  border-color: #4a9eff;
-  box-shadow: 0 0 0 4px rgba(74, 158, 255, 0.1);
+  border-color: rgba(15, 90, 224, 0.32);
+  box-shadow: 0 0 0 4px rgba(15, 90, 224, 0.08);
 }
 
 .filter-input select {
@@ -2018,9 +2020,9 @@ onMounted(() => {
 }
 
 .btn-search {
-  background: linear-gradient(135deg, #4a9eff 0%, #2196f3 100%);
+  background: linear-gradient(135deg, #0f5ae0 0%, #0f766e 100%);
   color: white;
-  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.3);
+  box-shadow: 0 14px 24px rgba(15, 90, 224, 0.16);
 }
 
 .btn-search:hover {
@@ -2029,9 +2031,9 @@ onMounted(() => {
 }
 
 .btn-reset {
-  background: #f5f5f5;
-  color: #333;
-  border: 2px solid #e8eef5;
+  background: rgba(255, 255, 255, 0.82);
+  color: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .btn-reset:hover {
@@ -2039,9 +2041,9 @@ onMounted(() => {
 }
 
 .btn-save {
-  background: linear-gradient(135deg, #4a9eff 0%, #2196f3 100%);
+  background: linear-gradient(135deg, #0f5ae0 0%, #0f766e 100%);
   color: white;
-  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.3);
+  box-shadow: 0 14px 24px rgba(15, 90, 224, 0.16);
 }
 
 .btn-save:hover {
@@ -2143,7 +2145,7 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  background: linear-gradient(135deg, #4a9eff 0%, #2196f3 100%);
+  background: linear-gradient(135deg, #0f5ae0 0%, #2563eb 100%);
   color: white;
   border: none;
   border-radius: 10px;
@@ -2342,7 +2344,7 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 10px 18px;
-  background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.78) 0%, rgba(30, 41, 59, 0.88) 100%);
   color: white;
   border: none;
   border-radius: 10px;
@@ -2450,7 +2452,7 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 10px 18px;
-  background: linear-gradient(135deg, #4a9eff 0%, #2196f3 100%);
+  background: linear-gradient(135deg, #0f5ae0 0%, #2563eb 100%);
   color: white;
   border: none;
   border-radius: 10px;
@@ -2584,7 +2586,7 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 10px 18px;
-  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+  background: linear-gradient(135deg, #16a34a 0%, #0f766e 100%);
   color: white;
   border: none;
   border-radius: 10px;
@@ -2647,9 +2649,9 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
-  background: #f5f5f5;
-  color: #333;
-  border: 2px solid #e8eef5;
+  background: rgba(255, 255, 255, 0.82);
+  color: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 10px;
   cursor: pointer;
   font-weight: 500;
@@ -2665,14 +2667,14 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
-  background: linear-gradient(135deg, #4a9eff 0%, #2196f3 100%);
+  background: linear-gradient(135deg, #0f5ae0 0%, #0f766e 100%);
   color: white;
   border: none;
   border-radius: 10px;
   cursor: pointer;
   font-weight: 500;
   transition: all 0.3s;
-  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.3);
+  box-shadow: 0 14px 24px rgba(15, 90, 224, 0.16);
 }
 
 .btn-confirm:hover:not(:disabled) {

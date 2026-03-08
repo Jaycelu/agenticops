@@ -125,10 +125,7 @@ class StateAggregator:
                     "signal_key": signal_key,
                     "signal_title": signal_key,
                 },
-                "state_abnormal": {
-                    "is_abnormal": is_state_signal,
-                    "abnormal_type": signal_key,
-                },
+                "needs_escalation": is_state_signal,
             }
 
         except Exception as e:

@@ -1,7 +1,7 @@
 """
 数据库连接与会话管理
 """
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from config.settings import settings
@@ -61,4 +61,149 @@ def init_db():
     )
     from models.integration_settings import IntegrationSetting
     from models.log_scope import LogScope
-    Base.metadata.create_all(bind=engine)
+    active_tables = [
+        Site.__table__,
+        SiteAutomationSwitch.__table__,
+        DeviceState.__table__,
+        LogSample.__table__,
+        LogAnalysisResult.__table__,
+        AutomationPolicy.__table__,
+        RawAnomaly.__table__,
+        SSHCredential.__table__,
+        SSHCredentialDeviceBinding.__table__,
+        AssetDevice.__table__,
+        LocalTicket.__table__,
+        CommandTemplate.__table__,
+        SourceEvent.__table__,
+        CaseRecord.__table__,
+        EvidenceItem.__table__,
+        AgentRun.__table__,
+        AgentClaim.__table__,
+        MemoryEntry.__table__,
+        RemediationPlan.__table__,
+        ExecutionRun.__table__,
+        IntegrationSetting.__table__,
+        LogScope.__table__,
+    ]
+    Base.metadata.create_all(bind=engine, tables=active_tables)
+    _drop_local_ticket_alert_event_fk()
+    _ensure_local_ticket_source_event_column()
+    _ensure_source_event_legacy_event_id_column()
+
+
+def _drop_local_ticket_alert_event_fk() -> None:
+    """
+    退役 alert_event 前先解除 local_ticket.event_id 对旧表的外键依赖。
+    """
+    with engine.begin() as conn:
+        rows = conn.execute(
+            text(
+                """
+                SELECT c.conname
+                FROM pg_constraint c
+                JOIN pg_class rel ON rel.oid = c.conrelid
+                JOIN pg_class target ON target.oid = c.confrelid
+                WHERE rel.relname = 'local_ticket'
+                  AND target.relname = 'alert_event'
+                  AND c.contype = 'f'
+                """
+            )
+        ).fetchall()
+        for (constraint_name,) in rows:
+            conn.execute(
+                text(
+                    f"""
+                    ALTER TABLE local_ticket
+                    DROP CONSTRAINT IF EXISTS "{constraint_name}"
+                    """
+                )
+            )
+
+
+def _ensure_local_ticket_source_event_column() -> None:
+    """
+    对历史数据库做兼容：为 local_ticket 补齐 source_event_id 列，并回填 metadata 中已有的值。
+    """
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                ALTER TABLE local_ticket
+                ADD COLUMN IF NOT EXISTS source_event_id BIGINT
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM pg_indexes
+                        WHERE schemaname = current_schema()
+                          AND indexname = 'idx_local_ticket_source_event_provider'
+                    ) THEN
+                        CREATE INDEX idx_local_ticket_source_event_provider
+                        ON local_ticket (source_event_id, provider);
+                    END IF;
+                END $$;
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE local_ticket
+                SET source_event_id = NULLIF(metadata->>'source_event_id', '')::BIGINT
+                WHERE source_event_id IS NULL
+                  AND metadata IS NOT NULL
+                  AND metadata ? 'source_event_id'
+                """
+            )
+        )
+
+
+def _ensure_source_event_legacy_event_id_column() -> None:
+    """
+    为事件域收口阶段补齐 source_event.legacy_event_id，并从历史 normalized_payload 回填。
+    """
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                ALTER TABLE source_event
+                ADD COLUMN IF NOT EXISTS legacy_event_id BIGINT
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM pg_indexes
+                        WHERE schemaname = current_schema()
+                          AND indexname = 'idx_source_event_legacy_event_id'
+                    ) THEN
+                        CREATE UNIQUE INDEX idx_source_event_legacy_event_id
+                        ON source_event (legacy_event_id)
+                        WHERE legacy_event_id IS NOT NULL;
+                    END IF;
+                END $$;
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE source_event
+                SET legacy_event_id = NULLIF(normalized_payload->>'legacy_event_id', '')::BIGINT
+                WHERE legacy_event_id IS NULL
+                  AND normalized_payload IS NOT NULL
+                  AND normalized_payload ? 'legacy_event_id'
+                """
+            )
+        )

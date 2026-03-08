@@ -5,6 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db
+from api.schemas.automation import ApprovalDecisionRequest, ApprovalInitiateRequest, ManualActionResponse, TaskFeedbackRequest
 from api.schemas.fabric import (
     ExecutionRunListResponse,
     ExecutionRunResponse,
@@ -13,6 +14,12 @@ from api.schemas.fabric import (
     RemediationPlanResponse,
 )
 from models.agenticops import ExecutionRun, ExecutionRunStatus, RemediationPlan, RemediationPlanStatus
+from services.fabric_plan_service import (
+    decide_plan_approval,
+    get_plan_approval_history,
+    initiate_plan_approval,
+    submit_plan_feedback,
+)
 
 router = APIRouter(prefix="/api/fabric", tags=["Automation Fabric"])
 
@@ -94,6 +101,59 @@ async def get_plan(plan_id: int, db: Session = Depends(get_db)):
         created_at=item.created_at,
         approved_at=item.approved_at,
     )
+
+
+@router.post("/plans/{plan_id}/approval/initiate", response_model=ManualActionResponse)
+async def initiate_remediation_plan_approval(
+    plan_id: int,
+    payload: ApprovalInitiateRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        return initiate_plan_approval(db, plan_id, payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/plans/{plan_id}/approval/decision", response_model=ManualActionResponse)
+async def decide_remediation_plan_approval(
+    plan_id: int,
+    payload: ApprovalDecisionRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        return decide_plan_approval(db, plan_id, payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/plans/{plan_id}/approval/history")
+async def get_remediation_plan_approval_history(
+    plan_id: int,
+    db: Session = Depends(get_db),
+):
+    try:
+        return get_plan_approval_history(db, plan_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post("/plans/{plan_id}/feedback", response_model=ManualActionResponse)
+async def submit_remediation_plan_feedback(
+    plan_id: int,
+    payload: TaskFeedbackRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        return submit_plan_feedback(db, plan_id, payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get("/executions", response_model=ExecutionRunListResponse)

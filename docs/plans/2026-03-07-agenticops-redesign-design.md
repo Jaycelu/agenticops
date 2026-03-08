@@ -188,6 +188,21 @@
 
 ## 9. 执行状态跟踪
 
+### 新增优化方向（2026-03-08）
+
+在本次基础重构之上，新增一条“Source-Centric AgenticOps”优化线，详细设计见：
+
+- [2026-03-08-source-centric-agenticops-design.md](/Users/jayce/Desktop/Jayce/netops_bs/docs/plans/2026-03-08-source-centric-agenticops-design.md)
+
+新增原则：
+
+- NetBox 是唯一真实资产与拓扑源
+- ELK 是唯一日志源
+- Zabbix 是唯一告警与实时状态源
+- SSH 从默认诊断链路降级为执行通道
+- 事件中心升级为统一事件工作台
+- 后续新增 `Zabbix 中心` 作为一等前端数据源模块
+
 ### 已完成
 
 - 阶段 1：新增 AgenticOps 数据模型、Schema、Cases/Agents/Memories/Fabric API，并完成 FastAPI 挂载
@@ -224,7 +239,9 @@
 - 阶段 4：少量旧服务返回体仍带 `abnormal_type / needs_upgrade` 兼容字段，但主流程已切到 `signal` 语义
 - 阶段 4：`Execution/Fabric` 链路已覆盖新工作台主流程，但 `/api/automation` 兼容层仍保留部分 legacy 数据模型输出
 - 阶段 4：历史补迁脚本已完成，但当前环境未启动 PostgreSQL，尚未完成一次真实 dry-run/正式 backfill 验证
+- Source-Centric 优化：阶段 1 文档与任务清单已启动，阶段 3 的“默认诊断链路去 SSH 化”准备开始
 
 ### 未开始
 
 - 执行一次真实的 PostgreSQL backfill dry-run / 正式补迁并核对结果
+- Source-Centric 优化：统一事件模型、Zabbix 中心、事件中心重构、驾驶舱降噪/MTTR 指标重做

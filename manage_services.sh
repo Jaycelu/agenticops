@@ -16,7 +16,6 @@ FRONTEND_PORT=5173
 # 服务名称
 BACKEND_SERVICE="netops-backend"
 FRONTEND_SERVICE="netops-frontend"
-STREAMLIT_PROCESS="streamlit run app.py"
 
 # 显示菜单
 show_menu() {
@@ -26,7 +25,7 @@ show_menu() {
     echo ""
     echo "📊 当前端口配置："
     echo "   - 后端 API: $BACKEND_PORT (FastAPI)"
-    echo "   - 前端界面: $FRONTEND_PORT (Streamlit AI)"
+    echo "   - 前端界面: $FRONTEND_PORT (Vue)"
     echo ""
     echo "============================================================"
     echo "请选择操作："
@@ -70,7 +69,7 @@ show_status() {
     local frontend_running=false
     
     check_port $BACKEND_PORT "FastAPI 后端" && backend_running=true
-    check_port $FRONTEND_PORT "Streamlit 前端" && frontend_running=true
+    check_port $FRONTEND_PORT "Vue 前端" && frontend_running=true
     
     echo ""
     echo "============================================================"
@@ -148,23 +147,23 @@ stop_backend() {
 start_frontend() {
     echo ""
     echo "============================================================"
-    echo "▶️  启动 Streamlit 前端..."
+    echo "▶️  启动 Vue 前端..."
     echo "============================================================"
     
     if netstat -tlnp 2>/dev/null | grep -q ":$FRONTEND_PORT " || ss -tlnp 2>/dev/null | grep -q ":$FRONTEND_PORT "; then
-        echo -e "${YELLOW}⚠️  Streamlit 前端已在运行${NC}"
+        echo -e "${YELLOW}⚠️  Vue 前端已在运行${NC}"
         return
     fi
     
-    cd /opt/netops/frontend/streamlit
-    echo "" | nohup streamlit run app.py --server.port $FRONTEND_PORT --server.address 0.0.0.0 --server.headless true > ../../logs/streamlit.log 2>&1 &
+    cd /opt/netops/frontend
+    nohup npm run dev -- --host 0.0.0.0 --port $FRONTEND_PORT > ../logs/frontend.log 2>&1 &
     sleep 5
     
     if netstat -tlnp 2>/dev/null | grep -q ":$FRONTEND_PORT " || ss -tlnp 2>/dev/null | grep -q ":$FRONTEND_PORT "; then
-        echo -e "${GREEN}✅ Streamlit 前端启动成功${NC}"
+        echo -e "${GREEN}✅ Vue 前端启动成功${NC}"
     else
-        echo -e "${RED}❌ Streamlit 前端启动失败，请查看日志："
-        echo "   tail -f /opt/netops/logs/streamlit.log${NC}"
+        echo -e "${RED}❌ Vue 前端启动失败，请查看日志："
+        echo "   tail -f /opt/netops/logs/frontend.log${NC}"
     fi
 }
 
@@ -172,7 +171,7 @@ start_frontend() {
 stop_frontend() {
     echo ""
     echo "============================================================"
-    echo "⏸️  停止 Streamlit 前端..."
+    echo "⏸️  停止 Vue 前端..."
     echo "============================================================"
     
     local pid=$(netstat -tlnp 2>/dev/null | grep ":$FRONTEND_PORT " | awk '{print $7}' | cut -d'/' -f1)
@@ -180,13 +179,13 @@ stop_frontend() {
         kill $pid
         sleep 2
         if ! netstat -tlnp 2>/dev/null | grep -q ":$FRONTEND_PORT " && ! ss -tlnp 2>/dev/null | grep -q ":$FRONTEND_PORT "; then
-            echo -e "${GREEN}✅ Streamlit 前端已停止${NC}"
+            echo -e "${GREEN}✅ Vue 前端已停止${NC}"
         else
-            echo -e "${RED}❌ Streamlit 前端停止失败，尝试强制停止...${NC}"
+            echo -e "${RED}❌ Vue 前端停止失败，尝试强制停止...${NC}"
             kill -9 $pid
         fi
     else
-        echo -e "${YELLOW}⚠️  Streamlit 前端未运行${NC}"
+        echo -e "${YELLOW}⚠️  Vue 前端未运行${NC}"
     fi
 }
 

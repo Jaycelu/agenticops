@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from database import get_db
 from api.schemas.memories import MemoryEntryResponse, MemoryListResponse, MemoryOverviewResponse
 from models.agenticops import MemoryEntry, MemoryType
-from models.automation import AutomationTask, AutomationTaskFeedback
 
 router = APIRouter(prefix="/api/memories", tags=["记忆中心"])
 
@@ -95,54 +94,3 @@ async def get_memory(memory_id: int, db: Session = Depends(get_db)):
         last_accessed_at=item.last_accessed_at,
         created_at=item.created_at,
     )
-
-
-@router.post("/backfill-feedback")
-async def backfill_feedback_memories(
-    limit: int = Query(200, ge=1, le=2000),
-    db: Session = Depends(get_db),
-):
-    rows = (
-        db.query(AutomationTaskFeedback, AutomationTask)
-        .join(AutomationTask, AutomationTaskFeedback.task_id == AutomationTask.id)
-        .order_by(AutomationTaskFeedback.created_at.desc())
-        .limit(limit)
-        .all()
-    )
-
-    created = 0
-    updated = 0
-    for feedback, task in rows:
-        key = f"feedback:{feedback.id}"
-        entry = db.query(MemoryEntry).filter(MemoryEntry.memory_key == key).first()
-        payload = {
-            "task_id": task.id,
-            "task_code": task.task_code,
-            "verdict": feedback.verdict,
-            "reviewer": feedback.reviewer,
-            "tags": feedback.tags or [],
-            "comment": feedback.comment,
-            "decision_result": task.decision_result or {},
-            "trigger_event": task.trigger_event or {},
-        }
-        if entry is None:
-            entry = MemoryEntry(
-                case_id=None,
-                memory_type=MemoryType.FEEDBACK,
-                memory_key=key,
-                title=f"反馈记忆 {task.task_code}",
-                source="backfill_feedback",
-            )
-            db.add(entry)
-            created += 1
-        else:
-            updated += 1
-
-        entry.summary = feedback.comment or ((task.decision_result or {}).get("diagnosis") or {}).get("summary") or ""
-        entry.tags = feedback.tags or []
-        entry.confidence = 0.75 if feedback.verdict == "correct" else 0.45
-        entry.success_score = 1.0 if feedback.verdict == "correct" else 0.3
-        entry.content = payload
-
-    db.commit()
-    return {"limit": limit, "created": created, "updated": updated}

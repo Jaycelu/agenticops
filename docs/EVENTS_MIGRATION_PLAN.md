@@ -2,7 +2,7 @@
 
 ## 1. 背景与目标
 
-当前已完成告警主链路向事件中心迁移，核心目标是将“告警处理”统一为“事件驱动 + 只读研判 + 任务联动 + 本地工单闭环”的稳态架构，并保持 `observe_only=true` 安全约束。
+当前已完成事件主链路向 Source-Centric 模型迁移，核心目标是将处理路径统一为“事件驱动 + Case pipeline + Fabric 执行建议 + 本地工单闭环”的稳态架构，并保持 `observe_only=true` 安全约束。
 
 本阶段文档用于固化：
 1. 架构与边界
@@ -21,7 +21,7 @@
 4. 事件中心前端能力已补齐：
 - 事件详情展示 `recommended_skill_code`
 - 关联任务状态徽标
-- 事件详情跳转任务详情 `/automation/tasks/:id`
+- 事件详情可跳转到 `Case / Fabric`
 5. 后端契约测试已增强并通过：
 - 事件 ingest/list
 - 本地工单模式
@@ -33,9 +33,9 @@
 ### 3.1 架构总览
 
 - 入口：`POST /api/events/ingest`
-- 事件存储：`alert_event`
+- 事件存储：`source_event`
 - 只读派发：`POST /api/events/{event_id}/dispatch-readonly`
-- 任务链路：`automation_task`（`trigger_event.source_type=AlertEvent`）
+- Case 链路：`case_record -> remediation_plan -> execution_run`
 - 工单：`POST /api/events/{event_id}/ticket`（默认落本地工单表）
 - 关系聚合：`GET /api/events/{event_id}/relations`
 
@@ -47,7 +47,7 @@
 
 ## 4. 数据模型与字段约定
 
-### 4.1 事件（AlertEvent）
+### 4.1 事件（SourceEvent）
 
 核心字段：
 - 标识：`id`, `source`, `external_event_id`, `dedup_key`
@@ -59,7 +59,8 @@
 ### 4.2 payload 约定
 
 在 `payload` 中预留并维护：
-- `task`：最近一次派发任务摘要（`task_id`, `task_code`, `status`, `created_at`）
+- `case`：最近一次 Case 摘要（`case_id`, `case_code`, `created_at`）
+- `dispatch`：最近一次只读派发摘要（`mode`, `case_id`, `case_code`, `dispatched_at`）
 - `ticket`：工单摘要（`ticket_id`, `provider`, `status`, `created_at`）
 - `recommended_skill_code`：推荐 skill 编码（可选）
 
@@ -72,14 +73,7 @@
 ### 5.2 接入
 - `POST /api/events/ingest`
 - 行为：幂等去重（`external_event_id/fingerprint/时间桶`）并 upsert。
-
-- `POST /api/events/ingest/splunk`
-- 行为：Splunk webhook 专用入口，映射 `result/event` 字段到统一事件模型并落库。
-- 安全：当配置 `SPLUNK_WEBHOOK_TOKEN` 时，必须携带请求头 `X-Splunk-Token`。
-
-- `POST /api/events/ingest/eda`
-- 行为：Ansible EDA/rulebook 事件入口，映射事件并写入事件中心；可按 `auto_dispatch_readonly` 自动创建只读研判任务。
-- 安全：当配置 `EDA_WEBHOOK_TOKEN` 时，必须携带请求头 `X-EDA-Token`。
+- 限定：仅接受 `ELK/log_signal` 与 `ZABBIX/zabbix_alert` 两类规范化输入。
 
 ### 5.3 查询
 - `GET /api/events`
@@ -87,7 +81,7 @@
 
 ### 5.4 只读派发
 - `POST /api/events/{event_id}/dispatch-readonly`
-- 结果：创建自动化任务，状态推进至 `waiting_confirm`，并自动生成 Playbook 草稿与 check 结果写入审计轨迹。
+- 结果：创建或绑定 Case，自动生成 Playbook 草稿与 check 结果，并转入 Case pipeline。
 
 ### 5.4.1 Playbook 草稿校验
 - `POST /api/events/{event_id}/playbook-draft-check`
@@ -101,7 +95,7 @@
 
 ### 5.6 关联查询
 - `GET /api/events/{event_id}/relations`
-- 返回：`ticket` + `linked_tasks[]`（按任务创建时间倒序聚合）
+- 返回：`ticket` + `linked_case` + `linked_tasks[]`（按 Fabric 执行建议时间倒序聚合）
 
 ## 6. 前端实现对齐
 
@@ -112,7 +106,7 @@
 已实现：
 1. 事件详情显示推荐 skill。
 2. 关联任务展示状态徽标。
-3. 一键跳转任务详情 `/automation/tasks/:id`。
+3. 一键跳转到 Case/Fabric 工作台。
 
 ## 7. 测试与发布基线
 
@@ -127,7 +121,7 @@
 ## 8. 已知限制
 
 1. 外部工单系统尚未接入，当前以本地工单模块为默认闭环。
-2. `relations` 当前采用 Python 侧筛选 JSON `trigger_event`（DB-agnostic），后续可优化为数据库原生 JSON 查询。
+2. `relations` 当前仍有部分基于 payload 的兼容读取，后续可继续收敛为更强约束的规范字段。
 3. `recommended_skill_code` 目前以上下文字段/`payload` 为主，后续建议统一持久化到规范字段。
 
 ## 9. 下一阶段计划

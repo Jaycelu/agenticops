@@ -1,22 +1,28 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from config.settings import settings
 from config.logging import setup_logging
 from api import (
     assets_router,
     logs_router,
-    models_router,
+    compat_router,
+    settings_router,
+    sites_router,
     cases_router,
     agents_router,
     memories_router,
     fabric_router,
+    zabbix_router,
 )
-from api.automation import router as automation_router
 from api.ssh_management import router as ssh_management_router
 from api.command_templates import router as command_templates_router
 from api.events import router as events_router
 from api.tickets import router as tickets_router
+from database import SessionLocal
 from utils.cache import netbox_cache
 import asyncio
 
@@ -91,8 +97,9 @@ app.add_middleware(
 
 app.include_router(assets_router)
 app.include_router(logs_router)
-app.include_router(models_router)
-app.include_router(automation_router)
+app.include_router(compat_router)
+app.include_router(settings_router)
+app.include_router(sites_router)
 app.include_router(ssh_management_router)
 app.include_router(command_templates_router)
 app.include_router(events_router)
@@ -101,6 +108,7 @@ app.include_router(cases_router)
 app.include_router(agents_router)
 app.include_router(memories_router)
 app.include_router(fabric_router)
+app.include_router(zabbix_router)
 
 
 @app.get("/")
@@ -110,7 +118,38 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    checks = {
+        "database": {
+            "status": "unknown",
+            "message": "",
+        }
+    }
+
+    overall_status = "healthy"
+
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+        checks["database"] = {
+            "status": "healthy",
+            "message": "postgres connection ok",
+        }
+    except SQLAlchemyError as exc:
+        overall_status = "unhealthy"
+        checks["database"] = {
+            "status": "unhealthy",
+            "message": str(exc.__cause__ or exc),
+        }
+    finally:
+        db.close()
+
+    payload = {
+        "status": overall_status,
+        "checks": checks,
+    }
+    if overall_status == "healthy":
+        return payload
+    return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=payload)
 
 
 if __name__ == "__main__":

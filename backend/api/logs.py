@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel
@@ -11,11 +12,111 @@ from engines.case_orchestrator import case_orchestrator
 from api.schemas.common import MessageResponse, error_detail
 from api.schemas.logs import BaseConfigsResponse, LogsResponse, AggregationResponse
 from services.log_scope_service import log_scope_service
+from services.source_event_projection import attach_event_projection, upsert_source_event
+from models.agenticops import SourceEvent, SourceEventStatus
 
 router = APIRouter(prefix="/api/logs", tags=["logs"])
 elk_mcp = ELKMCP()
 llm_client = LLMClient()
 log_analyzer = LogAnalyzer(llm_client)
+
+
+def _upsert_log_signal_event(
+    db,
+    *,
+    dedup_key: str,
+    title: str,
+    severity: str,
+    site_id: Optional[int],
+    netbox_device_id: Optional[int],
+    device_ip: Optional[str],
+    host: Optional[str],
+    signal_key: str,
+    summary: str,
+    raw_payload: Dict[str, Any],
+    case_id: Optional[int] = None,
+    case_code: Optional[str] = None,
+    source_event_dedup_key: Optional[str] = None,
+) -> SourceEvent:
+    severity_level_map = {
+        "critical": 5,
+        "high": 4,
+        "warning": 2,
+        "info": 1,
+    }
+    payload: Dict[str, Any] = {}
+    payload.update(
+        {
+            "event_type": "log_signal",
+            "source_category": "log_signal",
+            "signal_key": signal_key,
+            "summary": summary,
+            "raw": raw_payload,
+        }
+    )
+    if case_id and case_code:
+        payload["case"] = {
+            "case_id": case_id,
+            "case_code": case_code,
+        }
+    if case_id and case_code:
+        payload["event_decision"] = {
+            "disposition": "case_required",
+            "reason": "case_created",
+            "confidence": 0.99,
+            "updated_at": datetime.now().isoformat(),
+        }
+
+    source_event = upsert_source_event(
+        db,
+        dedup_key=source_event_dedup_key or dedup_key,
+        source_type="log_signal",
+        source_system="ELK",
+        external_event_id=signal_key,
+        site_id=site_id,
+        netbox_device_id=netbox_device_id,
+        device_ip=device_ip,
+        host=host or device_ip,
+        title=title,
+        severity=severity,
+        occurred_at=datetime.now(),
+        collected_at=datetime.now(),
+        raw_payload=raw_payload,
+        normalized_payload={
+            "severity": severity,
+            "severity_level": severity_level_map.get(severity.lower(), 2),
+            "source_category": "log_signal",
+            "event_type": "log_signal",
+            "signal_key": signal_key,
+            "summary": summary,
+            "event_decision": payload.get("event_decision") or {},
+            "case": payload.get("case") or {},
+            "ticket": payload.get("ticket") or {},
+        },
+        status=SourceEventStatus.CASE_CREATED if case_id and case_code else SourceEventStatus.NEW,
+    )
+
+    attach_event_projection(
+        source_event,
+        legacy_dedup_key=dedup_key,
+        legacy_source="ELK",
+        name=title,
+        host=host or device_ip,
+        severity=severity,
+        severity_level=severity_level_map.get(severity.lower(), 2),
+        status="open",
+        acknowledged=False,
+        occurred_at=datetime.now(),
+        last_seen_at=datetime.now(),
+        payload={**payload, "source_event_id": int(source_event.id) if source_event.id is not None else None},
+    )
+    return source_event
+
+
+def _resolve_log_signal_source_event_id(event: Optional[SourceEvent]) -> Optional[int]:
+    if event is None or event.id is None:
+        return None
+    return int(event.id)
 
 
 class LogQueryRequest(BaseModel):
@@ -464,13 +565,8 @@ async def analyze_device_logs(request: DeviceLogAnalysisRequest):
             level_counts[level] = level_counts.get(level, 0) + 1
 
         # 获取激活的模型配置，根据提供商确定日志数量限制
-        from api.models import _models_store
-        active_model = None
-        for model in _models_store.values():
-            if model["is_active"]:
-                active_model = model
-                break
-        
+        from services.model_registry import build_client, ensure_active_model
+        active_model = ensure_active_model()
         if not active_model:
             return {
                 "success": False,
@@ -559,13 +655,8 @@ async def analyze_device_logs(request: DeviceLogAnalysisRequest):
             }
         ]
 
-        # 创建临时客户端使用激活的模型
-        from models.llm_client import LLMClient
-        temp_client = LLMClient(
-            api_key=active_model["api_key"],
-            base_url=active_model["api_url"],
-            model=active_model["model"]
-        )
+        # 每次请求按当前激活模型重建客户端，避免运行中切模型后仍使用旧配置。
+        temp_client = build_client(active_model)
         
         analysis_result = await temp_client.chat_completion(
             messages=messages,
@@ -608,9 +699,6 @@ async def _maybe_create_case_for_aggregate(
     all_logs: List[Dict[str, Any]],
     aggregated: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    if not request.create_case:
-        return {"case_id": None, "case_code": None}
-
     dedup_raw = f"log-aggregate|{request.base_name}|{request.time_range}|{request.filter or ''}"
     dedup_key = hashlib.md5(dedup_raw.encode()).hexdigest()
     top_group = aggregated[0] if aggregated else {}
@@ -618,6 +706,40 @@ async def _maybe_create_case_for_aggregate(
         f"Log aggregate for {request.base_name}, total_logs={len(all_logs)}, "
         f"top_device={top_group.get('device', 'unknown')}, top_count={top_group.get('total_count', 0)}"
     )
+
+    if not request.create_case:
+        db = SessionLocal()
+        try:
+            event = _upsert_log_signal_event(
+                db,
+                dedup_key=f"log-event:{dedup_key}",
+                source_event_dedup_key=f"log:{dedup_key}",
+                title=request.title or f"[{request.base_name}] 日志信号事件",
+                severity="warning",
+                site_id=request.site_id,
+                netbox_device_id=request.netbox_device_id,
+                device_ip=request.device_ip,
+                host=request.host,
+                signal_key=f"log_signal:{request.base_name}:{dedup_key[:12]}",
+                summary=summary,
+                raw_payload={
+                    "base_name": request.base_name,
+                    "time_range": request.time_range,
+                    "filter": request.filter,
+                    "aggregated_groups": aggregated[:10],
+                    "sample_logs": all_logs[:20],
+                },
+            )
+            db.commit()
+            return {
+                "case_id": None,
+                "case_code": None,
+                "event_id": int(event.legacy_event_id or event.id),
+                "source_event_id": _resolve_log_signal_source_event_id(event),
+            }
+        finally:
+            db.close()
+
     db = SessionLocal()
     try:
         case = await case_orchestrator.intake_case(
@@ -654,7 +776,35 @@ async def _maybe_create_case_for_aggregate(
                 log_limit=min(1000, max(200, len(all_logs))),
             )
             db.refresh(case)
-        return {"case_id": case.id, "case_code": case.case_code}
+        event = _upsert_log_signal_event(
+            db,
+            dedup_key=f"log-event:{dedup_key}",
+            source_event_dedup_key=f"log:{dedup_key}",
+            title=request.title or f"[{request.base_name}] 日志信号事件",
+            severity="warning",
+            site_id=request.site_id,
+            netbox_device_id=request.netbox_device_id,
+            device_ip=request.device_ip,
+            host=request.host,
+            signal_key=f"log_signal:{request.base_name}:{dedup_key[:12]}",
+            summary=summary,
+            raw_payload={
+                "base_name": request.base_name,
+                "time_range": request.time_range,
+                "filter": request.filter,
+                "aggregated_groups": aggregated[:10],
+                "sample_logs": all_logs[:20],
+            },
+            case_id=case.id,
+            case_code=case.case_code,
+        )
+        db.commit()
+        return {
+            "case_id": case.id,
+            "case_code": case.case_code,
+            "event_id": int(event.legacy_event_id or event.id),
+            "source_event_id": _resolve_log_signal_source_event_id(event),
+        }
     finally:
         db.close()
 
@@ -663,11 +813,40 @@ async def _maybe_create_case_for_device_analysis(
     request: DeviceLogAnalysisRequest,
     analysis_text: str,
 ) -> Dict[str, Any]:
-    if not request.create_case:
-        return {"case_id": None, "case_code": None}
-
     dedup_raw = f"log-device|{request.base_name}|{request.device}|{len(request.logs)}"
     dedup_key = hashlib.md5(dedup_raw.encode()).hexdigest()
+    if not request.create_case:
+        db = SessionLocal()
+        try:
+            event = _upsert_log_signal_event(
+                db,
+                dedup_key=f"device-log-event:{dedup_key}",
+                source_event_dedup_key=f"device-log:{dedup_key}",
+                title=request.title or f"[{request.base_name}] 设备日志信号 {request.device}",
+                severity="warning",
+                site_id=request.site_id,
+                netbox_device_id=request.netbox_device_id,
+                device_ip=request.device_ip or request.device,
+                host=request.host or request.device,
+                signal_key=f"device_log_signal:{request.device}:{dedup_key[:12]}",
+                summary=analysis_text[:500],
+                raw_payload={
+                    "device": request.device,
+                    "base_name": request.base_name,
+                    "analysis": analysis_text[:2000],
+                    "log_count": len(request.logs),
+                },
+            )
+            db.commit()
+            return {
+                "case_id": None,
+                "case_code": None,
+                "event_id": int(event.legacy_event_id or event.id),
+                "source_event_id": _resolve_log_signal_source_event_id(event),
+            }
+        finally:
+            db.close()
+
     db = SessionLocal()
     try:
         case = await case_orchestrator.intake_case(
@@ -703,6 +882,33 @@ async def _maybe_create_case_for_device_analysis(
                 log_limit=max(200, min(1000, len(request.logs))),
             )
             db.refresh(case)
-        return {"case_id": case.id, "case_code": case.case_code}
+        event = _upsert_log_signal_event(
+            db,
+            dedup_key=f"device-log-event:{dedup_key}",
+            source_event_dedup_key=f"device-log:{dedup_key}",
+            title=request.title or f"[{request.base_name}] 设备日志信号 {request.device}",
+            severity="warning",
+            site_id=request.site_id,
+            netbox_device_id=request.netbox_device_id,
+            device_ip=request.device_ip or request.device,
+            host=request.host or request.device,
+            signal_key=f"device_log_signal:{request.device}:{dedup_key[:12]}",
+            summary=analysis_text[:500],
+            raw_payload={
+                "device": request.device,
+                "base_name": request.base_name,
+                "analysis": analysis_text[:2000],
+                "log_count": len(request.logs),
+            },
+            case_id=case.id,
+            case_code=case.case_code,
+        )
+        db.commit()
+        return {
+            "case_id": case.id,
+            "case_code": case.case_code,
+            "event_id": int(event.legacy_event_id or event.id),
+            "source_event_id": _resolve_log_signal_source_event_id(event),
+        }
     finally:
         db.close()

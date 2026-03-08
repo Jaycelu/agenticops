@@ -7,6 +7,7 @@ export interface LocalTicketItem {
   ticket_code: string
   provider: string
   event_id?: number
+  source_event_id?: number
   title: string
   description?: string
   priority: string
@@ -18,7 +19,7 @@ export interface LocalTicketItem {
 }
 
 export const ticketsApi = {
-  async listTickets(params?: { status?: string; event_id?: number; skip?: number; limit?: number }) {
+  async listTickets(params?: { status?: string; event_id?: number; source_event_id?: number; skip?: number; limit?: number }) {
     const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/tickets` : `${API_BASE_URL}/tickets`
     const response = await axios.get(apiUrl, { params })
     return response.data as {

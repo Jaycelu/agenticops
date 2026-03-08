@@ -2,14 +2,12 @@ from typing import Any, Dict, List
 
 import yaml
 
-from models.automation import AlertEvent
-
-
 class PlaybookDraftService:
     """Generate and validate ansible playbook drafts in observe-only workflow."""
 
-    def _recommended_commands(self, event: AlertEvent) -> List[str]:
-        text = f"{event.name or ''} {(event.payload or {}).get('event_type', '')}".lower()
+    def _recommended_commands(self, event: Any) -> List[str]:
+        payload = dict(getattr(event, "payload", None) or {})
+        text = f"{getattr(event, 'name', '') or ''} {payload.get('event_type', '')}".lower()
         if "ospf" in text or "neighbor" in text:
             return [
                 "display ospf peer",
@@ -28,17 +26,17 @@ class PlaybookDraftService:
             "display logbuffer | include ERROR|DOWN|OSPF|BGP",
         ]
 
-    def _build_yaml_text(self, event: AlertEvent) -> str:
+    def _build_yaml_text(self, event: Any) -> str:
         playbook_obj = [
             {
-                "name": f"Diagnostic draft for event {event.id}",
+                "name": f"Diagnostic draft for event {getattr(event, 'id', 'unknown')}",
                 "hosts": "network_devices",
                 "gather_facts": False,
                 "vars": {
-                    "event_id": event.id,
-                    "event_source": event.source,
-                    "event_name": event.name,
-                    "event_severity": event.severity,
+                    "event_id": getattr(event, "id", None),
+                    "event_source": getattr(event, "source", None),
+                    "event_name": getattr(event, "name", None),
+                    "event_severity": getattr(event, "severity", None),
                 },
                 "tasks": [
                     {
@@ -100,11 +98,10 @@ class PlaybookDraftService:
 
         return {"passed": not errors, "errors": errors, "warnings": warnings}
 
-    def generate_for_event(self, event: AlertEvent) -> Dict[str, Any]:
+    def generate_for_event(self, event: Any) -> Dict[str, Any]:
         playbook_yaml = self._build_yaml_text(event)
         check = self.validate_draft(playbook_yaml)
         return {"playbook_yaml": playbook_yaml, "check": check}
 
 
 playbook_draft_service = PlaybookDraftService()
-

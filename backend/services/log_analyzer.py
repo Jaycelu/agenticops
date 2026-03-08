@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from typing import List, Dict, Any
 from models.llm_client import LLMClient
-from api.models import _models_store
+from services.model_registry import build_client
 
 
 class LogAnalyzer:
@@ -11,15 +11,7 @@ class LogAnalyzer:
 
     def _get_active_model_client(self) -> LLMClient:
         """获取当前激活的模型客户端"""
-        for model in _models_store.values():
-            if model["is_active"]:
-                return LLMClient(
-                    api_key=model["api_key"],
-                    base_url=model["api_url"],
-                    model=model["model"]
-                )
-        # 如果没有激活的模型，使用默认配置
-        return LLMClient()
+        return build_client()
 
     def format_logs_for_analysis(self, logs: List[Dict[str, Any]], base_name: str) -> str:
         """将日志数据格式化为适合 LLM 分析的格式"""

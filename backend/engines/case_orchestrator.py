@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 
 from adapters.elk_adapter import elk_adapter
 from adapters.netbox_adapter import netbox_adapter
-from adapters.ssh_adapter import ssh_adapter
 from adapters.zabbix_adapter import zabbix_adapter
 from agents.alert_triage_agent import alert_triage_agent
 from agents.autonomous_remediation_agent import autonomous_remediation_agent
@@ -29,7 +28,7 @@ from models.agenticops import (
     SourceEvent,
     SourceEventStatus,
 )
-from models.automation import AutomationTask, AutomationTaskFeedback
+from services.memory_ingestion_service import memory_ingestion_service
 
 
 class CaseOrchestrator:
@@ -275,30 +274,13 @@ class CaseOrchestrator:
             if topology_result.get("success"):
                 runtime["topology"] = topology_result.get("data") or {}
 
-            device_payload = runtime.get("device") or {}
-            ssh_result = ssh_adapter.collect_command_evidence(
-                db,
-                netbox_device_id=case.netbox_device_id,
-                credential_id=credential_id,
-                platform=device_payload.get("platform"),
-                manufacturer=device_payload.get("manufacturer") or device_payload.get("vendor"),
-            )
-            if ssh_result.get("success"):
-                runtime["ssh_result"] = ssh_result
-                self._create_evidence(
-                    db,
-                    case_id=case.id,
-                    source_event_id=case.source_event_id,
-                    evidence_type=EvidenceType.COMMAND_OUTPUT,
-                    source_system="SSH",
-                    source_ref=str(ssh_result.get("credential_id")),
-                    device_ip=case.device_ip,
-                    host=case.host,
-                    summary="SSH 现场证据",
-                    payload=ssh_result,
-                )
-            else:
-                runtime["ssh_result"] = ssh_result
+            # SSH 已从默认诊断链路降级为执行/人工维护通道，不再自动采集现场证据。
+            runtime["ssh_result"] = {
+                "success": False,
+                "skipped": True,
+                "reason": "ssh_demoted_to_execution_channel",
+                "credential_id": credential_id,
+            }
 
         if (case.source_event and case.source_event.source_system.lower() == "zabbix") or (
             case.case_metadata or {}
@@ -417,47 +399,6 @@ class CaseOrchestrator:
                         "content": item.content or {},
                     }
                 )
-        if len(matched) < 5:
-            feedback_rows = (
-                db.query(AutomationTaskFeedback, AutomationTask)
-                .join(AutomationTask, AutomationTaskFeedback.task_id == AutomationTask.id)
-                .order_by(AutomationTaskFeedback.created_at.desc())
-                .limit(50)
-                .all()
-            )
-            for feedback, task in feedback_rows:
-                decision = task.decision_result or {}
-                trigger = task.trigger_event or {}
-                haystack = " ".join(
-                    [
-                        str(task.netbox_device_id or ""),
-                        str((decision.get("context") or {}).get("device_ip") or ""),
-                        str((decision.get("diagnosis") or {}).get("summary") or ""),
-                        str(trigger.get("event_type") or ""),
-                        str(feedback.comment or ""),
-                        " ".join(feedback.tags or []),
-                    ]
-                ).lower()
-                if any(token and token.lower() in haystack for token in tokens):
-                    matched.append(
-                        {
-                            "id": f"feedback-{feedback.id}",
-                            "memory_type": "feedback",
-                            "title": f"历史反馈任务 {task.task_code}",
-                            "summary": feedback.comment or (decision.get("diagnosis") or {}).get("summary") or "",
-                            "confidence": 0.7 if feedback.verdict == "correct" else 0.45,
-                            "success_score": 1.0 if feedback.verdict == "correct" else 0.3,
-                            "content": {
-                                "task_id": task.id,
-                                "task_code": task.task_code,
-                                "verdict": feedback.verdict,
-                                "tags": feedback.tags or [],
-                                "decision_result": decision,
-                            },
-                        }
-                    )
-                if len(matched) >= 5:
-                    break
         return matched[:5]
 
     def _load_case_evidence(self, db: Session, case_id: int) -> List[Dict[str, Any]]:
@@ -516,9 +457,9 @@ class CaseOrchestrator:
         summary: str,
         content: Dict[str, Any],
     ) -> MemoryEntry:
-        entry = MemoryEntry(
+        entry, _ = memory_ingestion_service.remember_episode(
+            db,
             case_id=case_id,
-            memory_type=MemoryType.EPISODE,
             memory_key=memory_key,
             title=title,
             summary=summary,
@@ -528,8 +469,6 @@ class CaseOrchestrator:
             success_score=0.0,
             content=content,
         )
-        db.add(entry)
-        db.flush()
         return entry
 
     def _store_pattern_memories(
@@ -543,48 +482,40 @@ class CaseOrchestrator:
         if log_devices:
             top_signature = ((log_devices[0].get("top_signatures") or [{}])[0]).get("signature")
             if top_signature:
-                existing = db.query(MemoryEntry).filter(MemoryEntry.memory_key == f"pattern:{top_signature}").first()
-                if existing is None:
-                    db.add(
-                        MemoryEntry(
-                            case_id=case.id,
-                            memory_type=MemoryType.PATTERN,
-                            memory_key=f"pattern:{top_signature}",
-                            title=f"日志签名模式 {top_signature[:48]}",
-                            summary=f"来源于 case {case.case_code} 的高频日志模式",
-                            source="pipeline",
-                            tags=[case.host or "", case.device_ip or "", "log_signature"],
-                            confidence=0.65,
-                            success_score=0.0,
-                            content={
-                                "signature": top_signature,
-                                "device": log_devices[0].get("device_ip"),
-                                "top_signatures": log_devices[0].get("top_signatures") or [],
-                            },
-                        )
-                    )
+                memory_ingestion_service.remember_pattern(
+                    db,
+                    case_id=case.id,
+                    memory_key=f"pattern:{top_signature}",
+                    title=f"日志签名模式 {top_signature[:48]}",
+                    summary=f"来源于 case {case.case_code} 的高频日志模式",
+                    source="pipeline",
+                    tags=[case.host or "", case.device_ip or "", "log_signature"],
+                    confidence=0.65,
+                    success_score=0.0,
+                    content={
+                        "signature": top_signature,
+                        "device": log_devices[0].get("device_ip"),
+                        "top_signatures": log_devices[0].get("top_signatures") or [],
+                    },
+                )
 
         insight_claim = next((item for item in claims if item.claim_type == "root_cause_assessment"), None)
         if insight_claim:
             root_cause = ((insight_claim.agent_run.output_payload or {}).get("root_cause")) or None
             if root_cause:
                 key = f"pattern:root_cause:{root_cause}"
-                existing = db.query(MemoryEntry).filter(MemoryEntry.memory_key == key).first()
-                if existing is None:
-                    db.add(
-                        MemoryEntry(
-                            case_id=case.id,
-                            memory_type=MemoryType.PATTERN,
-                            memory_key=key,
-                            title=f"根因模式 {root_cause}",
-                            summary=insight_claim.claim_text,
-                            source="pipeline",
-                            tags=[root_cause, case.host or "", case.device_ip or ""],
-                            confidence=insight_claim.confidence,
-                            success_score=0.0,
-                            content=insight_claim.agent_run.output_payload or {},
-                        )
-                    )
+                memory_ingestion_service.remember_pattern(
+                    db,
+                    case_id=case.id,
+                    memory_key=key,
+                    title=f"根因模式 {root_cause}",
+                    summary=insight_claim.claim_text,
+                    source="pipeline",
+                    tags=[root_cause, case.host or "", case.device_ip or ""],
+                    confidence=insight_claim.confidence,
+                    success_score=0.0,
+                    content=insight_claim.agent_run.output_payload or {},
+                )
 
     def _store_outcome_memory(
         self,
@@ -594,37 +525,23 @@ class CaseOrchestrator:
         payload: Dict[str, Any],
     ) -> None:
         key = f"outcome:{case.case_code}"
-        existing = db.query(MemoryEntry).filter(MemoryEntry.memory_key == key).first()
-        if existing is not None:
-            existing.summary = remediation_plan.summary
-            existing.content = {
+        memory_ingestion_service.remember_outcome(
+            db,
+            case_id=case.id,
+            memory_key=key,
+            title=f"修复方案草案 {case.case_code}",
+            summary=remediation_plan.summary,
+            source="pipeline",
+            tags=[case.host or "", case.device_ip or "", remediation_plan.execution_mode],
+            confidence=0.6,
+            success_score=0.0,
+            content={
                 "plan_code": remediation_plan.plan_code,
                 "execution_mode": remediation_plan.execution_mode,
                 "approval_status": remediation_plan.approval_status,
                 "recommendations": payload.get("recommendations") or [],
                 "root_cause": payload.get("root_cause"),
-            }
-            return
-
-        db.add(
-            MemoryEntry(
-                case_id=case.id,
-                memory_type=MemoryType.OUTCOME,
-                memory_key=key,
-                title=f"修复方案草案 {case.case_code}",
-                summary=remediation_plan.summary,
-                source="pipeline",
-                tags=[case.host or "", case.device_ip or "", remediation_plan.execution_mode],
-                confidence=0.6,
-                success_score=0.0,
-                content={
-                    "plan_code": remediation_plan.plan_code,
-                    "execution_mode": remediation_plan.execution_mode,
-                    "approval_status": remediation_plan.approval_status,
-                    "recommendations": payload.get("recommendations") or [],
-                    "root_cause": payload.get("root_cause"),
-                },
-            )
+            },
         )
 
     def _create_remediation_plan(
@@ -657,7 +574,9 @@ class CaseOrchestrator:
         plan.summary = claim.claim_text
         plan.plan_payload = {
             "recommendations": payload.get("recommendations") or [],
+            "recommended_actions": payload.get("recommended_actions") or [],
             "root_cause": payload.get("root_cause"),
+            "impact_scope": payload.get("impact_scope"),
         }
         plan.rollback_payload = {"steps": payload.get("rollback_plan") or []}
         plan.safety_checks = payload.get("safety_checks") or {}

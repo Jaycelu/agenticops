@@ -29,15 +29,19 @@
 
     <div class="sidebar-foot">
       <span>数据源</span>
-      <p>ELK / NetBox / SSH / Zabbix</p>
+      <p>NetBox / ELK / Zabbix</p>
     </div>
+
+    <div class="sidebar-version">{{ appVersion }}</div>
   </aside>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import packageJson from '../../package.json'
 import {
   Activity,
+  Bell,
   Brain,
   House,
   MemoryStick,
@@ -71,12 +75,15 @@ const navSections = ref([
     items: [
       { path: '/events', label: '事件中心', desc: '告警与事件入口', icon: Radio },
       { path: '/logs', label: '日志中心', desc: '日志检索与分析', icon: FileText },
+      { path: '/zabbix', label: 'Zabbix 中心', desc: '告警与实时状态数据源', icon: Bell },
       { path: '/assets', label: '资产拓扑', desc: '设备与站点上下文', icon: Server },
       { path: '/tickets', label: '工单', desc: '人工闭环与状态追踪', icon: Ticket },
       { path: '/settings', label: '设置', desc: '集成与运行配置', icon: Settings }
     ]
   }
 ])
+
+const appVersion = `v${packageJson.version}`
 </script>
 
 <style scoped>
@@ -232,6 +239,14 @@ const navSections = ref([
   margin-top: 8px;
   color: #cbd5e1;
   font-size: 13px;
+}
+
+.sidebar-version {
+  margin-top: 10px;
+  padding: 0 4px;
+  color: #7a8da8;
+  font-size: 12px;
+  letter-spacing: 0.06em;
 }
 
 @media (max-width: 980px) {

@@ -3,9 +3,9 @@ from typing import Any, Dict, List
 
 from agents.base import BaseOpsAgent
 from agents.schemas import AgentDecision, AgentExecutionContext
-from config.settings import settings
 from models.agenticops import AgentType
 from models.llm_client import LLMClient
+from services.model_registry import build_client
 
 
 class InsightAnalysisAgent(BaseOpsAgent):
@@ -13,11 +13,7 @@ class InsightAnalysisAgent(BaseOpsAgent):
     agent_name = "Insight Analysis Agent"
 
     def __init__(self):
-        self.llm_client = LLMClient(
-            api_key=settings.llm_api_key,
-            base_url=settings.llm_api_url,
-            model=settings.llm_model_name,
-        )
+        self.llm_client = build_client()
 
     async def _infer_with_llm(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         system_prompt = (
@@ -39,20 +35,26 @@ class InsightAnalysisAgent(BaseOpsAgent):
             return {}
 
     async def run(self, context: AgentExecutionContext) -> AgentDecision:
+        # 每次执行时刷新一次激活模型，避免 settings 页面切换后 agent 仍持有旧客户端。
+        self.llm_client = build_client()
         topology = context.runtime.get("topology") or {}
         device = context.runtime.get("device") or {}
         ssh_result = context.runtime.get("ssh_result") or {}
         log_summary = context.runtime.get("log_summary") or {}
+        zabbix_alerts = context.runtime.get("zabbix_alerts") or {}
+        ssh_available = bool(ssh_result and not ssh_result.get("skipped"))
 
         evidence_refs: List[Dict[str, str]] = []
         if device:
             evidence_refs.append({"type": "topology_device", "ref": "runtime.device"})
         if topology:
             evidence_refs.append({"type": "topology", "ref": "runtime.topology"})
-        if ssh_result:
-            evidence_refs.append({"type": "ssh", "ref": "runtime.ssh_result"})
         if log_summary:
             evidence_refs.append({"type": "log_summary", "ref": "runtime.log_summary"})
+        if zabbix_alerts:
+            evidence_refs.append({"type": "zabbix_alerts", "ref": "runtime.zabbix_alerts"})
+        if ssh_available:
+            evidence_refs.append({"type": "execution_channel", "ref": "runtime.ssh_result"})
 
         payload = {
             "case": {
@@ -65,27 +67,28 @@ class InsightAnalysisAgent(BaseOpsAgent):
             "log_summary": log_summary,
             "device": device,
             "topology": topology,
-            "ssh_result": ssh_result,
+            "zabbix_alerts": zabbix_alerts,
+            "execution_channel": ssh_result if ssh_available else {},
             "prior_claims": context.prior_claims,
         }
         llm_result = await self._infer_with_llm(payload)
 
         gaps = llm_result.get("gaps") or []
-        if not ssh_result:
-            gaps.append("缺少 SSH 现场证据")
         if not topology:
             gaps.append("缺少拓扑上下文")
+        if not zabbix_alerts and context.source_system.lower() == "zabbix":
+            gaps.append("缺少 Zabbix 告警详情")
 
         root_cause = llm_result.get("root_cause") or "unknown"
         severity = llm_result.get("severity") or "warning"
-        confidence = float(llm_result.get("confidence") or (0.72 if ssh_result or topology else 0.42))
+        confidence = float(llm_result.get("confidence") or (0.74 if topology or zabbix_alerts else 0.42))
 
         if root_cause == "unknown" and log_summary.get("devices"):
             top_device = log_summary["devices"][0]
             root_cause = f"device_log_pattern:{top_device.get('device_ip')}"
 
         summary = llm_result.get("summary") or (
-            "已完成日志、拓扑、SSH 证据交叉分析，但证据仍不足以给出唯一根因。"
+            "已完成日志、拓扑、告警证据交叉分析，但证据仍不足以给出唯一根因。"
             if gaps
             else "已完成多源证据交叉分析。"
         )
@@ -113,4 +116,3 @@ class InsightAnalysisAgent(BaseOpsAgent):
 
 
 insight_analysis_agent = InsightAnalysisAgent()
-

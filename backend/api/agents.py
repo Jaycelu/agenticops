@@ -36,8 +36,8 @@ AGENT_CATALOG: List[Dict[str, object]] = [
     {
         "agent_type": AgentType.INSIGHT.value,
         "name": "Insight Analysis Agent",
-        "purpose": "联合日志、拓扑和 SSH 证据进行根因交叉验证。",
-        "inputs": ["evidence items", "topology", "command output"],
+        "purpose": "联合日志、拓扑和 Zabbix 告警进行根因交叉验证，必要时给出执行侧采证建议。",
+        "inputs": ["evidence items", "topology", "zabbix alerts"],
         "outputs": ["root cause hypothesis", "impact scope", "confidence"],
     },
     {
@@ -65,15 +65,25 @@ async def get_agent_health(db: Session = Depends(get_db)):
         func.max(AgentRun.started_at),
     ).group_by(AgentRun.agent_type).all()
 
+    row_map = {
+        agent_type.value if hasattr(agent_type, "value") else str(agent_type): {
+            "total_runs": total or 0,
+            "running_runs": running or 0,
+            "failed_runs": failed or 0,
+            "last_run_at": last_run_at,
+        }
+        for agent_type, total, running, failed, last_run_at in rows
+    }
+
     items = [
         AgentHealthItemResponse(
-            agent_type=agent_type.value if hasattr(agent_type, "value") else str(agent_type),
-            total_runs=total or 0,
-            running_runs=running or 0,
-            failed_runs=failed or 0,
-            last_run_at=last_run_at,
+            agent_type=item["agent_type"],
+            total_runs=int(row_map.get(item["agent_type"], {}).get("total_runs", 0)),
+            running_runs=int(row_map.get(item["agent_type"], {}).get("running_runs", 0)),
+            failed_runs=int(row_map.get(item["agent_type"], {}).get("failed_runs", 0)),
+            last_run_at=row_map.get(item["agent_type"], {}).get("last_run_at"),
         )
-        for agent_type, total, running, failed, last_run_at in rows
+        for item in AGENT_CATALOG
     ]
     return AgentHealthResponse(items=items)
 

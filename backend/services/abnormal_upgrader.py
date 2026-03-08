@@ -74,7 +74,7 @@ class AbnormalUpgrader:
 
             if not samples:
                 return {
-                    "needs_upgrade": False,
+                    "needs_escalation": False,
                     "reason": "No samples in check window"
                 }
 
@@ -111,8 +111,6 @@ class AbnormalUpgrader:
                 "needs_escalation": needs_escalation,
                 "signal_key": signal_key,
                 "signal_title": signal_title,
-                "needs_upgrade": needs_escalation,
-                "abnormal_type": signal_key,
                 "check_window": {
                     "start": time_start.isoformat(),
                     "end": time_end.isoformat(),
