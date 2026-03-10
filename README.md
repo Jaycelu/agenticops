@@ -1,21 +1,25 @@
+<div align="center">
+
 # AgenticOps
 
-> 面向 NetBox / ELK / Zabbix 的 AgenticOps 智能运维工作台。  
-> 聚焦统一事件、Case 编排、多智能体分析、执行闭环与运维记忆沉淀。
+面向 NetBox / ELK / Zabbix 的 AgenticOps 智能运维工作台  
+聚焦统一事件、Case 编排、多智能体分析、执行闭环与运维记忆沉淀
 
-<p>
-  <a href="./README_EN.md">English README</a>
-</p>
+[English README](./README_EN.md)
 
 <p>
   <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/Vue-3-42b883?logo=vue.js&logoColor=white" alt="Vue 3">
   <img src="https://img.shields.io/badge/FastAPI-0.104-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/PostgreSQL-14%2B-336791?logo=postgresql&logoColor=white" alt="PostgreSQL">
-  <img src="https://img.shields.io/badge/Status-v0.1.1-blue" alt="Status">
+  <img src="https://img.shields.io/badge/Release-v0.1.0-blue" alt="Release">
 </p>
 
-<img src="./agenticops.jpg" alt="AgenticOps overview" width="100%">
+</div>
+
+<p align="center">
+  <img src="./docs/images/readme/01-dashboard.png" alt="驾驶舱总览" width="100%">
+</p>
 
 ## 目录
 
@@ -56,40 +60,43 @@ AgenticOps 是一个面向网络运维场景的智能运维工作台，用统一
 
 ## 界面预览
 
-当前仓库已包含一张总览图，建议直接用 README 顶部大图作为首屏展示，下面继续补充模块级截图即可。
+### 1. 驾驶舱
 
-### 推荐截图编排
+驾驶舱用于总览统一事件、分流结果、数据源健康度与整体 MTTR 提升效果，是进入平台后的第一观察面。
 
-如果你准备把更多截图加入 README，建议按下面的顺序组织，而不是把所有页面平铺出来：
+![驾驶舱](./docs/images/readme/01-dashboard.png)
 
-| 分组 | 推荐页面 | 作用 |
-| --- | --- | --- |
-| 首屏总览 | 驾驶舱 | 让读者先理解平台全貌和核心指标 |
-| 核心闭环 | 事件中心、Case 中心、执行中心 | 讲清楚从事件到处置的主链路 |
-| 智能能力 | 智能体中心、记忆中心 | 展示多 Agent 和经验沉淀能力 |
-| 数据源能力 | 日志中心、Zabbix 中心、资产拓扑 | 展示平台如何接入与利用底层数据源 |
+### 2. 事件到处置闭环
 
-### 推荐命名方式
+事件中心、Case 中心和执行中心组成核心处置主链路：先做统一归并与根因候选，再进入证据和 Agent 输出汇聚，最后形成修复计划与执行记录。
 
-建议把 README 专用截图统一放在 `docs/images/readme/`，命名保持固定顺序：
+| 事件中心 | Case 中心 |
+| --- | --- |
+| ![事件中心](./docs/images/readme/02-events.png) | ![Case 中心](./docs/images/readme/03-cases.png) |
 
-- `01-dashboard.png`
-- `02-events.png`
-- `03-cases.png`
-- `04-fabric.png`
-- `05-agents.png`
-- `06-memories.png`
-- `07-logs.png`
-- `08-zabbix.png`
-- `09-assets.png`
+| 执行中心 |
+| --- |
+| ![执行中心](./docs/images/readme/04-fabric.png) |
 
-### 截图设计建议
+### 3. 智能体与记忆体系
 
-- README 首屏保留 `1` 张总览大图，不要一开始连续堆很多截图。
-- 第二屏建议只放 `4` 张核心图：`驾驶舱 / 事件中心 / Case 中心 / 资产拓扑`。
-- 其余页面放到 “更多界面” 或 “模块说明” 小节，避免首屏过长。
-- 截图发布前统一隐藏内网 IP、域名、主机名、Token、工单编号等敏感信息。
-- 建议统一为 `16:9` 或接近 `16:9` 的裁切比例，保持 README 视觉整齐。
+智能体中心展示各类运维 Agent 的职责与健康度，记忆中心则负责沉淀 episode、pattern、outcome 等经验数据，形成持续学习闭环。
+
+| 智能体中心 | 记忆中心 |
+| --- | --- |
+| ![智能体中心](./docs/images/readme/05-agents.png) | ![记忆中心](./docs/images/readme/06-memories.png) |
+
+### 4. 数据源工作台
+
+日志中心、Zabbix 中心和资产拓扑分别承接日志事实、实时告警与资产上下文，为事件与 Case 提供底层证据支持。
+
+| 日志中心 | Zabbix 中心 |
+| --- | --- |
+| ![日志中心](./docs/images/readme/07-logs.png) | ![Zabbix 中心](./docs/images/readme/08-zabbix.png) |
+
+| 资产拓扑 |
+| --- |
+| ![资产拓扑](./docs/images/readme/09-assets.png) |
 
 ## 典型链路
 
@@ -221,8 +228,9 @@ netops_bs/
 ├── deploy/
 │   ├── env.example          # 示例环境变量
 │   └── start.sh             # 后端启动脚本
-├── docs/                    # 设计、迁移与部署文档
-└── agenticops.jpg           # 当前 README 总览图
+├── docs/
+│   └── images/readme/       # README 演示截图
+└── README.md
 ```
 
 ## 作者与联系
