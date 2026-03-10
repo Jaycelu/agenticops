@@ -13,6 +13,7 @@
   <img src="https://img.shields.io/badge/FastAPI-0.104-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/PostgreSQL-14%2B-336791?logo=postgresql&logoColor=white" alt="PostgreSQL">
   <img src="https://img.shields.io/badge/Release-v0.1.0-blue" alt="Release">
+  <img src="https://img.shields.io/github/stars/Jaycelu/netops_bs?style=social" alt="GitHub stars">
 </p>
 
 </div>
