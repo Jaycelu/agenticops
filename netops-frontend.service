@@ -1,17 +1,17 @@
 [Unit]
-Description=NetOps AI Frontend Service (Vue)
+Description=AgenticOps Frontend Service (Vue)
 After=network.target netops-backend.service
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/netops/frontend
+WorkingDirectory=/path/to/netops_bs/frontend
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 ExecStart=/usr/bin/env npm run preview -- --host 0.0.0.0 --port 5173
 Restart=always
 RestartSec=10
-StandardOutput=append:/opt/netops/logs/frontend.log
-StandardError=append:/opt/netops/logs/frontend.log
+StandardOutput=append:/path/to/netops_bs/logs/frontend.log
+StandardError=append:/path/to/netops_bs/logs/frontend.log
 
 [Install]
 WantedBy=multi-user.target

@@ -13,7 +13,7 @@ def extract_ip_from_task_code(task_code: str) -> str:
     从任务代码中提取IP地址
 
     任务代码格式：TASK_{site_id}_{ip_with_underscores}_{timestamp}
-    例如：TASK_1_10_128_243_65_1768359964 -> 10.128.243.65
+    例如：TASK_1_192_0_2_65_1768359964 -> 192.0.2.65
     """
     # 移除TASK_前缀和timestamp
     parts = task_code.split('_')

@@ -110,7 +110,7 @@ class DecisionResult(BaseModel):
                 },
                 "context": {
                     "site_id": 1,
-                    "device_ip": "10.128.242.37",
+                    "device_ip": "192.0.2.37",
                     "crc_error_count": 15,
                     "flap_count": 0,
                     "neighbor_change_count": 0,
@@ -157,7 +157,7 @@ class TaskTriggerEvent(BaseModel):
                 "source_type": "LogSample",
                 "data": {
                     "site_id": 1,
-                    "device_ip": "10.128.242.37",
+                    "device_ip": "192.0.2.37",
                     "crc_error_count": 15,
                     "flap_count": 0
                 }

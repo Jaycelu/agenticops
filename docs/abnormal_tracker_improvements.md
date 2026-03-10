@@ -67,7 +67,7 @@
 
 ## 配置参数
 
-在 `/opt/netops/backend/config/site_config.py` 中配置：
+在 `backend/config/site_config.py` 中配置：
 
 ```python
 DEFAULT_SAMPLING_CONFIG = {

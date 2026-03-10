@@ -1,11 +1,14 @@
 #!/bin/bash
 
-# NetOps 服务监控脚本
-# 检查前后端服务状态，如果服务挂了会自动重启
+set -euo pipefail
 
-LOG_FILE="/opt/netops/logs/service_monitor.log"
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+LOG_DIR="$ROOT_DIR/logs"
+LOG_FILE="$LOG_DIR/service_monitor.log"
 BACKEND_URL="http://localhost:8000/health"
 FRONTEND_URL="http://localhost:5173"
+
+mkdir -p "$LOG_DIR"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
@@ -17,7 +20,7 @@ check_backend() {
         return 0
     else
         log "Backend is DOWN, attempting to restart..."
-        systemctl restart netops-backend
+        systemctl restart netops-backend.service
         return 1
     fi
 }
@@ -28,7 +31,7 @@ check_frontend() {
         return 0
     else
         log "Frontend is DOWN, attempting to restart..."
-        systemctl restart netops-frontend
+        systemctl restart netops-frontend.service
         return 1
     fi
 }

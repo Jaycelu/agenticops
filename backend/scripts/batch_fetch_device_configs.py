@@ -2,18 +2,32 @@
 批量获取所有有IP设备的配置
 """
 import asyncio
-import aiohttp
 import json
+import os
 from datetime import datetime
+from pathlib import Path
 
-BASE_URL = "http://localhost:8000"
+import aiohttp
 
-# 认证凭据
-CREDENTIALS = {
-    "username": "admin",
-    "password": "Tianhe@123",
-    "port": 22
-}
+BASE_URL = os.getenv("NETOPS_API_BASE_URL", "http://localhost:8000").rstrip("/")
+ROOT_DIR = Path(__file__).resolve().parents[2]
+STORAGE_DIR = ROOT_DIR / "storage"
+
+
+def build_credentials() -> dict:
+    """从环境变量构造凭据，避免硬编码敏感信息。"""
+    username = os.getenv("NETOPS_SSH_USERNAME", "").strip()
+    password = os.getenv("NETOPS_SSH_PASSWORD", "").strip()
+    port = int(os.getenv("NETOPS_SSH_PORT", "22"))
+    if not username or not password:
+        raise RuntimeError(
+            "请先设置 NETOPS_SSH_USERNAME 和 NETOPS_SSH_PASSWORD 环境变量，再运行批量抓取脚本。"
+        )
+    return {
+        "username": username,
+        "password": password,
+        "port": port,
+    }
 
 
 async def fetch_devices_with_ip(session):
@@ -40,7 +54,7 @@ async def fetch_device_config(session, device):
     try:
         async with session.post(
             f"{BASE_URL}/api/assets/devices/{device_id}/fetch-config",
-            json=CREDENTIALS
+            json=build_credentials()
         ) as response:
             if response.status == 200:
                 result = await response.json()
@@ -116,7 +130,9 @@ async def main():
         print(f"失败: {failed_count} 个")
         
         # 保存结果
-        with open("/opt/netops/storage/batch_fetch_results.json", "w") as f:
+        STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+        output_path = STORAGE_DIR / "batch_fetch_results.json"
+        with output_path.open("w", encoding="utf-8") as f:
             json.dump({
                 "timestamp": datetime.now().isoformat(),
                 "total": len(results),
@@ -124,7 +140,7 @@ async def main():
                 "failed": failed_count,
                 "results": results
             }, f, indent=2, ensure_ascii=False)
-        print(f"\n结果已保存到: /opt/netops/storage/batch_fetch_results.json")
+        print(f"\n结果已保存到: {output_path}")
         
         # 保存失败列表
         if failed_count > 0:
@@ -134,9 +150,10 @@ async def main():
                 print(f"  - {device['device_name']} ({device.get('device_ip', 'N/A')}): {device['error']}")
             
             # 保存到文件
-            with open("/opt/netops/storage/failed_device_configs.json", "w") as f:
+            failed_path = STORAGE_DIR / "failed_device_configs.json"
+            with failed_path.open("w", encoding="utf-8") as f:
                 json.dump(failed_devices, f, indent=2, ensure_ascii=False)
-            print(f"\n失败列表已保存到: /opt/netops/storage/failed_device_configs.json")
+            print(f"\n失败列表已保存到: {failed_path}")
         
         # 如果还有设备未获取，提示用户
         if len(devices) > MAX_DEVICES:

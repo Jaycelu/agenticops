@@ -4,6 +4,7 @@
 import logging
 import asyncio
 import os
+from pathlib import Path
 from typing import Dict, Any, Optional
 from services.execution_engine import Executor, ExecutorType, ExecutionStatus, ExecutionResult
 
@@ -16,7 +17,7 @@ class ScriptExecutor(Executor):
     def __init__(self):
         """初始化脚本执行器"""
         super().__init__(ExecutorType.SCRIPT)
-        self.script_dir = "/opt/netops/scripts"
+        self.script_dir = str(Path(__file__).resolve().parents[2] / "scripts")
 
     async def execute(
         self,

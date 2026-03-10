@@ -1,13 +1,13 @@
 [Unit]
-Description=NetOps AI Backend Service
+Description=AgenticOps Backend Service
 After=network.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/netops/backend
+WorkingDirectory=/path/to/netops_bs/backend
 Environment="PATH=/usr/bin:/usr/local/bin"
-ExecStart=/usr/bin/python3 /opt/netops/backend/main.py
+ExecStart=/usr/bin/python3 /path/to/netops_bs/backend/main.py
 Restart=always
 RestartSec=10
 StandardOutput=journal

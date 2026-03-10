@@ -2,7 +2,7 @@
 
 ## 概述
 
-巡检模板配置文件位于 `/opt/netops/storage/inspection_templates.json`，您可以通过修改此文件来自定义巡检模板。
+巡检模板配置文件位于项目根目录下的 `storage/inspection_templates.json`，您可以通过修改此文件来自定义巡检模板。
 
 ## 模板结构
 
@@ -118,7 +118,7 @@
 
 1. 编辑配置文件：
    ```bash
-   vi /opt/netops/storage/inspection_templates.json
+   vi storage/inspection_templates.json
    ```
 
 2. 修改模板内容（添加、删除或修改巡检项）
@@ -172,5 +172,5 @@
 
 修改前建议备份原配置文件：
 ```bash
-cp /opt/netops/storage/inspection_templates.json /opt/netops/storage/inspection_templates.json.backup
+cp storage/inspection_templates.json storage/inspection_templates.json.backup
 ```

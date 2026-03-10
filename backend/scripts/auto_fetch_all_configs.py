@@ -3,18 +3,32 @@
 确保每个设备都获取到完整配置
 """
 import asyncio
-import aiohttp
 import json
+import os
 from datetime import datetime
+from pathlib import Path
 
-BASE_URL = "http://localhost:8000"
+import aiohttp
 
-# 认证凭据
-CREDENTIALS = {
-    "username": "admin",
-    "password": "Tianhe@123",
-    "port": 22
-}
+BASE_URL = os.getenv("NETOPS_API_BASE_URL", "http://localhost:8000").rstrip("/")
+ROOT_DIR = Path(__file__).resolve().parents[2]
+STORAGE_DIR = ROOT_DIR / "storage"
+
+
+def build_credentials() -> dict:
+    """从环境变量构造凭据，避免硬编码敏感信息。"""
+    username = os.getenv("NETOPS_SSH_USERNAME", "").strip()
+    password = os.getenv("NETOPS_SSH_PASSWORD", "").strip()
+    port = int(os.getenv("NETOPS_SSH_PORT", "22"))
+    if not username or not password:
+        raise RuntimeError(
+            "请先设置 NETOPS_SSH_USERNAME 和 NETOPS_SSH_PASSWORD 环境变量，再运行批量抓取脚本。"
+        )
+    return {
+        "username": username,
+        "password": password,
+        "port": port,
+    }
 
 # 配置完整性阈值（字符数）
 MIN_CONFIG_LENGTH = 5000
@@ -44,7 +58,7 @@ async def fetch_device_config(session, device):
     try:
         async with session.post(
             f"{BASE_URL}/api/assets/devices/{device_id}/fetch-config",
-            json=CREDENTIALS
+            json=build_credentials()
         ) as response:
             if response.status == 200:
                 result = await response.json()
@@ -199,7 +213,9 @@ async def main():
         print(f"失败: {failed_count} 个")
         
         # 保存结果
-        with open("/opt/netops/storage/auto_fetch_all_results.json", "w") as f:
+        STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+        output_path = STORAGE_DIR / "auto_fetch_all_results.json"
+        with output_path.open("w", encoding="utf-8") as f:
             json.dump({
                 "timestamp": datetime.now().isoformat(),
                 "total": len(all_results),
@@ -211,7 +227,7 @@ async def main():
                 "failed": failed_count,
                 "results": all_results
             }, f, indent=2, ensure_ascii=False)
-        print(f"\n结果已保存到: /opt/netops/storage/auto_fetch_all_results.json")
+        print(f"\n结果已保存到: {output_path}")
         
         # 保存不完整的设备列表
         if incomplete_count > 0:
@@ -220,9 +236,10 @@ async def main():
             for device in incomplete_devices:
                 print(f"  - {device['device_name']} ({device.get('device_ip', 'N/A')}): {device.get('config_length', 0)} 字符")
             
-            with open("/opt/netops/storage/incomplete_device_configs.json", "w") as f:
+            incomplete_path = STORAGE_DIR / "incomplete_device_configs.json"
+            with incomplete_path.open("w", encoding="utf-8") as f:
                 json.dump(incomplete_devices, f, indent=2, ensure_ascii=False)
-            print(f"不完整列表已保存到: /opt/netops/storage/incomplete_device_configs.json")
+            print(f"不完整列表已保存到: {incomplete_path}")
         
         # 保存失败列表
         if failed_count > 0:
@@ -231,9 +248,10 @@ async def main():
             for device in failed_devices:
                 print(f"  - {device['device_name']} ({device.get('device_ip', 'N/A')}): {device['error']}")
             
-            with open("/opt/netops/storage/failed_device_configs.json", "w") as f:
+            failed_path = STORAGE_DIR / "failed_device_configs.json"
+            with failed_path.open("w", encoding="utf-8") as f:
                 json.dump(failed_devices, f, indent=2, ensure_ascii=False)
-            print(f"失败列表已保存到: /opt/netops/storage/failed_device_configs.json")
+            print(f"失败列表已保存到: {failed_path}")
         
         # 总结
         if incomplete_count == 0 and failed_count == 0:

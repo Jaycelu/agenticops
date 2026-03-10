@@ -1,0 +1,24 @@
+# Root-level release hygiene
+.DS_Store
+
+# Local environment files
+**/.env
+**/.env.*
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+
+# Runtime logs
+logs/*
+!logs/.gitkeep
+
+# Generated storage artifacts
+storage/*.log
+storage/*results*.json
+storage/failed_device_configs.json
+storage/incomplete_device_configs.json
+storage/.DS_Store
+
+# Local chat/session history
+backend/storage/chat_history/*
+!backend/storage/chat_history/.gitkeep

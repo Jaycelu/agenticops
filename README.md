@@ -1,481 +1,259 @@
-# NetOps AgenticOps Platform v0.1.1
+# AgenticOps
 
-这是当前版本的真实运行说明。项目主架构已经切换到：
+> 面向 NetBox / ELK / Zabbix 的 AgenticOps 智能运维工作台。  
+> 聚焦统一事件、Case 编排、多智能体分析、执行闭环与运维记忆沉淀。
 
-`Event / Case / Multi-Agent / Memory / Fabric`
+<p>
+  <a href="./README_EN.md">English README</a>
+</p>
 
-旧 `automation center`、旧 `streamlit + langchain_agent`、旧异常模板思路都已经退出主运行链。
+<p>
+  <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/Vue-3-42b883?logo=vue.js&logoColor=white" alt="Vue 3">
+  <img src="https://img.shields.io/badge/FastAPI-0.104-009688?logo=fastapi&logoColor=white" alt="FastAPI">
+  <img src="https://img.shields.io/badge/PostgreSQL-14%2B-336791?logo=postgresql&logoColor=white" alt="PostgreSQL">
+  <img src="https://img.shields.io/badge/Status-v0.1.1-blue" alt="Status">
+</p>
 
-## 当前模块
+<img src="./agenticops.jpg" alt="AgenticOps overview" width="100%">
 
-前端主模块：
+## 目录
 
-- `Dashboard`
-- `Events`
-- `Cases`
-- `Agents`
-- `Memories`
-- `Fabric`
-- `Logs`
-- `Zabbix`
-- `Assets`
-- `Tickets`
-- `Settings`
+- [项目简介](#项目简介)
+- [核心能力](#核心能力)
+- [界面预览](#界面预览)
+- [典型链路](#典型链路)
+- [快速开始](#快速开始)
+- [配置说明](#配置说明)
+- [核心模块](#核心模块)
+- [项目结构](#项目结构)
+- [当前状态](#当前状态)
+- [路线图](#路线图)
+- [发布前建议](#发布前建议)
 
-后端主 API：
+## 项目简介
 
-- `/api/events`
-- `/api/cases`
-- `/api/agents`
-- `/api/memories`
-- `/api/fabric`
-- `/api/logs`
-- `/api/zabbix`
-- `/api/assets`
-- `/api/tickets`
-- `/api/sites`
-- `/api/ssh`
-- `/api/command-templates`
-- `/api/settings/models`
-- `/api/settings/integrations`
-- `/api/settings/log-scopes`
+AgenticOps 是一个面向网络运维场景的智能运维工作台，用统一事件模型把 `NetBox`、`ELK`、`Zabbix` 等系统接入到同一条分析与处置链路中。
 
-说明：
+项目当前主链路已经收敛为：
 
-- `/api/automation` 已从主应用路由中下线，不再作为运行态入口。
-- `frontend/streamlit` 和 `backend/langchain_agent` 已退役。
-- 主前端是 `Vue 3 + Vite`，不是 Streamlit。
+`Event -> Case -> Multi-Agent -> Memory -> Fabric`
 
-## 当前主链路
+它不是单一的监控看板，而是一个强调“降噪、关联、编排、执行、沉淀”的 AgenticOps 平台，适合用于：
 
-1. `ELK / Zabbix / 外部事件` 进入 `Event Center`
-2. 统一写入 `SourceEvent`
-3. 由事件分流逻辑决定是否进入 `Case`
-4. `Case Orchestrator` 驱动 4 个智能体
-5. 输出 `Evidence / Agent Claims / RemediationPlan / ExecutionRun / MemoryEntry`
-6. 必要时进入 `Tickets`
+- 多数据源告警统一入口与事件治理
+- 网络故障初判、证据汇聚与 Case 编排
+- 多智能体协同分析与修复建议生成
+- 执行记录审计、记忆沉淀与经验复用
 
-四个智能体：
+## 核心能力
 
-- `Alert Triage Agent`
-- `Historical Analysis Agent`
-- `Insight Analysis Agent`
-- `Autonomous Remediation Agent`
+- 统一事件中心：接入日志信号、Zabbix 告警与外部事件，执行去重、聚类、关联和分流。
+- Case 中心：把值得深度处理的问题提升为 Case，统一查看证据、智能体结论和修复计划。
+- 多智能体协同：内置 `Alert Triage`、`Historical Analysis`、`Insight Analysis`、`Autonomous Remediation` 四类智能体。
+- 记忆沉淀：把 episode、pattern、outcome、feedback 沉淀到记忆中心，为后续判断提供历史上下文。
+- 执行闭环：在执行中心管理修复计划、执行记录和人工介入边界。
+- 数据源工作台：提供资产拓扑、日志中心、Zabbix 中心、工单与设置页，形成完整运行面。
 
-## 环境要求
+## 界面预览
+
+当前仓库已包含一张总览图，建议直接用 README 顶部大图作为首屏展示，下面继续补充模块级截图即可。
+
+### 推荐截图编排
+
+如果你准备把更多截图加入 README，建议按下面的顺序组织，而不是把所有页面平铺出来：
+
+| 分组 | 推荐页面 | 作用 |
+| --- | --- | --- |
+| 首屏总览 | 驾驶舱 | 让读者先理解平台全貌和核心指标 |
+| 核心闭环 | 事件中心、Case 中心、执行中心 | 讲清楚从事件到处置的主链路 |
+| 智能能力 | 智能体中心、记忆中心 | 展示多 Agent 和经验沉淀能力 |
+| 数据源能力 | 日志中心、Zabbix 中心、资产拓扑 | 展示平台如何接入与利用底层数据源 |
+
+### 推荐命名方式
+
+建议把 README 专用截图统一放在 `docs/images/readme/`，命名保持固定顺序：
+
+- `01-dashboard.png`
+- `02-events.png`
+- `03-cases.png`
+- `04-fabric.png`
+- `05-agents.png`
+- `06-memories.png`
+- `07-logs.png`
+- `08-zabbix.png`
+- `09-assets.png`
+
+### 截图设计建议
+
+- README 首屏保留 `1` 张总览大图，不要一开始连续堆很多截图。
+- 第二屏建议只放 `4` 张核心图：`驾驶舱 / 事件中心 / Case 中心 / 资产拓扑`。
+- 其余页面放到 “更多界面” 或 “模块说明” 小节，避免首屏过长。
+- 截图发布前统一隐藏内网 IP、域名、主机名、Token、工单编号等敏感信息。
+- 建议统一为 `16:9` 或接近 `16:9` 的裁切比例，保持 README 视觉整齐。
+
+## 典型链路
+
+```mermaid
+flowchart LR
+    A["NetBox / ELK / Zabbix / External Signals"] --> B["Event Center"]
+    B --> C["Dedup / Correlation / Routing"]
+    C --> D["Case Center"]
+    D --> E["Multi-Agent Analysis"]
+    E --> F["Memory Center"]
+    E --> G["Fabric / Execution"]
+    D --> H["Tickets / Human Handoff"]
+```
+
+统一事件中心的输出目前收敛为三类结果：
+
+- `noise`
+- `ticket_only`
+- `case_required`
+
+## 快速开始
+
+### 1. 环境要求
 
 - Python `3.11+`
 - Node.js `18+`
 - PostgreSQL `14+`
-- 可访问的 `NetBox / ELK / Zabbix / LLM`
+- 可访问的 `NetBox / ELK / Zabbix / LLM API`
 
-说明：
+### 2. 配置后端环境变量
 
-- 数据库只支持 `PostgreSQL`
-- 不支持 `SQLite`
-- 数据库不通时，`/health` 会返回 `503`
+复制示例配置：
+
+```bash
+cp deploy/env.example backend/.env
+```
+
+然后按你的实际环境补齐 `backend/.env` 中的数据库、数据源与模型配置。
+
+### 3. 启动后端
+
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python3 main.py
+```
+
+默认启动后可访问：
+
+- API: `http://localhost:8000`
+- Docs: `http://localhost:8000/docs`
+- Health: `http://localhost:8000/health`
+
+### 4. 启动前端
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+默认启动后可访问：
+
+- Web UI: `http://localhost:5173`
+
+Vite 会把前端 `/api` 请求代理到 `http://localhost:8000`。
+
+### 5. 快速验证
+
+```bash
+curl http://localhost:8000/health
+```
+
+如果数据库连接正常，接口会返回健康状态；数据库不可用时会返回 `503`。
+
+## 配置说明
+
+首版最关键的配置项如下：
+
+| 变量名 | 说明 |
+| --- | --- |
+| `APP_SECRET_KEY` | 应用密钥，生产环境请使用长随机值 |
+| `DATABASE_URL` | 主 PostgreSQL 连接串 |
+| `AUTOMATION_DATABASE_URL` | 自动化数据库连接串，可与主库分离 |
+| `NETBOX_URL` / `NETBOX_API_TOKEN` | 资产与拓扑数据源 |
+| `ELK_URL` / `ELK_USERNAME` / `ELK_PASSWORD` | 日志数据源 |
+| `ZABBIX_URL` / `ZABBIX_API_URL` / `ZABBIX_USERNAME` / `ZABBIX_PASSWORD` | 告警与状态数据源 |
+| `LLM_API_URL` / `LLM_API_KEY` / `LLM_MODEL_NAME` | 模型服务配置 |
+| `FRONTEND_URL` | 前端访问地址，用于 CORS |
+| `AUTOMATION_OBSERVE_ONLY` | 安全开关，阻止非只读自动化动作 |
+
+## 核心模块
+
+| 模块 | 路由 | 作用 |
+| --- | --- | --- |
+| 驾驶舱 | `/` | 总览 Case、Agent、Memory 和分流指标 |
+| 事件中心 | `/events` | 统一查看事件、聚类与根因候选 |
+| Case 中心 | `/cases` | 查看证据、智能体输出与修复计划 |
+| 执行中心 | `/fabric` | 管理修复计划、执行记录与 Automation Fabric |
+| 智能体中心 | `/agents` | 查看智能体目录、健康度与运行情况 |
+| 记忆中心 | `/memories` | 管理 episode / pattern / outcome |
+| 日志中心 | `/logs` | 日志检索、范围筛选与聚合分析 |
+| Zabbix 中心 | `/zabbix` | 查看活跃告警、主机异常与同步状态 |
+| 资产拓扑 | `/assets` | 查看设备、IP、机柜、VLAN 与前缀 |
+| 工单 | `/tickets` | 人工闭环与工单追踪 |
+| 设置 | `/settings` | 集成配置、模型配置和 SSH 通道 |
 
 ## 项目结构
 
 ```text
 netops_bs/
 ├── backend/
-│   ├── adapters/
-│   ├── agents/
-│   ├── api/
-│   ├── compat/
-│   ├── config/
-│   ├── engines/
-│   ├── models/
-│   ├── scripts/
-│   ├── services/
-│   ├── database.py
-│   └── main.py
+│   ├── api/                 # FastAPI 路由
+│   ├── agents/              # 多智能体逻辑
+│   ├── services/            # 领域服务
+│   ├── models/              # 数据模型
+│   ├── config/              # 配置与日志
+│   ├── database.py          # 数据库初始化
+│   └── main.py              # FastAPI 入口
 ├── frontend/
 │   ├── src/
+│   │   ├── api/             # 前端 API 封装
+│   │   ├── components/      # 通用组件
+│   │   ├── pages/           # 页面实现
+│   │   └── router/          # 路由配置
 │   └── package.json
-├── docs/
-└── README.md
+├── deploy/
+│   ├── env.example          # 示例环境变量
+│   └── start.sh             # 后端启动脚本
+├── docs/                    # 设计、迁移与部署文档
+└── agenticops.jpg           # 当前 README 总览图
 ```
 
-## PostgreSQL 使用说明
+## 当前状态
 
-### 1. 当前主表
+当前代码库的真实运行架构已经切换到：
 
-当前版本启动时只会自动创建这些主运行表：
+`Event / Case / Multi-Agent / Memory / Fabric`
 
-- `site`
-- `site_automation_switch`
-- `device_state`
-- `log_sample`
-- `log_analysis_result`
-- `automation_policy`
-- `raw_anomaly`
-- `ssh_credential`
-- `ssh_credential_device_binding`
-- `asset_device`
-- `local_ticket`
-- `command_template`
-- `source_event`
-- `case_record`
-- `evidence_item`
-- `agent_run`
-- `agent_claim`
-- `memory_entry`
-- `remediation_plan`
-- `execution_run`
-- `integration_setting`
-- `log_scope`
+当前前端基于 `Vue 3 + Vite`，后端基于 `FastAPI + SQLAlchemy + PostgreSQL`。
 
-说明：
+以下内容已不再是主运行链的一部分：
 
-- `local_ticket` 现在以 `source_event_id` 为主关联键
-- 启动时会自动补齐 `local_ticket.source_event_id`
-- 启动时会自动删除 `local_ticket -> alert_event` 的旧外键依赖
+- 旧 `automation center`
+- 旧 `streamlit + langchain_agent`
+- 旧异常模板驱动主链路
 
-对应逻辑见：
+## 路线图
 
-- [database.py](/Users/jayce/Desktop/Jayce/netops_bs/backend/database.py)
+- 完善外部工单系统对接与闭环状态同步
+- 增强事件聚类、根因排序与降噪质量指标
+- 补齐生产部署规范、配置模板与发布文档
+- 增加测试、示例数据与更清晰的开发者文档
 
-### 2. 已退场的旧表
+## 发布前建议
 
-这些旧表不再参与主应用运行：
+如果你准备把这个仓库作为正式开源版本发布，建议至少先完成下面几项：
 
-- `alert_event`
-- `automation_task`
-- `automation_action_log`
-- `automation_approval`
-- `automation_task_feedback`
+- 清理示例配置、日志文件和文档中的真实内网地址、Token、主机名和业务数据。
+- 为仓库补齐 `LICENSE` 文件，避免“能看不能用”的法律状态。
+- 把 README 中使用的演示图统一脱敏，并放到固定目录。
+- 检查 `logs/`、`storage/`、历史文档和脚本输出，避免把运行数据直接公开。
 
-说明：
-
-- 主应用不会再自动创建这些旧表
-- 主运行链不再查询这些旧表
-- 它们只用于一次性补迁和离线归档
-
-### 3. 新装数据库
-
-Ubuntu / Debian：
-
-```bash
-sudo apt update
-sudo apt install -y postgresql postgresql-contrib
-sudo systemctl enable postgresql
-sudo systemctl start postgresql
-```
-
-macOS Homebrew：
-
-```bash
-brew install postgresql@16
-brew services start postgresql@16
-```
-
-检查服务：
-
-```bash
-pg_isready
-```
-
-### 4. 创建用户和数据库
-
-推荐：
-
-```bash
-createuser -P netops
-createdb -O netops netops_agenticops
-```
-
-验证连接：
-
-```bash
-psql postgresql://netops:<your_password>@127.0.0.1:5432/netops_agenticops -c "select 1;"
-```
-
-如果这里失败，不要继续启动前后端。
-
-### 5. 后端数据库配置
-
-复制模板：
-
-```bash
-cp backend/.env.example backend/.env
-```
-
-至少确认：
-
-```env
-APP_SECRET_KEY=replace_with_a_long_random_secret
-DATABASE_URL=postgresql://netops:<your_password>@127.0.0.1:5432/netops_agenticops
-AUTOMATION_DATABASE_URL=
-LLM_API_URL=http://<your-llm-host>/v1
-LLM_API_KEY=<your-llm-key>
-LLM_MODEL_NAME=Qwen/Qwen3-32B-AWQ
-FRONTEND_URL=http://localhost:5173
-```
-
-说明：
-
-- `AUTOMATION_DATABASE_URL` 留空时会回退到 `DATABASE_URL`
-- 当前推荐直接用同一个 PostgreSQL 库
-
-## 旧表补迁和退场
-
-### 1. 先做补迁
-
-如果你的库里还有历史 `AutomationTask / AutomationTaskFeedback`，先跑补迁：
-
-```bash
-python3 backend/scripts/backfill_agenticops_data.py --dry-run --limit 100
-python3 backend/scripts/backfill_agenticops_data.py --limit 1000
-```
-
-这个脚本会把旧任务数据补到：
-
-- `source_event`
-- `case_record`
-- `remediation_plan`
-- `memory_entry`
-
-### 2. 再做旧表退场
-
-先 dry-run：
-
-```bash
-python3 backend/scripts/retire_legacy_schema.py --dry-run
-```
-
-确认无误后归档退场：
-
-```bash
-python3 backend/scripts/retire_legacy_schema.py
-```
-
-如果你确定要物理删除旧表：
-
-```bash
-python3 backend/scripts/retire_legacy_schema.py --drop
-```
-
-说明：
-
-- 默认会先补迁，再把旧表重命名成 `archived__*`
-- `--drop` 会直接删除旧表
-- 脚本可以重复执行，已处理“旧表不存在”的情况
-
-对应脚本：
-
-- [backfill_agenticops_data.py](/Users/jayce/Desktop/Jayce/netops_bs/backend/scripts/backfill_agenticops_data.py)
-- [retire_legacy_schema.py](/Users/jayce/Desktop/Jayce/netops_bs/backend/scripts/retire_legacy_schema.py)
-
-## 完整启动说明
-
-### 方式 A：开发/自测启动
-
-#### 1. 启动后端
-
-```bash
-cd /path/to/netops_bs
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r backend/requirements.txt
-cd backend
-uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-#### 2. 启动前端
-
-另开一个终端：
-
-```bash
-cd /path/to/netops_bs/frontend
-npm install
-cp .env.example .env
-npm run dev -- --host 0.0.0.0 --port 5173
-```
-
-访问：
-
-- `http://127.0.0.1:5173`
-- `http://127.0.0.1:8000/docs`
-
-### 方式 B：脚本一键启动
-
-```bash
-cd /path/to/netops_bs
-./start_all.sh
-```
-
-说明：
-
-- `start_all.sh` 现在会启动 `FastAPI + Vue`
-- 日志文件：
-  - `logs/backend.log`
-  - `logs/frontend.log`
-
-### 方式 C：systemd / 服务方式
-
-前端服务文件：
-
-- [netops-frontend.service](/Users/jayce/Desktop/Jayce/netops_bs/netops-frontend.service)
-
-如果你用 systemd，推荐：
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart netops-backend
-sudo systemctl restart netops-frontend
-sudo systemctl status netops-backend
-sudo systemctl status netops-frontend
-```
-
-## 完全重启整套服务
-
-### 开发/脚本环境
-
-停止：
-
-```bash
-cd /path/to/netops_bs
-./manage_services.sh
-```
-
-或者直接杀掉端口进程：
-
-```bash
-lsof -ti:8000 | xargs kill -9 2>/dev/null || true
-lsof -ti:5173 | xargs kill -9 2>/dev/null || true
-```
-
-重新启动：
-
-```bash
-cd /path/to/netops_bs
-./start_all.sh
-```
-
-### systemd 环境
-
-```bash
-sudo systemctl restart postgresql
-sudo systemctl restart netops-backend
-sudo systemctl restart netops-frontend
-```
-
-查看日志：
-
-```bash
-tail -f /opt/netops/logs/backend.log
-tail -f /opt/netops/logs/frontend.log
-```
-
-## 首次启动后的配置顺序
-
-1. 打开 `Settings -> 集成配置`
-2. 配置 `NetBox`
-3. 配置 `ELK`
-4. 配置 `Zabbix`
-5. 分别点击“测试连接”
-6. 配置至少一个 `日志范围`
-7. 测试日志范围查询
-
-说明：
-
-- 敏感字段会加密存库，不会明文回显
-- 如果没有配置日志范围，日志采样和日志页会表现异常或为空
-
-## 启动后的验收顺序
-
-### 1. 先看健康检查
-
-```bash
-curl http://127.0.0.1:8000/health
-```
-
-期望：
-
-- HTTP `200`
-- `status=healthy`
-- `checks.database.status=healthy`
-
-如果是 `503`，先修数据库，不要继续联调前端。
-
-### 2. 再做接口烟雾检查
-
-```bash
-curl http://127.0.0.1:8000/api/agents/catalog
-curl http://127.0.0.1:8000/api/agents/health
-curl http://127.0.0.1:8000/api/cases/overview
-curl http://127.0.0.1:8000/api/memories/overview
-curl http://127.0.0.1:8000/api/fabric/overview
-curl http://127.0.0.1:8000/api/logs/scopes
-curl http://127.0.0.1:8000/api/assets/sites
-```
-
-说明：
-
-- `/api/agents/catalog` 应固定返回 4 个智能体
-- `/api/agents/health` 即使还没有运行记录，也应返回 4 个智能体，计数为 `0`
-
-### 3. 最后看前端页面
-
-按这个顺序看：
-
-1. `Dashboard`
-2. `Agents`
-3. `Cases`
-4. `Memories`
-5. `Fabric`
-6. `Logs`
-7. `Events`
-8. `Zabbix`
-
-不要把“Dashboard 能打开”当成系统正常的唯一标准。
-
-## 常见问题
-
-### 1. `/health` 返回 503
-
-通常是：
-
-- PostgreSQL 没启动
-- `DATABASE_URL` 配错
-- 数据库账号密码不对
-
-### 2. 前端能打开但业务页数据不正常
-
-优先检查：
-
-- `/health`
-- `DATABASE_URL`
-- `/api/cases/overview`
-- `/api/fabric/overview`
-
-这类问题通常不是前端单点问题。
-
-### 3. 事件页正常但旧 automation 页访问不到
-
-这是预期行为。
-
-- `/api/automation` 已退出主运行态
-- 前端 `/automation/*` 只保留重定向，不再是主业务入口
-
-### 4. 退场脚本执行失败
-
-先确认：
-
-```bash
-pg_isready
-psql <your_database_url> -c "select 1;"
-```
-
-如果数据库本身不可达，任何补迁和退场脚本都会失败。
-
-## 相关文件
-
-- [database.py](/Users/jayce/Desktop/Jayce/netops_bs/backend/database.py)
-- [main.py](/Users/jayce/Desktop/Jayce/netops_bs/backend/main.py)
-- [start_all.sh](/Users/jayce/Desktop/Jayce/netops_bs/start_all.sh)
-- [manage_services.sh](/Users/jayce/Desktop/Jayce/netops_bs/manage_services.sh)
-- [retire_legacy_schema.py](/Users/jayce/Desktop/Jayce/netops_bs/backend/scripts/retire_legacy_schema.py)
-- [backfill_agenticops_data.py](/Users/jayce/Desktop/Jayce/netops_bs/backend/scripts/backfill_agenticops_data.py)
+欢迎围绕事件治理、AgenticOps、网络运维自动化与数据源接入提交 Issue 或 PR。
