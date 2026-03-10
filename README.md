@@ -27,9 +27,8 @@
 - [配置说明](#配置说明)
 - [核心模块](#核心模块)
 - [项目结构](#项目结构)
-- [当前状态](#当前状态)
-- [路线图](#路线图)
-- [发布前建议](#发布前建议)
+- [作者与联系](#作者与联系)
+- [Star 趋势](#star-趋势)
 
 ## 项目简介
 
@@ -226,34 +225,26 @@ netops_bs/
 └── agenticops.jpg           # 当前 README 总览图
 ```
 
-## 当前状态
+## 作者与联系
 
-当前代码库的真实运行架构已经切换到：
-
-`Event / Case / Multi-Agent / Memory / Fabric`
-
-当前前端基于 `Vue 3 + Vite`，后端基于 `FastAPI + SQLAlchemy + PostgreSQL`。
-
-以下内容已不再是主运行链的一部分：
-
-- 旧 `automation center`
-- 旧 `streamlit + langchain_agent`
-- 旧异常模板驱动主链路
-
-## 路线图
-
-- 完善外部工单系统对接与闭环状态同步
-- 增强事件聚类、根因排序与降噪质量指标
-- 补齐生产部署规范、配置模板与发布文档
-- 增加测试、示例数据与更清晰的开发者文档
-
-## 发布前建议
-
-如果你准备把这个仓库作为正式开源版本发布，建议至少先完成下面几项：
-
-- 清理示例配置、日志文件和文档中的真实内网地址、Token、主机名和业务数据。
-- 为仓库补齐 `LICENSE` 文件，避免“能看不能用”的法律状态。
-- 把 README 中使用的演示图统一脱敏，并放到固定目录。
-- 检查 `logs/`、`storage/`、历史文档和脚本输出，避免把运行数据直接公开。
+- 微信公众号：`数字卢语`
+- 邮箱：`jayce_lu@foxmai.com`
 
 欢迎围绕事件治理、AgenticOps、网络运维自动化与数据源接入提交 Issue 或 PR。
+
+## Star 趋势
+
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="https://api.star-history.com/svg?repos=Jaycelu/netops_bs&type=Date&theme=dark"
+  />
+  <source
+    media="(prefers-color-scheme: light)"
+    srcset="https://api.star-history.com/svg?repos=Jaycelu/netops_bs&type=Date"
+  />
+  <img
+    alt="Star History Chart"
+    src="https://api.star-history.com/svg?repos=Jaycelu/netops_bs&type=Date"
+  />
+</picture>
