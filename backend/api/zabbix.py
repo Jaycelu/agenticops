@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -23,6 +24,51 @@ def _parse_clock(value: Any) -> Optional[str]:
         return None
 
 
+def _extract_host_from_name(name: str) -> Optional[str]:
+    """从告警名称中提取主机名"""
+    if not name:
+        return None
+    
+    # 格式1: "主机名:描述" - 检查第一个单词是否是主机名
+    if ':' in name:
+        parts = name.split(':', 1)
+        first_part = parts[0].strip()
+        # 如果第一部分是中文开头，后面跟着英文主机名，提取英文部分
+        match = re.search(r'[a-zA-Z][a-zA-Z0-9\-\.]*', first_part)
+        if match:
+            potential_host = match.group()
+            if re.match(r'^[a-zA-Z0-9\-\.]+$', potential_host):
+                return potential_host
+    
+    # 格式2: "主机名 设备描述 告警描述"（第一个单词是主机名）
+    words = name.split()
+    if len(words) > 1:
+        first_word = words[0]
+        # 如果是中文开头，跳过
+        if not re.match(r'^[\u4e00-\u9fa5]', first_word):
+            # 如果第一个单词是纯英文数字，可能是主机名
+            if re.match(r'^[a-zA-Z0-9\-\.]+$', first_word):
+                return first_word
+    
+    return None
+
+
+def _extract_ip_from_name(name: str) -> Optional[str]:
+    """从告警名称中提取 IP 地址"""
+    if not name:
+        return None
+    
+    # 匹配 IPv4 地址
+    match = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', name)
+    if match:
+        ip = match.group(1)
+        # 验证 IP 地址格式
+        parts = ip.split('.')
+        if all(0 <= int(part) <= 255 for part in parts):
+            return ip
+    return None
+
+
 def _normalize_alert(item: Dict[str, Any]) -> Dict[str, Any]:
     hosts = item.get("hosts") or []
     primary_host = hosts[0] if hosts else {}
@@ -35,13 +81,23 @@ def _normalize_alert(item: Dict[str, Any]) -> Dict[str, Any]:
         4: "high",
         5: "disaster",
     }
+    
+    # 尝试从 hosts 获取主机名，如果没有则从告警名称中提取
+    host = primary_host.get("host") or primary_host.get("name")
+    if not host:
+        host = _extract_host_from_name(item.get("name") or "")
+    
+    # 尝试从告警名称中提取 IP 地址
+    ip = _extract_ip_from_name(item.get("name") or "")
+    
     return {
         "event_id": item.get("eventid"),
         "name": item.get("name") or "zabbix_problem",
         "severity": severity_names.get(severity, str(severity)),
         "severity_level": severity,
-        "host": primary_host.get("host") or primary_host.get("name"),
-        "host_name": primary_host.get("name"),
+        "host": host,
+        "host_name": host,
+        "ip": ip,
         "clock": _parse_clock(item.get("clock")),
         "acknowledged": bool(int(item.get("acknowledged") or 0)),
         "object_id": item.get("objectid"),
@@ -51,6 +107,7 @@ def _normalize_alert(item: Dict[str, Any]) -> Dict[str, Any]:
 
 def _upsert_zabbix_event(db: Session, alert: Dict[str, Any]) -> SourceEvent:
     host = alert.get("host") or alert.get("host_name")
+    ip = alert.get("ip") or host
     dedup_key = f"zabbix:{host}:{alert.get('event_id') or alert.get('object_id')}"
     payload: Dict[str, Any] = {}
     payload.update(
@@ -71,7 +128,7 @@ def _upsert_zabbix_event(db: Session, alert: Dict[str, Any]) -> SourceEvent:
         external_event_id=alert.get("event_id"),
         site_id=None,
         netbox_device_id=None,
-        device_ip=host,
+        device_ip=ip,
         host=host,
         title=alert.get("name") or "zabbix_problem",
         severity=alert.get("severity") or "warning",
@@ -92,7 +149,6 @@ def _upsert_zabbix_event(db: Session, alert: Dict[str, Any]) -> SourceEvent:
         source_event,
         legacy_dedup_key=dedup_key,
         legacy_source="ZABBIX",
-        name=alert.get("name") or "zabbix_problem",
         host=host,
         severity=alert.get("severity") or "warning",
         severity_level=int(alert.get("severity_level") or 0),

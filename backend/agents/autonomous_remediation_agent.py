@@ -4,6 +4,7 @@ from agents.base import BaseOpsAgent
 from agents.schemas import AgentDecision, AgentExecutionContext
 from config.settings import settings
 from models.agenticops import AgentType
+from services.automation_settings_service import automation_settings_service
 from services.remediation_recommendation_service import remediation_recommendation_service
 
 
@@ -36,13 +37,25 @@ class AutonomousRemediationAgent(BaseOpsAgent):
 
         execution_mode = "manual"
         approval_status = "required"
-        if not settings.automation_observe_only and confidence >= 0.85 and priority in {"P2", "P3"}:
+        
+        # 从数据库获取实际的自动化模式，而不是使用硬编码的 settings.automation_observe_only
+        try:
+            from database import get_db
+            db = next(get_db())
+            automation_mode_data = automation_settings_service.get_automation_mode(db)
+            is_observe_only = automation_mode_data.get("is_observe_only", True)
+            db.close()
+        except Exception:
+            # 如果获取失败，回退到默认值
+            is_observe_only = settings.automation_observe_only
+        
+        if not is_observe_only and confidence >= 0.85 and priority in {"P2", "P3"}:
             execution_mode = "auto"
             approval_status = "not_required"
 
         summary = (
             f"已生成修复计划草案，根因候选为 {root_cause}，执行模式 {execution_mode}，"
-            f"当前系统 observe_only={settings.automation_observe_only}。"
+            f"当前系统 observe_only={is_observe_only}。"
         )
 
         return AgentDecision(
@@ -61,7 +74,7 @@ class AutonomousRemediationAgent(BaseOpsAgent):
                 "recommendations": recommendations,
                 "recommended_actions": recommended_actions,
                 "safety_checks": {
-                    "observe_only": settings.automation_observe_only,
+                    "observe_only": is_observe_only,
                     "requires_approval": approval_status == "required",
                     "confidence_threshold_met": confidence >= 0.85,
                 },

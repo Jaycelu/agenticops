@@ -61,6 +61,7 @@ def init_db():
     )
     from models.integration_settings import IntegrationSetting
     from models.log_scope import LogScope
+    from models.automation_settings import AutomationSetting
     active_tables = [
         Site.__table__,
         SiteAutomationSwitch.__table__,
@@ -73,7 +74,7 @@ def init_db():
         SSHCredentialDeviceBinding.__table__,
         AssetDevice.__table__,
         LocalTicket.__table__,
-        CommandTemplate.__table__,
+        # CommandTemplate.__table__,  # TODO: CommandTemplate 模型尚未定义
         SourceEvent.__table__,
         CaseRecord.__table__,
         EvidenceItem.__table__,
@@ -84,6 +85,7 @@ def init_db():
         ExecutionRun.__table__,
         IntegrationSetting.__table__,
         LogScope.__table__,
+        AutomationSetting.__table__,
     ]
     Base.metadata.create_all(bind=engine, tables=active_tables)
     _drop_local_ticket_alert_event_fk()
@@ -158,7 +160,7 @@ def _ensure_local_ticket_source_event_column() -> None:
                 SET source_event_id = NULLIF(metadata->>'source_event_id', '')::BIGINT
                 WHERE source_event_id IS NULL
                   AND metadata IS NOT NULL
-                  AND metadata ? 'source_event_id'
+                  AND metadata::jsonb ? 'source_event_id'
                 """
             )
         )
@@ -203,7 +205,7 @@ def _ensure_source_event_legacy_event_id_column() -> None:
                 SET legacy_event_id = NULLIF(normalized_payload->>'legacy_event_id', '')::BIGINT
                 WHERE legacy_event_id IS NULL
                   AND normalized_payload IS NOT NULL
-                  AND normalized_payload ? 'legacy_event_id'
+                  AND normalized_payload::jsonb ? 'legacy_event_id'
                 """
             )
         )

@@ -113,7 +113,7 @@
             </div>
 
             <div class="table-section">
-              <div v-if="loading" class="loading">
+              <div v-if="tabLoading.devices" class="loading">
                 <Loader2 class="animate-spin" :size="40" />
                 <p>加载中...</p>
               </div>
@@ -316,7 +316,7 @@
             </div>
 
             <div class="table-section">
-              <div v-if="loading" class="loading">
+              <div v-if="tabLoading.ips" class="loading">
                 <Loader2 class="animate-spin" :size="40" />
                 <p>加载中...</p>
               </div>
@@ -378,7 +378,7 @@
             </div>
 
             <div class="table-section">
-              <div v-if="loading" class="loading">
+              <div v-if="tabLoading.racks" class="loading">
                 <Loader2 class="animate-spin" :size="40" />
                 <p>加载中...</p>
               </div>
@@ -563,7 +563,7 @@
             </div>
 
             <div class="table-section">
-              <div v-if="loading" class="loading">
+              <div v-if="tabLoading.vlans" class="loading">
                 <Loader2 class="animate-spin" :size="40" />
                 <p>加载中...</p>
               </div>
@@ -1255,7 +1255,7 @@ function handleDrop(event: DragEvent, dropIndex: number) {
 }
 
 async function loadDevices() {
-  loading.value = true
+  tabLoading.value.devices = true
   try {
     const params: any = {}
     if (deviceFilters.value.name) params.name = deviceFilters.value.name
@@ -1277,7 +1277,7 @@ async function loadDevices() {
           const response = JSON.parse(cachedData)
           devices.value = response.devices
           deviceCount.value = response.count
-          loading.value = false
+          tabLoading.value.devices = false
           return
         }
       } catch (cacheError) {
@@ -1303,12 +1303,12 @@ async function loadDevices() {
     devices.value = []
     deviceCount.value = 0
   } finally {
-    loading.value = false
+    tabLoading.value.devices = false
   }
 }
 
 async function loadIPs() {
-  loading.value = true
+  tabLoading.value.ips = true
   try {
     const params: any = {}
     if (ipFilters.value.address) params.address = ipFilters.value.address
@@ -1328,7 +1328,7 @@ async function loadIPs() {
           const response = JSON.parse(cachedData)
           ips.value = response.ips
           ipCount.value = response.count
-          loading.value = false
+          tabLoading.value.ips = false
           return
         }
       } catch (cacheError) {
@@ -1353,12 +1353,12 @@ async function loadIPs() {
     ips.value = []
     ipCount.value = 0
   } finally {
-    loading.value = false
+    tabLoading.value.ips = false
   }
 }
 
 async function loadRacks() {
-  loading.value = true
+  tabLoading.value.racks = true
   try {
     const params: any = {}
     if (rackFilters.value.name) params.name = rackFilters.value.name
@@ -1378,7 +1378,7 @@ async function loadRacks() {
           const response = JSON.parse(cachedData)
           racks.value = response.racks
           rackCount.value = response.count
-          loading.value = false
+          tabLoading.value.racks = false
           return
         }
       } catch (cacheError) {
@@ -1399,12 +1399,12 @@ async function loadRacks() {
     racks.value = []
     rackCount.value = 0
   } finally {
-    loading.value = false
+    tabLoading.value.racks = false
   }
 }
 
 async function loadVLANs() {
-  loading.value = true
+  tabLoading.value.vlans = true
   try {
     const params: any = {}
     if (vlanFilters.value.name) params.name = vlanFilters.value.name
@@ -1425,7 +1425,7 @@ async function loadVLANs() {
           const response = JSON.parse(cachedData)
           vlans.value = response.vlans
           vlanCount.value = response.count
-          loading.value = false
+          tabLoading.value.vlans = false
           return
         }
       } catch (cacheError) {
@@ -1446,7 +1446,7 @@ async function loadVLANs() {
     vlans.value = []
     vlanCount.value = 0
   } finally {
-    loading.value = false
+    tabLoading.value.vlans = false
   }
 }
 
@@ -1755,11 +1755,7 @@ onMounted(() => {
   applyDeepLinkFilters()
   loadSites()
   loadVendors()
-  if (activeTab.value === 'devices') {
-    loadDevices()
-    loadIPs()
-    return
-  }
+  // 只加载当前标签页的数据，避免同时加载多个标签页
   switchTab(activeTab.value)
 })
 </script>

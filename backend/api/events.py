@@ -32,6 +32,7 @@ from services.event_decision_service import event_decision_service
 from services.remediation_recommendation_service import remediation_recommendation_service
 from services.source_event_projection import attach_event_projection, build_event_shadow, upsert_source_event
 from services.ticket_adapter import ticket_adapter
+from services.automation_settings_service import automation_settings_service
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 _UNSET = object()
@@ -152,8 +153,8 @@ def _aggregate_clusters(records: list[Dict[str, Any]], db: Session) -> list[Dict
         "low": 1,
         "info": 1,
     }
-    device_ids = sorted({item.netbox_device_id for item in records if item.netbox_device_id})
-    site_ids = sorted({item.site_id for item in records if item.site_id})
+    device_ids = sorted({item.get("netbox_device_id") for item in records if item.get("netbox_device_id")})
+    site_ids = sorted({item.get("site_id") for item in records if item.get("site_id")})
     asset_map: Dict[int, AssetDevice] = {}
     site_map: Dict[int, Site] = {}
     if device_ids:
@@ -643,13 +644,46 @@ async def ingest_event(payload: EventIngestRequest, db: Session = Depends(get_db
     source_event = _upsert_event(db, payload)
     db.commit()
     db.refresh(source_event)
+
+    # 获取当前自动化模式
+    automation_mode_data = automation_settings_service.get_automation_mode(db)
+    is_auto_mode = automation_mode_data.get("mode") == "auto"
+
+    # 评估事件 disposition
+    decision = event_decision_service.evaluate_source_event(source_event)
+
+    # 如果是自动模式且事件需要创建 case，则自动创建
+    force_create_case = False
+    if is_auto_mode and decision.get("disposition") == "case_required":
+        force_create_case = True
+
     case_info = await _resolve_case_for_binding(
         db,
         source_event=source_event,
+        force_create=force_create_case,
     )
+
+    # 如果是自动模式且创建了新的 case，则自动触发 agent 执行
+    if is_auto_mode and force_create_case and case_info.get("case_id"):
+        try:
+            event = build_event_shadow(source_event)
+            await case_orchestrator.run_case_pipeline(
+                db,
+                case_id=case_info["case_id"],
+                log_query=event.host or event.name,
+                time_range="-30m,now",
+                log_limit=300,
+            )
+            if source_event is not None:
+                db.refresh(source_event)
+        except Exception as exc:  # noqa: BLE001
+            # 如果 agent 执行失败，不影响事件和 case 的创建，只记录错误
+            print(f"Warning: Auto-triggered case pipeline failed for case {case_info.get('case_id')}: {exc}")
+
     return {
         "accepted": True,
-        "observe_only": settings.automation_observe_only,
+        "observe_only": automation_mode_data.get("is_observe_only", True),
+        "automation_mode": automation_mode_data.get("mode", "observe_only"),
         "event": _serialize_source_event(source_event),
         "case_id": case_info.get("case_id"),
         "case_code": case_info.get("case_code"),

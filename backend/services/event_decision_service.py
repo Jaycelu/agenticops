@@ -181,7 +181,7 @@ class EventDecisionService:
         if not raw:
             return "general"
 
-        tokens = [token for token in re.split(r"[:._\\-/]+", raw) if token]
+        tokens = [token for token in re.split(r"[:._\\/-]+", raw) if token]
         if not tokens:
             return "general"
 

@@ -8,6 +8,7 @@ from datetime import datetime
 from enum import Enum
 
 from config.settings import settings
+from services.automation_settings_service import automation_settings_service
 
 logger = logging.getLogger(__name__)
 
@@ -244,9 +245,20 @@ class ExecutionEngine:
                 error=f"No executor registered for {action_type.value}"
             )
 
+        # 从数据库获取实际的自动化模式，而不是使用硬编码的 settings.automation_observe_only
+        try:
+            from database import get_db
+            db = next(get_db())
+            automation_mode_data = automation_settings_service.get_automation_mode(db)
+            is_observe_only = automation_mode_data.get("is_observe_only", True)
+            db.close()
+        except Exception:
+            # 如果获取失败，回退到默认值
+            is_observe_only = settings.automation_observe_only
+
         # Safety first: in observe-only mode, block non-read-only actions.
         if (
-            settings.automation_observe_only
+            is_observe_only
             and action_type != ExecutorType.NOTIFICATION
             and not bool(action_config.get("read_only", False))
         ):

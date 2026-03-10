@@ -10,8 +10,8 @@
             <h1>事件中心</h1>
             <p>统一处理 ELK 日志信号与 Zabbix 告警，关联 Case、Fabric 与工单闭环。</p>
           </div>
-          <span class="mode-badge" :class="{ observe: mode === 'observe_only' }">
-            {{ mode === 'observe_only' ? '观测模式' : '正常模式' }}
+          <span class="mode-badge" :class="{ observe: automationMode?.is_observe_only }">
+            {{ automationMode?.is_observe_only ? '观测模式' : '自动模式' }}
           </span>
         </div>
         <button @click="refreshData" class="btn-refresh app-button app-button-secondary" :disabled="loading">
@@ -375,6 +375,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import axios from 'axios'
 import { eventsApi, type EventClusterItem, type EventItem, type RootCauseCandidateItem } from '@/api/events'
 import { AlertCircle, AlertTriangle, BellRing, CheckCircle2, Clock, FileText, Layers3, Loader2, Radio, RefreshCw, Server } from 'lucide-vue-next'
 
@@ -400,7 +401,7 @@ interface EventRelationsState {
 const router = useRouter()
 const route = useRoute()
 const loading = ref(false)
-const mode = ref('unknown')
+const automationMode = ref<{ mode: string; is_observe_only: boolean } | null>(null)
 const events = ref<EventItem[]>([])
 const clusters = ref<EventClusterItem[]>([])
 const rootCauses = ref<RootCauseCandidateItem[]>([])
@@ -483,8 +484,18 @@ function getEventCase(item?: EventItem | null): { caseId?: number; caseCode?: st
 }
 
 async function loadMode() {
-  const res = await eventsApi.getMode()
-  mode.value = res.message
+  try {
+    const apiUrl = '/api/settings/automation-mode'
+    const response = await axios.get(apiUrl)
+    if (response.data.success && response.data.data) {
+      automationMode.value = {
+        mode: response.data.data.mode,
+        is_observe_only: response.data.data.is_observe_only
+      }
+    }
+  } catch (error) {
+    console.error('Error loading automation mode:', error)
+  }
 }
 
 async function loadEvents() {

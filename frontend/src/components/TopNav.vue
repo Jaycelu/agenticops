@@ -1,9 +1,9 @@
 <template>
   <aside class="sidebar-nav">
     <div class="nav-logo">
-      <Network class="logo-icon" :size="24" />
+      <img src="/agenticops.jpg" alt="AgenticOps" class="logo-icon" />
       <div>
-        <strong>NetOps AI</strong>
+        <strong>AgenticOps</strong>
         <p>AgenticOps Workspace</p>
       </div>
     </div>
@@ -45,7 +45,6 @@ import {
   Brain,
   House,
   MemoryStick,
-  Network,
   Radio,
   Server,
   Settings,
@@ -122,6 +121,9 @@ const appVersion = `v${packageJson.version}`
 }
 
 .logo-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   animation: pulse 2s ease-in-out infinite;
 }
 

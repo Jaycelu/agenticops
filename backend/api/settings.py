@@ -21,6 +21,7 @@ from services.model_registry import (
     list_models,
     update_model,
 )
+from services.automation_settings_service import automation_settings_service
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -129,6 +130,43 @@ async def get_models():
     }
 
 
+@router.get("/models/providers")
+async def get_model_providers():
+    return {
+        "success": True,
+        "providers": [
+            {
+                "id": "vllm",
+                "name": "VLLM",
+                "description": "开源 VLLM 推理服务，支持本地部署的大模型",
+                "required_params": ["api_url", "model"],
+                "optional_params": ["api_key"],
+            },
+            {
+                "id": "openai",
+                "name": "OpenAI",
+                "description": "OpenAI 官方 API，支持 GPT-4、GPT-3.5 等模型",
+                "required_params": ["api_key"],
+                "optional_params": ["api_url"],
+            },
+            {
+                "id": "aihubmix",
+                "name": "AIHubMix",
+                "description": "AIHubMix 聚合平台，支持多种大模型",
+                "required_params": ["api_key"],
+                "optional_params": ["api_url"],
+            },
+            {
+                "id": "openrouter",
+                "name": "OpenRouter",
+                "description": "OpenRouter 聚合平台，支持多种大模型",
+                "required_params": ["api_key"],
+                "optional_params": [],
+            },
+        ],
+    }
+
+
 @router.get("/models/active")
 async def get_active_model():
     return {
@@ -203,10 +241,63 @@ async def test_model_entry(model_id: str):
         }
     except Exception as exc:  # noqa: BLE001
         return {
+                    "success": False,
+                    "message": f"模型连通性测试失败：{exc}",
+                    "details": {
+                        "model_id": model_id,
+                        "provider": model.get("provider"),
+                    },
+                }
+
+@router.get("/automation-mode")
+async def get_automation_mode(db: Session = Depends(get_db)):
+    """获取当前自动化模式"""
+    try:
+        mode_data = automation_settings_service.get_automation_mode(db)
+        return {
+            "success": True,
+            "data": mode_data,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
             "success": False,
-            "message": f"模型连通性测试失败：{exc}",
-            "details": {
-                "model_id": model_id,
-                "provider": model.get("provider"),
-            },
+            "message": f"获取自动化模式失败：{exc}",
+        }
+
+
+@router.put("/automation-mode")
+async def set_automation_mode(mode: str, db: Session = Depends(get_db)):
+    """设置自动化模式"""
+    try:
+        mode_data = automation_settings_service.set_automation_mode(db, mode)
+        mode_name = "观察模式" if mode_data["is_observe_only"] else "自动模式"
+        return {
+            "success": True,
+            "message": f"已切换到{mode_name}",
+            "data": mode_data,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "success": False,
+            "message": f"设置自动化模式失败：{exc}",
+        }
+
+
+@router.post("/automation-mode/toggle")
+async def toggle_automation_mode(db: Session = Depends(get_db)):
+    """切换自动化模式"""
+    try:
+        mode_data = automation_settings_service.toggle_automation_mode(db)
+        mode_name = "观察模式" if mode_data["is_observe_only"] else "自动模式"
+        return {
+            "success": True,
+            "message": f"已切换到{mode_name}",
+            "data": mode_data,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "success": False,
+            "message": f"切换自动化模式失败：{exc}",
         }

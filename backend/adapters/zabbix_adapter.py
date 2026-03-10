@@ -49,11 +49,9 @@ class ZabbixAdapter:
 
                 params: Dict[str, Any] = {
                     "output": "extend",
-                    "selectHosts": ["host", "name"],
-                    "sortfield": ["clock", "eventid"],
+                    "sortfield": "eventid",
                     "sortorder": "DESC",
                     "limit": limit,
-                    "value": 1,
                 }
                 if host:
                     params["search"] = {"name": host}
