@@ -1,0 +1,62 @@
+{
+  "id": "log_signal_lightweight",
+  "name": "Lightweight log-signal pipeline",
+  "description": "For low-severity ELK log signals — skips post-triage evidence supplementation, similar-case lookup and the historical agent, and runs a single insight pass. Lower latency / cost for high-volume low-risk noise. Selected for source_category=log_signal with severity at or below warning.",
+  "priority": 200,
+  "match": {
+    "source_category": "log_signal",
+    "severity_max": "warning"
+  },
+  "steps": [
+    {
+      "id": "collect_runtime",
+      "kind": "hook",
+      "hook": "collect_runtime_context"
+    },
+    {
+      "id": "triage",
+      "kind": "agent",
+      "agent": "alert_triage_agent"
+    },
+    {
+      "id": "insight",
+      "kind": "agent",
+      "agent": "insight_analysis_agent"
+    },
+    {
+      "id": "remediation",
+      "kind": "agent",
+      "agent": "autonomous_remediation_agent"
+    },
+    {
+      "id": "create_plan",
+      "kind": "hook",
+      "hook": "create_remediation_plan"
+    },
+    {
+      "id": "store_outcome_memory",
+      "kind": "hook",
+      "hook": "store_outcome_memory"
+    },
+    {
+      "id": "safety_critic",
+      "kind": "agent",
+      "agent": "safety_critic_agent"
+    },
+    {
+      "id": "apply_safety_critic",
+      "kind": "hook",
+      "hook": "apply_safety_critic"
+    },
+    {
+      "id": "store_pattern_memories",
+      "kind": "hook",
+      "hook": "store_pattern_memories"
+    },
+    {
+      "id": "finalize_case_state",
+      "kind": "hook",
+      "hook": "finalize_case_state"
+    }
+  ]
+}

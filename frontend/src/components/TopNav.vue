@@ -4,7 +4,6 @@
       <img src="/agenticops.jpg" alt="AgenticOps" class="logo-icon" />
       <div>
         <strong>AgenticOps</strong>
-        <p>AgenticOps Workspace</p>
       </div>
     </div>
 
@@ -21,7 +20,6 @@
           <component :is="item.icon" :size="18" />
           <div class="nav-copy">
             <span>{{ item.label }}</span>
-            <small>{{ item.desc }}</small>
           </div>
         </router-link>
       </nav>
@@ -57,27 +55,27 @@ const navSections = ref([
   {
     title: '指挥层',
     items: [
-      { path: '/', label: '驾驶舱', desc: 'Case / Agent / Memory 总览', icon: House },
-      { path: '/cases', label: 'Case 中心', desc: '统一故障处置工作台', icon: Activity },
-      { path: '/fabric', label: '执行中心', desc: '修复计划与执行记录', icon: ShieldCheck }
+      { path: '/', label: '驾驶舱', icon: House },
+      { path: '/cases', label: 'Case 中心', icon: Activity },
+      { path: '/fabric', label: '执行中心', icon: ShieldCheck }
     ]
   },
   {
     title: '智能层',
     items: [
-      { path: '/agents', label: '智能体中心', desc: '四类运维智能体运行态', icon: Brain },
-      { path: '/memories', label: '记忆中心', desc: 'Episode / Pattern / Outcome', icon: MemoryStick }
+      { path: '/agents', label: '智能体中心', icon: Brain },
+      { path: '/memories', label: '记忆中心', icon: MemoryStick }
     ]
   },
   {
     title: '观测层',
     items: [
-      { path: '/events', label: '事件中心', desc: '告警与事件入口', icon: Radio },
-      { path: '/logs', label: '日志中心', desc: '日志检索与分析', icon: FileText },
-      { path: '/zabbix', label: 'Zabbix 中心', desc: '告警与实时状态数据源', icon: Bell },
-      { path: '/assets', label: '资产拓扑', desc: '设备与站点上下文', icon: Server },
-      { path: '/tickets', label: '工单', desc: '人工闭环与状态追踪', icon: Ticket },
-      { path: '/settings', label: '设置', desc: '集成与运行配置', icon: Settings }
+      { path: '/events', label: '事件中心', icon: Radio },
+      { path: '/logs', label: '日志中心', icon: FileText },
+      { path: '/zabbix', label: 'Zabbix 中心', icon: Bell },
+      { path: '/assets', label: '资产拓扑', icon: Server },
+      { path: '/tickets', label: '工单', icon: Ticket },
+      { path: '/settings', label: '设置', icon: Settings }
     ]
   }
 ])

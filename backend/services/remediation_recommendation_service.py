@@ -1,10 +1,47 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+import json
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
 
 class RemediationRecommendationService:
-    """Generates prioritized actions from root-cause oriented signals."""
+    """Generates prioritized actions from root-cause oriented signals (policy JSON + harness audit)."""
+
+    def __init__(self) -> None:
+        self.last_policy_audit: Dict[str, Any] = {}
+
+    def _policy_path(self) -> Path:
+        return Path(__file__).resolve().parents[2] / "storage" / "remediation_policy.v1.json"
+
+    def _load_policy(self) -> Dict[str, Any]:
+        path = self._policy_path()
+        if not path.exists():
+            return {"version": "missing", "rules": []}
+        with path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def _select_rule(self, policy: Dict[str, Any], *, family: str, root: str) -> Tuple[Dict[str, Any], str]:
+        rules = list(policy.get("rules") or [])
+        rules.sort(key=lambda r: int(r.get("priority") or 999))
+        fam = (family or "").lower()
+        root_l = (root or "").lower()
+        for rule in rules:
+            if self._rule_matches(rule, fam, root_l):
+                return rule, str(rule.get("id") or "unknown")
+        return {}, "none"
+
+    def _rule_matches(self, rule: Dict[str, Any], family: str, root: str) -> bool:
+        match = rule.get("match") or {}
+        families = {str(x).lower() for x in (match.get("families") or [])}
+        tokens = [str(t).lower() for t in (match.get("tokens_any") or [])]
+        if families and family in families:
+            return True
+        if tokens and any(t in root for t in tokens if t):
+            return True
+        if not families and not tokens:
+            return True
+        return False
 
     def build_actions(
         self,
@@ -20,7 +57,23 @@ class RemediationRecommendationService:
         scope = (impact_scope or "device_scope").lower()
         incident_priority = (priority or "P3").upper()
 
-        actions: List[Dict[str, Any]] = []
+        policy = self._load_policy()
+        rule, rule_id = self._select_rule(policy, family=family, root=root)
+        base_actions: List[Dict[str, Any]] = []
+        if rule.get("actions"):
+            base_actions = [dict(a) for a in rule["actions"]]
+        else:
+            base_actions = [
+                {
+                    "priority_order": 1,
+                    "action_type": "cross_source_review",
+                    "title": "先做跨源证据复核",
+                    "reason": "策略文件缺失或规则未命中，使用保守默认动作。",
+                    "mode": "manual_check",
+                }
+            ]
+
+        actions = list(base_actions)
 
         def add(
             order: int,
@@ -39,27 +92,6 @@ class RemediationRecommendationService:
                 }
             )
 
-        if any(token in root for token in ["链路", "接口"]) or family in {"crc", "interface", "flap", "link"}:
-            add(1, "topology_trace", "优先检查上下联链路", "当前信号更像链路或接口问题，应先确认对端和物理连接。")
-            add(2, "alert_correlation", "对齐 Zabbix 相关告警", "确认是否存在接口 down、errors、availability 类告警。")
-            add(3, "ticket_or_change", "准备人工维护或变更窗口", "链路类问题通常需要人工维护确认，避免直接自动执行。")
-        elif any(token in root for token in ["邻居", "路由"]) or family in {"neighbor", "routing", "ospf", "bgp"}:
-            add(1, "topology_neighbors", "检查邻接和路由关系", "当前信号更像邻居关系或路由稳定性异常。")
-            add(2, "blast_radius", "评估相邻设备影响面", "优先确认是否存在同站点或相邻设备的连锁异常。")
-            add(3, "ticket_or_change", "准备网络侧人工处置", "邻居/路由类问题通常需要人工维护确认。")
-        elif any(token in root for token in ["硬件", "光模块"]) or family in {"hardware", "fan", "power", "temperature"}:
-            add(1, "hardware_validation", "核查硬件与模块状态", "当前更像硬件或光模块异常，应先确认设备健康和模块状态。")
-            add(2, "spare_plan", "准备备件或替换计划", "硬件类问题通常无法依靠软件动作直接恢复。")
-            add(3, "ticket_only", "转人工工单处理", "硬件问题优先走工单和现场维护闭环。")
-        elif any(token in root for token in ["认证", "安全"]) or family in {"auth", "security"}:
-            add(1, "security_review", "检查认证与访问控制策略", "当前信号更像认证失败或安全策略异常。")
-            add(2, "alert_correlation", "核对同设备安全告警", "确认是否存在重复失败、锁定或 ACL 命中。")
-            add(3, "ticket_only", "转安全/网络协同工单", "该类问题建议按审批流程人工介入。")
-        else:
-            add(1, "cross_source_review", "先做跨源证据复核", "当前根因仍较泛化，先复核日志、告警和资产上下文。")
-            add(2, "blast_radius", "确认影响面", "优先明确是否为单设备异常还是站点级问题。")
-            add(3, "ticket_only", "必要时转人工工单", "证据不足时不建议直接执行修复动作。")
-
         if cross_source:
             add(4, "confidence_boost", "优先处理跨源确认问题", "日志与监控已双重确认，可优先排在待处置队列前列。", mode="queue_priority")
 
@@ -72,7 +104,43 @@ class RemediationRecommendationService:
             add(6, "fast_escalation", "提高处置优先级", f"当前事件优先级为 {incident_priority}，建议进入加急处置队列。", mode="queue_priority")
 
         actions.sort(key=lambda item: (item["priority_order"], item["title"]))
+
+        # Phase 1.5: every action self-describes a tool_id so the execution closed loop
+        # (execution_service.execute_plan) can classify it. Advisory actions resolve to
+        # 'manual.review' (non-executable -> skipped, not failed). A policy rule may
+        # declare an explicit tool_id to opt an action into real execution.
+        for action in actions:
+            if not action.get("tool_id"):
+                action["tool_id"] = self._infer_tool_id(action)
+
+        self.last_policy_audit = {
+            "policy_version": policy.get("version"),
+            "matched_rule_id": rule_id,
+            "policy_path": str(self._policy_path()),
+            "policy_file_exists": self._policy_path().exists(),
+        }
         return actions
+
+    @staticmethod
+    def _infer_tool_id(action: Dict[str, Any]) -> str:
+        """
+        从 action 的 mode / action_type 推断 tool_id。
+
+        默认 manual.review（advisory，非可执行 -> 执行闭环里记为 skipped）。
+        仅当 mode/action_type 明确指向可执行工具时才映射到 notify/api/script。
+        """
+        explicit = action.get("tool_id")
+        if explicit:
+            return str(explicit)
+        mode = str(action.get("mode") or "").lower()
+        action_type = str(action.get("action_type") or "").lower()
+        if mode in {"notify", "notification"} or "notif" in action_type:
+            return "notify.dingtalk"
+        if mode == "api" or action_type in {"api", "api_request"}:
+            return "api.request"
+        if mode == "script" or action_type in {"script", "script_run"}:
+            return "script.run"
+        return "manual.review"
 
 
 remediation_recommendation_service = RemediationRecommendationService()

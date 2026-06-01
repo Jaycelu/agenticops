@@ -53,3 +53,26 @@ class FabricOverviewResponse(BaseModel):
     approved_plans: int
     running_executions: int
     failed_executions: int
+
+
+class RemediationPlanExecuteRequest(BaseModel):
+    triggered_by: Optional[str] = "operator"
+
+
+class ExecutionActionSummary(BaseModel):
+    # None when the action was skipped (advisory / non-executable) and produced no ExecutionRun.
+    execution_run_id: Optional[int] = None
+    tool_id: Optional[str] = None
+    status: str
+    blocked_reason: Optional[str] = None
+    allowed: bool
+    effective_risk: int
+
+
+class RemediationPlanExecuteResponse(BaseModel):
+    success: bool
+    plan_id: int
+    case_id: int
+    status: str
+    case_status: str
+    executions: List[ExecutionActionSummary] = Field(default_factory=list)

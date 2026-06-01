@@ -3,7 +3,6 @@
     <div class="page-header app-page-header">
       <div class="app-page-copy">
         <h1>执行中心</h1>
-        <p>统一查看修复计划、执行运行记录和 Automation Fabric 总览。</p>
         <span v-if="requestedCaseId" class="app-badge app-badge-primary">聚焦 Case #{{ requestedCaseId }}</span>
       </div>
       <button class="app-button app-button-secondary" :disabled="loading" @click="loadData">

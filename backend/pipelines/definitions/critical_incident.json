@@ -1,0 +1,95 @@
+{
+  "id": "critical_incident",
+  "name": "Critical incident pipeline",
+  "description": "For critical-severity cases — same agent sequence as default but the insight loop runs up to 3 rounds for deeper root-cause analysis. Selected when severity is critical or above.",
+  "priority": 100,
+  "match": {
+    "severity_min": "critical"
+  },
+  "steps": [
+    {
+      "id": "collect_runtime",
+      "kind": "hook",
+      "hook": "collect_runtime_context"
+    },
+    {
+      "id": "triage",
+      "kind": "agent",
+      "agent": "alert_triage_agent"
+    },
+    {
+      "id": "supplement_after_triage",
+      "kind": "hook",
+      "hook": "supplement_after_triage"
+    },
+    {
+      "id": "rebuild_evidence_bundle",
+      "kind": "hook",
+      "hook": "rebuild_evidence_bundle"
+    },
+    {
+      "id": "find_similar_cases",
+      "kind": "hook",
+      "hook": "find_similar_cases"
+    },
+    {
+      "id": "historical",
+      "kind": "agent",
+      "agent": "historical_analysis_agent"
+    },
+    {
+      "id": "insight_loop",
+      "kind": "loop",
+      "max_iterations": 3,
+      "break_predicate": "insight_loop_should_break",
+      "steps": [
+        {
+          "id": "insight",
+          "kind": "agent",
+          "agent": "insight_analysis_agent"
+        },
+        {
+          "id": "widen_runtime",
+          "kind": "hook",
+          "hook": "widen_runtime_for_second_insight",
+          "predicate": "should_widen_runtime"
+        }
+      ]
+    },
+    {
+      "id": "remediation",
+      "kind": "agent",
+      "agent": "autonomous_remediation_agent"
+    },
+    {
+      "id": "create_plan",
+      "kind": "hook",
+      "hook": "create_remediation_plan"
+    },
+    {
+      "id": "store_outcome_memory",
+      "kind": "hook",
+      "hook": "store_outcome_memory"
+    },
+    {
+      "id": "safety_critic",
+      "kind": "agent",
+      "agent": "safety_critic_agent"
+    },
+    {
+      "id": "apply_safety_critic",
+      "kind": "hook",
+      "hook": "apply_safety_critic"
+    },
+    {
+      "id": "store_pattern_memories",
+      "kind": "hook",
+      "hook": "store_pattern_memories"
+    },
+    {
+      "id": "finalize_case_state",
+      "kind": "hook",
+      "hook": "finalize_case_state"
+    }
+  ]
+}

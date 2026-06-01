@@ -2,8 +2,8 @@
 
 # AgenticOps
 
-面向 NetBox / ELK / Zabbix 的 AgenticOps 智能运维工作台  
-聚焦统一事件、Case 编排、多智能体分析、执行闭环与运维记忆沉淀
+NetBox / ELK / Zabbix AgenticOps 运维系统  
+统一事件、Case 编排、多智能体分析、执行闭环、运维记忆
 
 [English README](./README_EN.md)
 
@@ -32,44 +32,29 @@
 - [配置说明](#配置说明)
 - [核心模块](#核心模块)
 - [项目结构](#项目结构)
-- [作者与联系](#作者与联系)
-- [Star 趋势](#star-趋势)
 
 ## 项目简介
 
-AgenticOps 是一个面向网络运维场景的智能运维工作台，用统一事件模型把 `NetBox`、`ELK`、`Zabbix` 等系统接入到同一条分析与处置链路中。
+AgenticOps 是面向网络运维场景的事件治理与执行闭环系统。系统通过统一事件模型接入 `NetBox`、`ELK`、`Zabbix` 等数据源，并将事件处理链路收敛到：
 
-项目当前主链路已经收敛为：
-
-`Event -> Case -> Multi-Agent -> Memory -> Fabric`
-
-它不是单一的监控看板，而是一个强调“降噪、关联、编排、执行、沉淀”的 AgenticOps 平台，适合用于：
-
-- 多数据源告警统一入口与事件治理
-- 网络故障初判、证据汇聚与 Case 编排
-- 多智能体协同分析与修复建议生成
-- 执行记录审计、记忆沉淀与经验复用
+`Event -> Case -> Multi-Agent -> Memory -> Fabric / Execution`
 
 ## 核心能力
 
-- 统一事件中心：接入日志信号、Zabbix 告警与外部事件，执行去重、聚类、关联和分流。
-- Case 中心：把值得深度处理的问题提升为 Case，统一查看证据、智能体结论和修复计划。
-- 多智能体协同：内置 `Alert Triage`、`Historical Analysis`、`Insight Analysis`、`Autonomous Remediation` 四类智能体。
-- 记忆沉淀：把 episode、pattern、outcome、feedback 沉淀到记忆中心，为后续判断提供历史上下文。
-- 执行闭环：在执行中心管理修复计划、执行记录和人工介入边界。
-- 数据源工作台：提供资产拓扑、日志中心、Zabbix 中心、工单与设置页，形成完整运行面。
+- 统一事件中心：日志信号、Zabbix 告警、外部事件接入、去重、聚类、关联、分流。
+- Case 中心：证据、智能体结论、修复计划统一归档。
+- 多智能体分析：`Alert Triage`、`Historical Analysis`、`Insight Analysis`、`Autonomous Remediation`、`Safety Critic`。
+- 记忆中心：episode、pattern、outcome、feedback 管理。
+- 执行中心：修复计划、审批状态、执行记录、策略审计。
+- 数据源模块：资产拓扑、日志中心、Zabbix 中心、工单、系统设置。
 
 ## 界面预览
 
 ### 1. 驾驶舱
 
-驾驶舱用于总览统一事件、分流结果、数据源健康度与整体 MTTR 提升效果，是进入平台后的第一观察面。
-
 ![驾驶舱](./docs/images/readme/01-dashboard.png)
 
 ### 2. 事件到处置闭环
-
-事件中心、Case 中心和执行中心组成核心处置主链路：先做统一归并与根因候选，再进入证据和 Agent 输出汇聚，最后形成修复计划与执行记录。
 
 | 事件中心 | Case 中心 |
 | --- | --- |
@@ -81,15 +66,11 @@ AgenticOps 是一个面向网络运维场景的智能运维工作台，用统一
 
 ### 3. 智能体与记忆体系
 
-智能体中心展示各类运维 Agent 的职责与健康度，记忆中心则负责沉淀 episode、pattern、outcome 等经验数据，形成持续学习闭环。
-
 | 智能体中心 | 记忆中心 |
 | --- | --- |
 | ![智能体中心](./docs/images/readme/05-agents.png) | ![记忆中心](./docs/images/readme/06-memories.png) |
 
-### 4. 数据源工作台
-
-日志中心、Zabbix 中心和资产拓扑分别承接日志事实、实时告警与资产上下文，为事件与 Case 提供底层证据支持。
+### 4. 数据源模块
 
 | 日志中心 | Zabbix 中心 |
 | --- | --- |
@@ -120,14 +101,57 @@ flowchart LR
 
 ## 快速开始
 
-### 1. 环境要求
+### 默认方式：Docker Compose
+
+Compose 编排包含 PostgreSQL、后端 API、前端 Web 三个服务。
+
+```bash
+docker compose up --build
+```
+
+默认访问地址：
+
+- Web UI: `http://localhost:5173`
+- API: `http://localhost:8000`
+- Docs: `http://localhost:8000/docs`
+- Health: `http://localhost:8000/health`
+
+服务清单：
+
+| 服务 | 容器 | 端口 |
+| --- | --- | --- |
+| PostgreSQL | `netops-postgres` | `5432` |
+| Backend | `netops-backend` | `8000` |
+| Frontend | `netops-frontend` | `5173` |
+
+根目录 `.env` 可覆盖 Compose 变量。示例见 `deploy/docker.env.example`。生产环境必须替换：
+
+- `APP_SECRET_KEY`
+- `POSTGRES_PASSWORD`
+- 外部系统连接参数：`NETBOX_*`、`ELK_*`、`ZABBIX_*`、`LLM_*`
+
+停止服务：
+
+```bash
+docker compose down
+```
+
+如需同时删除本地 PostgreSQL 数据卷：
+
+```bash
+docker compose down -v
+```
+
+### 开发模式：本地启动
+
+#### 1. 环境要求
 
 - Python `3.11+`
 - Node.js `18+`
 - PostgreSQL `14+`
 - 可访问的 `NetBox / ELK / Zabbix / LLM API`
 
-### 2. 配置后端环境变量
+#### 2. 配置后端环境变量
 
 复制示例配置：
 
@@ -135,9 +159,9 @@ flowchart LR
 cp deploy/env.example backend/.env
 ```
 
-然后按你的实际环境补齐 `backend/.env` 中的数据库、数据源与模型配置。
+补齐 `backend/.env` 中的数据库、数据源与模型配置。
 
-### 3. 启动后端
+#### 3. 启动后端
 
 ```bash
 cd backend
@@ -147,13 +171,7 @@ pip install -r requirements.txt
 python3 main.py
 ```
 
-默认启动后可访问：
-
-- API: `http://localhost:8000`
-- Docs: `http://localhost:8000/docs`
-- Health: `http://localhost:8000/health`
-
-### 4. 启动前端
+#### 4. 启动前端
 
 ```bash
 cd frontend
@@ -161,19 +179,15 @@ npm install
 npm run dev
 ```
 
-默认启动后可访问：
-
-- Web UI: `http://localhost:5173`
-
 Vite 会把前端 `/api` 请求代理到 `http://localhost:8000`。
 
-### 5. 快速验证
+#### 5. 验证
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-如果数据库连接正常，接口会返回健康状态；数据库不可用时会返回 `503`。
+数据库连接异常时接口返回 `503`。
 
 ## 配置说明
 
@@ -188,7 +202,7 @@ curl http://localhost:8000/health
 | `ELK_URL` / `ELK_USERNAME` / `ELK_PASSWORD` | 日志数据源 |
 | `ZABBIX_URL` / `ZABBIX_API_URL` / `ZABBIX_USERNAME` / `ZABBIX_PASSWORD` | 告警与状态数据源 |
 | `LLM_API_URL` / `LLM_API_KEY` / `LLM_MODEL_NAME` | 模型服务配置 |
-| `FRONTEND_URL` | 前端访问地址，用于 CORS |
+| `FRONTEND_URL` | CORS 前端地址 |
 | `AUTOMATION_OBSERVE_ONLY` | 安全开关，阻止非只读自动化动作 |
 
 ## 核心模块
@@ -196,14 +210,14 @@ curl http://localhost:8000/health
 | 模块 | 路由 | 作用 |
 | --- | --- | --- |
 | 驾驶舱 | `/` | 总览 Case、Agent、Memory 和分流指标 |
-| 事件中心 | `/events` | 统一查看事件、聚类与根因候选 |
-| Case 中心 | `/cases` | 查看证据、智能体输出与修复计划 |
+| 事件中心 | `/events` | 事件、聚类、根因候选 |
+| Case 中心 | `/cases` | 证据、智能体输出、修复计划 |
 | 执行中心 | `/fabric` | 管理修复计划、执行记录与 Automation Fabric |
-| 智能体中心 | `/agents` | 查看智能体目录、健康度与运行情况 |
+| 智能体中心 | `/agents` | 智能体目录、健康度与运行记录 |
 | 记忆中心 | `/memories` | 管理 episode / pattern / outcome |
 | 日志中心 | `/logs` | 日志检索、范围筛选与聚合分析 |
-| Zabbix 中心 | `/zabbix` | 查看活跃告警、主机异常与同步状态 |
-| 资产拓扑 | `/assets` | 查看设备、IP、机柜、VLAN 与前缀 |
+| Zabbix 中心 | `/zabbix` | 活跃告警、主机异常与同步状态 |
+| 资产拓扑 | `/assets` | 设备、IP、机柜、VLAN 与前缀 |
 | 工单 | `/tickets` | 人工闭环与工单追踪 |
 | 设置 | `/settings` | 集成配置、模型配置和 SSH 通道 |
 
@@ -230,30 +244,6 @@ netops_bs/
 │   ├── env.example          # 示例环境变量
 │   └── start.sh             # 后端启动脚本
 ├── docs/
-│   └── images/readme/       # README 演示截图
+│   └── images/readme/       # README 系统截图
 └── README.md
 ```
-
-## 作者与联系
-
-- 微信公众号：`数字卢语`
-- 邮箱：`jayce_lu@foxmai.com`
-
-欢迎围绕事件治理、AgenticOps、网络运维自动化与数据源接入提交 Issue 或 PR。
-
-## Star 趋势
-
-<picture>
-  <source
-    media="(prefers-color-scheme: dark)"
-    srcset="https://api.star-history.com/svg?repos=Jaycelu/netops_bs&type=Date&theme=dark"
-  />
-  <source
-    media="(prefers-color-scheme: light)"
-    srcset="https://api.star-history.com/svg?repos=Jaycelu/netops_bs&type=Date"
-  />
-  <img
-    alt="Star History Chart"
-    src="https://api.star-history.com/svg?repos=Jaycelu/netops_bs&type=Date"
-  />
-</picture>

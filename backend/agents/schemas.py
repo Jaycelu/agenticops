@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -19,6 +19,11 @@ class AgentExecutionContext:
     prior_claims: List[Dict[str, Any]] = field(default_factory=list)
     memory_hits: List[Dict[str, Any]] = field(default_factory=list)
     runtime: Dict[str, Any] = field(default_factory=dict)
+    # Harness contracts (serialized dicts; see harness.contracts)
+    evidence_bundle: Dict[str, Any] = field(default_factory=dict)
+    episode_goal: Dict[str, Any] = field(default_factory=dict)
+    insight_round: int = 0
+    harness_trace: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -32,4 +37,8 @@ class AgentDecision:
     gaps: List[Any] = field(default_factory=list)
     output_payload: Dict[str, Any] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # Orchestrator may act on these for branching / follow-up collection
+    next_evidence_requests: List[Dict[str, Any]] = field(default_factory=list)
+    cited_evidence_item_ids: List[int] = field(default_factory=list)
+    stopped_reason: Optional[str] = None
 

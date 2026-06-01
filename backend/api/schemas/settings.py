@@ -1,5 +1,5 @@
 from typing import Dict, Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelConfig(BaseModel):
@@ -14,6 +14,8 @@ class ModelConfig(BaseModel):
 
 
 class ModelUpdateRequest(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     model_id: str
     name: Optional[str] = None
     api_key: Optional[str] = None

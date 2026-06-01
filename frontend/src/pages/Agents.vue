@@ -3,7 +3,6 @@
     <div class="page-header app-page-header">
       <div class="app-page-copy">
         <h1>智能体中心</h1>
-        <p>查看多运维智能体的目录、健康度和最近运行情况。</p>
       </div>
       <button class="app-button app-button-secondary" :disabled="loading" @click="loadData">
         {{ loading ? '刷新中...' : '刷新' }}

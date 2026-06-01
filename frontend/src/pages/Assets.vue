@@ -8,7 +8,6 @@
           </span>
           <div class="app-page-copy">
             <h1>资产视图</h1>
-            <p>查看设备、IP、机柜、VLAN 与前缀信息，并与 Case 上下文联动。</p>
           </div>
         </div>
         <button @click="showColumnSettings = true" class="btn-column-settings">

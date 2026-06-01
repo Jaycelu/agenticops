@@ -3,7 +3,6 @@
     <div class="cases-header app-page-header">
       <div class="app-page-copy">
         <h1>Case 中心</h1>
-        <p>统一查看故障 case、证据、智能体结论和修复计划。</p>
       </div>
       <button class="app-button app-button-secondary" :disabled="loading" @click="loadCases">
         {{ loading ? '刷新中...' : '刷新' }}

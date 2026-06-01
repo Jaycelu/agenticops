@@ -2,8 +2,7 @@
 数据库连接与会话管理
 """
 from sqlalchemy import create_engine, text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 from config.settings import settings
 
 # 统一要求生产与开发均使用 PostgreSQL，避免 SQLite 行为差异导致线上风险。
@@ -91,6 +90,8 @@ def init_db():
     _drop_local_ticket_alert_event_fk()
     _ensure_local_ticket_source_event_column()
     _ensure_source_event_legacy_event_id_column()
+    _ensure_memory_entry_embedding_column()
+    _ensure_agent_type_enum_values()
 
 
 def _drop_local_ticket_alert_event_fk() -> None:
@@ -209,3 +210,52 @@ def _ensure_source_event_legacy_event_id_column() -> None:
                 """
             )
         )
+
+
+def _ensure_memory_entry_embedding_column() -> None:
+    """
+    Phase 5：为 memory_entry 补齐 embedding 列（JSON 存 float 数组）。
+    新库由 create_all 直接创建；历史库走这里的 ADD COLUMN IF NOT EXISTS。
+    """
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                ALTER TABLE memory_entry
+                ADD COLUMN IF NOT EXISTS embedding JSON
+                """
+            )
+        )
+
+
+def _ensure_agent_type_enum_values() -> None:
+    """
+    Phase 2：为历史库的 agenttype 枚举补齐 'safety_critic' 值。
+
+    新库由 create_all 直接带上该值；历史库需要 ALTER TYPE ADD VALUE。
+    枚举类型名从 pg catalog 反查（不硬编码），整体 try/except —— 非 PostgreSQL
+    或类型不存在时静默跳过。
+    """
+    try:
+        with engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    SELECT t.typname
+                    FROM pg_attribute a
+                    JOIN pg_class c ON c.oid = a.attrelid
+                    JOIN pg_type t ON t.oid = a.atttypid
+                    WHERE c.relname = 'agent_run' AND a.attname = 'agent_type'
+                    LIMIT 1
+                    """
+                )
+            ).fetchone()
+            if not row or not row[0]:
+                return
+            type_name = str(row[0])
+            conn.execute(
+                text(f'ALTER TYPE "{type_name}" ADD VALUE IF NOT EXISTS \'safety_critic\'')
+            )
+    except Exception:
+        # 新库已带该值；非 PostgreSQL / 异常环境忽略即可。
+        pass

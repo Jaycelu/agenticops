@@ -4,7 +4,6 @@
       <section class="hero-card app-panel">
         <div class="app-page-copy">
           <h1>AgenticOps 驾驶舱</h1>
-          <p>围绕统一事件、自动分流、数据源健康和问题簇热度观察告警降噪与 MTTR 提升效果。</p>
         </div>
         <div class="hero-actions app-actions">
           <button class="app-button app-button-secondary" :disabled="loading" @click="loadDashboard">
@@ -41,7 +40,6 @@
         <article class="panel-card app-panel">
           <div class="panel-head">
             <h2>数据源健康</h2>
-            <span>NetBox、ELK、Zabbix 当前配置与接入状态</span>
           </div>
           <div class="source-grid">
             <div v-for="item in sourceHealth" :key="item.key" class="source-card app-subcard">
@@ -62,7 +60,6 @@
         <article class="panel-card app-panel">
           <div class="panel-head">
             <h2>事件分流结构</h2>
-            <span>统一事件进入 noise、ticket_only、case_required 的比例</span>
           </div>
           <div v-if="dispositionRows.length === 0" class="empty app-empty">暂无事件数据</div>
           <div v-else class="bar-list">
@@ -81,7 +78,6 @@
         <article class="panel-card app-panel">
           <div class="panel-head">
             <h2>根因候选</h2>
-            <span>跨簇归并后的高优先级根因方向</span>
           </div>
           <div v-if="rootCauseCandidates.length === 0" class="empty app-empty">暂无候选</div>
           <div v-else class="cluster-list">
@@ -111,7 +107,6 @@
         <article class="panel-card app-panel">
           <div class="panel-head">
             <h2>热点问题簇</h2>
-            <span>按站点、设备和信号族聚合后的跨源热点</span>
           </div>
           <div v-if="hotClusters.length === 0" class="empty app-empty">暂无聚类数据</div>
           <div v-else class="cluster-list">
@@ -158,7 +153,6 @@
         <article class="panel-card app-panel">
           <div class="panel-head">
             <h2>Case 与 MTTR</h2>
-            <span>保留 Case 视图，但按新 AgenticOps 目标解释</span>
           </div>
           <div class="summary-grid">
             <div class="summary-box app-subcard">
@@ -202,7 +196,6 @@
         <article class="panel-card app-panel">
           <div class="panel-head">
             <h2>闭环效果</h2>
-            <span>智能体、记忆和执行是否形成正反馈</span>
           </div>
           <div class="summary-grid">
             <div class="summary-box app-subcard">
@@ -237,7 +230,6 @@
         <article class="panel-card app-panel">
           <div class="panel-head">
             <h2>智能体健康</h2>
-            <span>四类运维智能体最近运行统计</span>
           </div>
           <div v-if="agentHealth.length === 0" class="empty app-empty">暂无运行记录</div>
           <div v-else class="agent-list">
@@ -258,7 +250,6 @@
         <article class="panel-card app-panel">
           <div class="panel-head">
             <h2>Case 阶段分布</h2>
-            <span>按新 case 生命周期聚合</span>
           </div>
           <div v-if="phaseRows.length === 0" class="empty app-empty">暂无数据</div>
           <div v-else class="bar-list">

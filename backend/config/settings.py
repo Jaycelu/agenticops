@@ -1,9 +1,11 @@
-from pydantic import field_validator
+from pydantic import ConfigDict, field_validator
 from pydantic_settings import BaseSettings
 from typing import Optional
 
 
 class Settings(BaseSettings):
+    model_config = ConfigDict(env_file=".env", env_file_encoding="utf-8")
+
     app_secret_key: str = ""
 
     # NetBox Configuration
@@ -25,6 +27,12 @@ class Settings(BaseSettings):
     llm_model_name: str = "Qwen/Qwen3-32B-AWQ"
     llm_api_key: str = ""
     llm_api_url: str = "http://localhost:8000/v1"
+
+    # Phase 5: semantic memory embedding (optional).
+    # Leave llm_embedding_model empty to disable semantic retrieval — the system then
+    # falls back to lexical + metadata retrieval and works with zero extra dependencies.
+    llm_embedding_model: str = ""
+    llm_embedding_api_url: str = ""  # falls back to llm_api_url when empty
 
     # Backend Configuration
     backend_host: str = "0.0.0.0"
@@ -83,10 +91,6 @@ class Settings(BaseSettings):
         if not raw.startswith("postgresql://") and not raw.startswith("postgresql+psycopg2://"):
             raise ValueError("database url must use PostgreSQL scheme: postgresql://")
         return raw
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 
 settings = Settings()

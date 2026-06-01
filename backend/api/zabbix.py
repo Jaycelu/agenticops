@@ -160,13 +160,15 @@ def _upsert_zabbix_event(db: Session, alert: Dict[str, Any]) -> SourceEvent:
     )
     return source_event
 
-def _build_linked_source_event_info(item: Optional[SourceEvent]) -> Dict[str, Any]:
+def _build_linked_source_event_info(item: Optional[SourceEvent], db: Optional[Session] = None) -> Dict[str, Any]:
     if not item:
         return {}
     payload = dict(item.normalized_payload or {})
     case_info = event_decision_service.get_case_info(payload)
     ticket_info = event_decision_service.get_ticket_info(payload)
     decision = event_decision_service.evaluate_source_event(item)
+    if db is not None:
+        decision = event_decision_service.enrich_decision_for_context(db, item, decision)
     legacy_event_id = payload.get("legacy_event_id")
     return {
         "event_id": int(legacy_event_id or item.id),
@@ -218,7 +220,7 @@ async def list_zabbix_alerts(
         key = item["severity"]
         by_severity[key] = by_severity.get(key, 0) + 1
         dedup_key = f"zabbix:{item.get('host') or item.get('host_name')}:{item.get('event_id') or item.get('object_id')}"
-        linked_event = _build_linked_source_event_info(source_dedup_map.get(dedup_key))
+        linked_event = _build_linked_source_event_info(source_dedup_map.get(dedup_key), db)
         enriched_alerts.append(
             {
                 **item,

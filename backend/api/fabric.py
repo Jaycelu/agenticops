@@ -10,16 +10,20 @@ from api.schemas.fabric import (
     ExecutionRunListResponse,
     ExecutionRunResponse,
     FabricOverviewResponse,
+    RemediationPlanExecuteRequest,
+    RemediationPlanExecuteResponse,
     RemediationPlanListResponse,
     RemediationPlanResponse,
 )
 from models.agenticops import ExecutionRun, ExecutionRunStatus, RemediationPlan, RemediationPlanStatus
+from services.post_execution_verification_service import post_execution_verification_service
 from services.fabric_plan_service import (
     decide_plan_approval,
     get_plan_approval_history,
     initiate_plan_approval,
     submit_plan_feedback,
 )
+from services.execution_service import execution_service
 
 router = APIRouter(prefix="/api/fabric", tags=["Automation Fabric"])
 
@@ -156,6 +160,24 @@ async def submit_remediation_plan_feedback(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@router.post("/plans/{plan_id}/execute", response_model=RemediationPlanExecuteResponse)
+async def execute_remediation_plan(
+    plan_id: int,
+    payload: RemediationPlanExecuteRequest | None = None,
+    db: Session = Depends(get_db),
+):
+    try:
+        return await execution_service.execute_plan(
+            db,
+            plan_id,
+            triggered_by=(payload.triggered_by if payload else None) or "operator",
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.get("/executions", response_model=ExecutionRunListResponse)
 async def list_execution_runs(
     case_id: Optional[int] = None,
@@ -220,3 +242,12 @@ async def get_execution_run(execution_id: int, db: Session = Depends(get_db)):
         finished_at=item.finished_at,
         verified_at=item.verified_at,
     )
+
+
+@router.post("/executions/{execution_id}/verify-readonly")
+async def verify_execution_readonly_harness(execution_id: int, db: Session = Depends(get_db)):
+    """只读复查执行结果（Zabbix/ELK 快照），更新 execution / case 状态。"""
+    result = await post_execution_verification_service.verify_execution_readonly(db, execution_id=execution_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("message") or "verification_failed")
+    return result

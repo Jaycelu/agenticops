@@ -8,7 +8,6 @@
           </span>
           <div class="app-page-copy">
             <h1>事件中心</h1>
-            <p>统一处理 ELK 日志信号与 Zabbix 告警，关联 Case、Fabric 与工单闭环。</p>
           </div>
           <span class="mode-badge" :class="{ observe: automationMode?.is_observe_only }">
             {{ automationMode?.is_observe_only ? '观测模式' : '自动模式' }}
@@ -108,7 +107,6 @@
         <div class="app-section-header">
           <div class="app-page-copy">
             <h2>根因候选榜</h2>
-            <p>对多个问题簇做跨簇归并和证据强度排序，优先呈现更可能的根因方向。</p>
           </div>
         </div>
         <div class="candidate-grid">
@@ -172,7 +170,6 @@
         <div class="app-section-header">
           <div class="app-page-copy">
             <h2>事件聚类</h2>
-            <p>基于站点、设备和信号族的跨源关联视图，用于把日志信号和 Zabbix 告警收敛成同一问题簇。</p>
           </div>
           <button v-if="activeClusterKey || activeCandidateKey" class="app-button app-button-ghost" @click="clearClusterFilter">
             清除聚类筛选
@@ -335,7 +332,7 @@
               errors: {{ (playbookDraft.check.errors || []).length }}
             </span>
           </div>
-          <div v-else class="relation-item muted">暂无草稿校验结果</div>
+          <div v-else class="relation-item muted">无校验结果</div>
           <pre v-if="playbookDraft.playbook_yaml" class="playbook-yaml">{{ playbookDraft.playbook_yaml }}</pre>
         </div>
         <div class="relation-panel">

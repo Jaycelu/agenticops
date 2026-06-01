@@ -7,7 +7,6 @@
         </span>
         <div class="app-page-copy">
           <h1>Zabbix 中心</h1>
-          <p>查看 Zabbix 活跃告警与主机异常状态。当前作为一等数据源模块存在，后续会进一步接入统一事件中心。</p>
         </div>
       </div>
       <div class="app-actions">
@@ -24,17 +23,17 @@
       <article class="app-stat-card">
         <span class="app-kpi-label">配置状态</span>
         <strong class="app-kpi-value">{{ status.configured ? '已配置' : '未配置' }}</strong>
-        <span class="app-kpi-sub">当前数据源：Zabbix</span>
+        <span class="app-kpi-sub">Zabbix</span>
       </article>
       <article class="app-stat-card">
         <span class="app-kpi-label">活跃告警</span>
         <strong class="app-kpi-value">{{ totalAlerts }}</strong>
-        <span class="app-kpi-sub">最近拉取窗口内问题总数</span>
+        <span class="app-kpi-sub">当前窗口</span>
       </article>
       <article class="app-stat-card">
         <span class="app-kpi-label">高风险告警</span>
         <strong class="app-kpi-value">{{ highRiskCount }}</strong>
-        <span class="app-kpi-sub">`high + disaster` 聚合</span>
+        <span class="app-kpi-sub">high / disaster</span>
       </article>
       <article class="app-stat-card">
         <span class="app-kpi-label">已确认</span>
@@ -47,7 +46,6 @@
       <div class="app-section-header">
         <div class="app-page-copy">
           <h2>筛选</h2>
-          <p>先支持主机和数量筛选，后续这里会接入事件关联、Case 关联和统一分流结果。</p>
         </div>
         <div class="app-toolbar">
           <input v-model="hostFilter" class="app-input host-input" placeholder="按主机名筛选，如 core-sw-01" @keyup.enter="loadData" />
@@ -76,11 +74,11 @@
       <div v-if="loading" class="app-empty">加载中...</div>
       <div v-else-if="!status.configured" class="app-empty">
         <BellOff :size="42" />
-        <p>Zabbix 尚未配置，请先到设置页录入连接参数。</p>
+        <p>Zabbix 未配置</p>
       </div>
       <div v-else-if="alerts.length === 0" class="app-empty">
         <Bell :size="42" />
-        <p>当前没有拉取到活跃告警。</p>
+        <p>暂无活跃告警</p>
       </div>
       <div v-else class="app-list">
         <article v-for="item in alerts" :key="item.event_id" class="app-card alert-card">

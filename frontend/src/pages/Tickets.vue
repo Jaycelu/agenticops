@@ -4,7 +4,6 @@
       <div class="page-header app-page-header">
         <div class="app-page-copy">
           <h1>本地工单</h1>
-          <p>查看人工接管闭环和本地状态流转，保持 Case 与工单同步。</p>
         </div>
         <button class="app-button app-button-secondary" :disabled="loading" @click="loadTickets">刷新</button>
       </div>

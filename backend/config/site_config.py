@@ -1,6 +1,9 @@
 """
 基地配置文件
 定义站点与日志范围的映射
+
+事件中心侧路由阈值（24h 集群计数、跨源关联窗口等）与 enrich 共用常量见：
+config/pipeline_thresholds.py
 """
 from typing import Dict, List, Optional
 from database import SessionLocal
@@ -8,6 +11,8 @@ from services.log_scope_service import log_scope_service
 
 
 # 默认采样配置（适用于所有基地）
+# 说明：abnormal_tracker 与 log_collection_policy 控制「何时产生强信号 / 建 Case」；
+# 与 EventDecisionService.enrich 的 CLUSTER_COUNT_* / CROSS_SOURCE_* 配合形成端到端降噪，运维时请对照 pipeline_thresholds 一并调整。
 DEFAULT_SAMPLING_CONFIG = {
     # 采样时间窗口（分钟）
     "time_window_minutes": 15,

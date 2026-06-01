@@ -1,6 +1,10 @@
 # Root-level release hygiene
 .DS_Store
 
+# Python tooling (local venv / pytest)
+backend/.venv/
+backend/.pytest_cache/
+
 # Local environment files
 **/.env
 **/.env.*
@@ -13,6 +17,7 @@ logs/*
 !logs/.gitkeep
 
 # Generated storage artifacts
+storage/pipeline_metrics.jsonl
 storage/*.log
 storage/*results*.json
 storage/failed_device_configs.json

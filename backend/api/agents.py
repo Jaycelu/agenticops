@@ -47,6 +47,13 @@ AGENT_CATALOG: List[Dict[str, object]] = [
         "inputs": ["agent claims", "execution policy", "safety checks"],
         "outputs": ["remediation draft", "approval need", "rollback plan"],
     },
+    {
+        "agent_type": AgentType.SAFETY_CRITIC.value,
+        "name": "Safety Critic Agent",
+        "purpose": "对前序 agent 的决策做旁路安全审查，不参与推理，发现硬性问题则拒绝并升级。",
+        "inputs": ["prior agent claims", "remediation plan", "evidence items"],
+        "outputs": ["safety review verdict", "findings", "escalation signal"],
+    },
 ]
 
 

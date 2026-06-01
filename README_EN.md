@@ -1,16 +1,14 @@
 # AgenticOps
 
-> An AgenticOps workspace for network operations built around NetBox, ELK, Zabbix, multi-agent analysis, execution workflows, and operational memory.
+> Network operations system for NetBox, ELK, Zabbix, multi-agent analysis, execution workflows, and operational memory.
 
 [简体中文 README](./README.md)
 
 ## Overview
 
-AgenticOps is a network operations platform that normalizes signals from infrastructure systems into a single workflow:
+AgenticOps normalizes infrastructure signals into a single workflow:
 
-`Event -> Case -> Multi-Agent -> Memory -> Fabric`
-
-It is designed to reduce alert noise, improve triage quality, accelerate MTTR, and keep execution plus historical knowledge in one place.
+`Event -> Case -> Multi-Agent -> Memory -> Fabric / Execution`
 
 ## Key Capabilities
 
@@ -31,7 +29,38 @@ It is designed to reduce alert noise, improve triage quality, accelerate MTTR, a
 
 ## Quick Start
 
-### Requirements
+### Docker Compose
+
+Compose starts PostgreSQL, backend API, and frontend Web.
+
+```bash
+docker compose up --build
+```
+
+Endpoints:
+
+- Web UI: `http://localhost:5173`
+- API: `http://localhost:8000`
+- Docs: `http://localhost:8000/docs`
+- Health: `http://localhost:8000/health`
+
+Services:
+
+| Service | Container | Port |
+| --- | --- | --- |
+| PostgreSQL | `netops-postgres` | `5432` |
+| Backend | `netops-backend` | `8000` |
+| Frontend | `netops-frontend` | `5173` |
+
+Use `deploy/docker.env.example` as the root `.env` template. Replace `APP_SECRET_KEY`, `POSTGRES_PASSWORD`, and external integration variables for production.
+
+```bash
+docker compose down
+```
+
+### Local Development
+
+Requirements:
 
 - Python `3.11+`
 - Node.js `18+`
@@ -49,23 +78,13 @@ pip install -r requirements.txt
 python3 main.py
 ```
 
-Backend endpoints:
-
-- API: `http://localhost:8000`
-- Docs: `http://localhost:8000/docs`
-- Health: `http://localhost:8000/health`
-
-### Frontend
+Frontend:
 
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-
-Frontend endpoint:
-
-- Web UI: `http://localhost:5173`
 
 ## Main Modules
 
@@ -94,8 +113,8 @@ netops_bs/
 └── agenticops.jpg
 ```
 
-## Release Notes
+## Runtime Stack
 
-The current runtime stack is `Vue 3 + Vite` on the frontend and `FastAPI + PostgreSQL` on the backend.
-
-Before making the repository public, sanitize sample configs, logs, screenshots, and historical docs that may still contain internal addresses, tokens, or production-like data.
+- Frontend: `Vue 3 + Vite + Nginx`
+- Backend: `FastAPI + PostgreSQL`
+- Compose: PostgreSQL, backend, frontend

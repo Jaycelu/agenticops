@@ -1,9 +1,21 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Optional
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from models.agenticops import SourceEvent
+from sqlalchemy import func, or_
+
+from config.pipeline_thresholds import (
+    CLUSTER_COUNT_NOISE_TO_TICKET,
+    CLUSTER_COUNT_TO_CASE,
+    CROSS_SOURCE_PEER_BOOST_MIN,
+    CROSS_SOURCE_WINDOW_MINUTES,
+)
+from models.agenticops import CaseRecord, CaseStatus, SourceEvent
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 class EventDecisionService:
@@ -129,7 +141,7 @@ class EventDecisionService:
             return explicit
 
         normalized = (source or "").upper()
-        if normalized == "ELK":
+        if normalized in {"ELK", "ELK_SAMPLER"}:
             return "log_signal"
         if normalized == "ZABBIX":
             return "zabbix_alert"
@@ -138,6 +150,8 @@ class EventDecisionService:
     def get_source_label(self, source: str, payload: Optional[Dict[str, Any]] = None) -> str:
         source_category = self.get_source_category(source, payload)
         if source_category == "log_signal":
+            if (source or "").upper() == "ELK_SAMPLER":
+                return "ELK 采样日志信号"
             return "ELK 日志信号"
         if source_category == "zabbix_alert":
             return "Zabbix 告警"
@@ -231,6 +245,117 @@ class EventDecisionService:
             netbox_device_id=record.netbox_device_id,
             host=record.host,
         )
+
+    def _cluster_context_stats(self, db: "Session", record: SourceEvent, decision: Dict[str, Any]) -> Dict[str, Any]:
+        """Rolling window stats for harness-style routing (PostgreSQL)."""
+        since = datetime.now(timezone.utc) - timedelta(hours=24)
+        q = db.query(func.count(SourceEvent.id)).filter(SourceEvent.collected_at >= since)
+        if record.site_id is not None:
+            q = q.filter(SourceEvent.site_id == record.site_id)
+        if record.netbox_device_id is not None:
+            q = q.filter(SourceEvent.netbox_device_id == record.netbox_device_id)
+        elif record.host:
+            q = q.filter(SourceEvent.host == record.host)
+        cluster_window_count = int(q.scalar() or 0)
+
+        open_case = db.query(func.count(CaseRecord.id)).filter(
+            CaseRecord.status.not_in([CaseStatus.RESOLVED, CaseStatus.CLOSED]),
+        )
+        if record.netbox_device_id is not None:
+            open_case = open_case.filter(CaseRecord.netbox_device_id == record.netbox_device_id)
+        elif record.host:
+            open_case = open_case.filter(CaseRecord.host == record.host)
+        elif record.site_id is not None:
+            open_case = open_case.filter(CaseRecord.site_id == record.site_id)
+        open_case_same_anchor = int(open_case.scalar() or 0) > 0
+
+        cross = self._cross_source_peer_stats(db, record)
+        return {
+            "cluster_window_count": cluster_window_count,
+            "open_case_same_anchor": open_case_same_anchor,
+            "cluster_key": decision.get("cluster_key"),
+            **cross,
+        }
+
+    def _opposite_source_systems(self, record: SourceEvent) -> list[str]:
+        """Sources that count as cross-domain peers (log vs alert) for correlation."""
+        payload = dict(record.normalized_payload or {})
+        cat = self.get_source_category(record.source_system, payload)
+        if cat == "zabbix_alert":
+            return ["ELK", "ELK_SAMPLER"]
+        if cat == "log_signal":
+            return ["ZABBIX"]
+        return []
+
+    def _cross_source_peer_stats(self, db: "Session", record: SourceEvent) -> Dict[str, Any]:
+        """Count recent events from the opposite signal family on the same device/host."""
+        others = self._opposite_source_systems(record)
+        window_minutes = CROSS_SOURCE_WINDOW_MINUTES
+        if not others:
+            return {
+                "cross_source_peer_count": 0,
+                "cross_source_window_minutes": window_minutes,
+            }
+        since = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+        q = (
+            db.query(func.count(SourceEvent.id))
+            .filter(SourceEvent.collected_at >= since)
+            .filter(SourceEvent.id != record.id)
+        )
+        if record.netbox_device_id is not None:
+            q = q.filter(SourceEvent.netbox_device_id == record.netbox_device_id)
+        elif record.host:
+            q = q.filter(SourceEvent.host == record.host)
+        else:
+            return {
+                "cross_source_peer_count": 0,
+                "cross_source_window_minutes": window_minutes,
+            }
+        q = q.filter(or_(*[SourceEvent.source_system == s for s in others]))
+        peer_count = int(q.scalar() or 0)
+        return {
+            "cross_source_peer_count": peer_count,
+            "cross_source_window_minutes": window_minutes,
+        }
+
+    def enrich_decision_for_context(self, db: "Session", record: SourceEvent, decision: Dict[str, Any]) -> Dict[str, Any]:
+        """Augment disposition with DB-backed cluster and case-anchor signals (measurable harness)."""
+        merged = dict(decision)
+        try:
+            stats = self._cluster_context_stats(db, record, decision)
+        except Exception:
+            stats = {}
+        merged["context_stats"] = stats
+
+        if stats.get("open_case_same_anchor"):
+            merged["disposition"] = "case_required"
+            merged["reason"] = "open_case_same_anchor"
+            merged["confidence"] = max(float(merged.get("confidence") or 0.5), 0.9)
+            return merged
+
+        cw = int(stats.get("cluster_window_count") or 0)
+        if cw >= CLUSTER_COUNT_NOISE_TO_TICKET and merged.get("disposition") == "noise":
+            merged["disposition"] = "ticket_only"
+            merged["reason"] = "cluster_frequency_escalation"
+            merged["confidence"] = min(0.95, float(merged.get("confidence") or 0.5) + 0.12)
+
+        if cw >= CLUSTER_COUNT_TO_CASE and merged.get("disposition") in {"noise", "ticket_only"}:
+            merged["disposition"] = "case_required"
+            merged["reason"] = "sustained_cluster_requires_case"
+            merged["confidence"] = max(float(merged.get("confidence") or 0.5), 0.88)
+
+        peers = int(stats.get("cross_source_peer_count") or 0)
+        sev = int(dict(record.normalized_payload or {}).get("severity_level") or 0)
+        if (
+            peers >= CROSS_SOURCE_PEER_BOOST_MIN
+            and merged.get("disposition") == "ticket_only"
+            and 2 <= sev < 4
+        ):
+            merged["disposition"] = "case_required"
+            merged["reason"] = "cross_source_correlation"
+            merged["confidence"] = max(float(merged.get("confidence") or 0.5), 0.86)
+
+        return merged
 
 
 event_decision_service = EventDecisionService()

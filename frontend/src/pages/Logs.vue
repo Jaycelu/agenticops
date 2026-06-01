@@ -8,7 +8,6 @@
           </span>
           <div class="app-page-copy">
             <h1>日志分析</h1>
-            <p>按日志范围进行检索、聚合和设备级分析，直接接入 Case 处理链路。</p>
           </div>
         </div>
         <button @click="refreshData" class="btn-refresh app-button app-button-secondary" :disabled="loading">
@@ -159,7 +158,6 @@
             查看聚合视图
           </button>
         </div>
-        <p class="aggregate-hint">当日志数量过多时，可以使用聚合功能按设备和日志级别进行分组展示</p>
       </div>
 
       <!-- 聚合视图 -->
@@ -176,7 +174,7 @@
 
         <div v-if="aggregating" class="loading">
           <Loader2 class="animate-spin" :size="40" />
-          <p>正在聚合日志数据，请稍候...</p>
+          <p>聚合中...</p>
         </div>
 
         <div v-else-if="aggregatedData && aggregatedData.aggregated_groups.length > 0" class="aggregate-results">
@@ -302,12 +300,11 @@
       <div class="logs-section app-panel">
         <div v-if="loading" class="loading app-empty">
           <Loader2 class="animate-spin" :size="40" />
-          <p>正在查询日志数据，请稍候...</p>
-          <p class="loading-hint">如果查询时间较长，可能是筛选条件较复杂，请耐心等待</p>
+          <p>查询中...</p>
         </div>
         <div v-else-if="!selectedBase" class="empty app-empty">
           <MapPinOff :size="48" />
-          <p>请先选择日志范围</p>
+          <p>未选择日志范围</p>
         </div>
         <div v-else-if="logs.length === 0" class="empty app-empty">
           <div v-if="timeoutError" class="error-hint">
@@ -315,23 +312,14 @@
               <AlertCircle :size="48" />
             </div>
             <h3>连接超时</h3>
-            <p>无法连接到日志系统，请稍后重试。</p>
+            <p>日志系统连接失败</p>
           </div>
           <div v-else-if="noLogsHint" class="no-logs-hint">
             <div class="hint-icon">
               <Info :size="48" />
             </div>
-            <h3>[提示] 未找到日志记录</h3>
-            <p>日志易无异常日志</p>
-            <div class="hint-details">
-              <p><strong>建议:</strong></p>
-              <ol>
-                <li>登录日志易系统（https://sre-log.trinasolar.com/）检查日志筛选条件</li>
-                <li>验证查询时间范围和主机过滤条件是否正确</li>
-                <li>若问题持续，请联系日志易管理员陆宇</li>
-              </ol>
-              <p><strong>备注:</strong> 无日志记录，请检查日志源配置</p>
-            </div>
+            <h3>无日志记录</h3>
+            <p>当前条件无匹配结果</p>
           </div>
           <div v-else>
             <FileX :size="48" />

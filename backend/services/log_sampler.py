@@ -20,6 +20,8 @@ from config.site_config import get_site_config, get_log_collection_policy
 from services.fingerprint_generator import fingerprint_generator
 from services.baseline_calculator import baseline_calculator
 from services.site_automation_service import site_automation_service
+from services.event_decision_service import event_decision_service
+from services.pipeline_metrics_service import pipeline_metrics_service
 from services.source_event_projection import attach_event_projection, upsert_source_event
 
 logger = logging.getLogger(__name__)
@@ -179,7 +181,7 @@ class LogSampler:
             batch_id = f"{site_code}_{time_window_end.strftime('%Y%m%d%H%M%S')}"
 
             # 写入数据库
-            await self._write_samples_to_db(
+            write_stats = await self._write_samples_to_db(
                 site_code=site_code,
                 device_stats=device_stats,
                 time_window_start=time_window_start,
@@ -188,6 +190,15 @@ class LogSampler:
                 batch_id=batch_id,
                 scope_key=scope_key,
                 scope_name=site_config.get("site_name"),
+            )
+            pipeline_metrics_service.record(
+                "sample_run",
+                {
+                    "site_code": site_code,
+                    "batch_id": batch_id,
+                    "time_window_minutes": time_window_minutes,
+                    **(write_stats or {}),
+                },
             )
 
             logger.info(f"Completed log sampling for {site_code}")
@@ -473,6 +484,22 @@ class LogSampler:
             last_seen_at=datetime.now(),
             payload={**payload, "source_event_id": int(source_event.id) if source_event.id is not None else None},
         )
+        # 与 POST /api/events/ingest 一致：统一 evaluate + enrich 快照写入 normalized_payload
+        decision = event_decision_service.evaluate_source_event(source_event)
+        decision = event_decision_service.enrich_decision_for_context(db, source_event, decision)
+        merged_np = dict(source_event.normalized_payload or {})
+        merged_np["event_decision_canonical"] = {
+            "disposition": decision.get("disposition"),
+            "reason": decision.get("reason"),
+            "confidence": decision.get("confidence"),
+            "cluster_key": decision.get("cluster_key"),
+            "correlation_key": decision.get("correlation_key"),
+            "signal_family": decision.get("signal_family"),
+            "context_stats": decision.get("context_stats"),
+            "projection_source": "ELK_SAMPLER",
+        }
+        source_event.normalized_payload = merged_np
+        db.flush()
         return source_event
 
     async def _write_samples_to_db(
@@ -485,7 +512,7 @@ class LogSampler:
         batch_id: Optional[str] = None,
         scope_key: Optional[str] = None,
         scope_name: Optional[str] = None,
-    ):
+    ) -> Dict[str, Any]:
         """
         将采样数据写入数据库
         只记录有异常的设备
@@ -620,6 +647,13 @@ class LogSampler:
                         sample_ids=triggered_abnormal_sample_ids
                     )
                 )
+
+            return {
+                "total_samples": total_samples_count,
+                "abnormal_devices": abnormal_devices_count,
+                "triggered_case_samples": len(triggered_abnormal_sample_ids),
+                "devices_seen": len(device_stats),
+            }
 
         except Exception as e:
             db.rollback()
@@ -877,6 +911,57 @@ class LogSampler:
         signal_summary = raw_data.get("signal_summary") or {}
         pattern_summary = raw_data.get("pattern_summary") or {}
         device_ip = raw_data.get("device_ip")
+
+        # Phase 4.B: 拓扑降噪 —— 新建 Case 前先判断本设备是否在某未关闭 Case 的拓扑下游。
+        # 命中则把该日志信号作为衍生证据归并进父 Case，不再新建独立 Case。仅对全新 Case 生效。
+        # 任何异常一律 fail-open（回滚后照常走独立 Case 创建），不掩盖真实故障。
+        if not existing_case.get("case_id") and not rerun_pipeline:
+            from services.topology_correlation_service import topology_correlation_service
+
+            try:
+                hit = await topology_correlation_service.find_parent_case(
+                    db,
+                    site_id=sample.site_id,
+                    netbox_device_id=sample.netbox_device_id,
+                    device_ip=device_ip,
+                    host=device_ip,
+                    signal_family=signal_summary.get("primary_signal"),
+                    occurred_at=sample.sampled_at,
+                )
+                if hit is not None:
+                    topology_correlation_service.attach_derivative_evidence(
+                        db,
+                        hit,
+                        derivative_dedup_key=f"log-sample:{sample.id}",
+                        candidate_summary=(
+                            f"[{site.site_code}] {device_ip or sample.netbox_device_id or 'device'} "
+                            f"日志信号（拓扑衍生，归并至 {hit.parent_case_code}）"
+                        ),
+                        candidate_payload={
+                            "sample_id": sample.id,
+                            "batch_id": raw_data.get("batch_id"),
+                            "signal_summary": signal_summary,
+                        },
+                    )
+                    raw_data["case"] = {
+                        "case_id": hit.parent_case_id,
+                        "case_code": hit.parent_case_code,
+                        "created_at": datetime.now().isoformat(),
+                        "correlated": True,
+                        "correlation": hit.to_dict(),
+                    }
+                    sample.raw_data = raw_data
+                    db.commit()
+                    logger.info(
+                        "Sample %s correlated to parent case %s (%s hop(s)); skipped new case",
+                        sample.id, hit.parent_case_code, hit.hops,
+                    )
+                    return raw_data["case"]
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Topology correlation skipped for sample %s: %s", sample.id, exc)
+                db.rollback()
+                # fall through to normal independent case creation
+
         top_pattern = ((pattern_summary.get("top_patterns") or [{}])[0] if pattern_summary else {})
         severity = signal_summary.get("risk_level") or "warning"
         title = f"[{site.site_code}] {device_ip or sample.netbox_device_id or 'device'} 日志信号"

@@ -29,10 +29,12 @@ from models.agenticops import ExecutionRun, RemediationPlan, SourceEvent, Source
 from models.automation import AssetDevice, LocalTicket, Site
 from services.playbook_draft_service import playbook_draft_service
 from services.event_decision_service import event_decision_service
+from services.pipeline_metrics_service import pipeline_metrics_service
 from services.remediation_recommendation_service import remediation_recommendation_service
 from services.source_event_projection import attach_event_projection, build_event_shadow, upsert_source_event
 from services.ticket_adapter import ticket_adapter
 from services.automation_settings_service import automation_settings_service
+from services.topology_correlation_service import topology_correlation_service
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 _UNSET = object()
@@ -51,11 +53,13 @@ def _source_event_event_status(item: SourceEvent, payload: Dict[str, Any]) -> st
     return mapping.get(value, "open")
 
 
-def _serialize_source_event(item: SourceEvent) -> Dict[str, Any]:
+def _serialize_source_event(item: SourceEvent, db: Optional[Session] = None) -> Dict[str, Any]:
     payload = dict(item.normalized_payload or {})
     payload.setdefault("raw", item.raw_payload or {})
     case_info = event_decision_service.get_case_info(payload)
     decision = event_decision_service.evaluate_source_event(item)
+    if db is not None:
+        decision = event_decision_service.enrich_decision_for_context(db, item, decision)
     legacy_last_seen_at = payload.get("legacy_last_seen_at")
     legacy_resolved_at = payload.get("legacy_resolved_at")
     legacy_event_id = payload.get("legacy_event_id")
@@ -74,6 +78,7 @@ def _serialize_source_event(item: SourceEvent) -> Dict[str, Any]:
         "cluster_key": decision.get("cluster_key"),
         "correlation_key": decision.get("correlation_key"),
         "signal_family": decision.get("signal_family"),
+        "context_stats": decision.get("context_stats"),
         "external_event_id": item.external_event_id,
         "dedup_key": item.dedup_key,
         "site_id": item.site_id,
@@ -649,8 +654,24 @@ async def ingest_event(payload: EventIngestRequest, db: Session = Depends(get_db
     automation_mode_data = automation_settings_service.get_automation_mode(db)
     is_auto_mode = automation_mode_data.get("mode") == "auto"
 
-    # 评估事件 disposition
+    # 评估事件 disposition（含集群/锚点上下文增强）
     decision = event_decision_service.evaluate_source_event(source_event)
+    decision = event_decision_service.enrich_decision_for_context(db, source_event, decision)
+
+    merged_np = dict(source_event.normalized_payload or {})
+    merged_np["event_decision_canonical"] = {
+        "disposition": decision.get("disposition"),
+        "reason": decision.get("reason"),
+        "confidence": decision.get("confidence"),
+        "cluster_key": decision.get("cluster_key"),
+        "correlation_key": decision.get("correlation_key"),
+        "signal_family": decision.get("signal_family"),
+        "context_stats": decision.get("context_stats"),
+        "projection_source": "api_events_ingest",
+    }
+    source_event.normalized_payload = merged_np
+    db.commit()
+    db.refresh(source_event)
 
     # 如果是自动模式且事件需要创建 case，则自动创建
     force_create_case = False
@@ -661,10 +682,12 @@ async def ingest_event(payload: EventIngestRequest, db: Session = Depends(get_db
         db,
         source_event=source_event,
         force_create=force_create_case,
+        correlate=True,
     )
 
-    # 如果是自动模式且创建了新的 case，则自动触发 agent 执行
-    if is_auto_mode and force_create_case and case_info.get("case_id"):
+    # 如果是自动模式且创建了新的 case，则自动触发 agent 执行。
+    # 拓扑衍生归并（correlated）的事件不重跑父 Case 流水线，避免抖动。
+    if is_auto_mode and force_create_case and case_info.get("case_id") and not case_info.get("correlated"):
         try:
             event = build_event_shadow(source_event)
             await case_orchestrator.run_case_pipeline(
@@ -680,11 +703,23 @@ async def ingest_event(payload: EventIngestRequest, db: Session = Depends(get_db
             # 如果 agent 执行失败，不影响事件和 case 的创建，只记录错误
             print(f"Warning: Auto-triggered case pipeline failed for case {case_info.get('case_id')}: {exc}")
 
+    pipeline_metrics_service.record(
+        "event_ingest",
+        {
+            "source_event_id": int(source_event.id),
+            "dedup_key": source_event.dedup_key,
+            "source_system": source_event.source_system,
+            "disposition": decision.get("disposition"),
+            "reason": decision.get("reason"),
+            "case_id": case_info.get("case_id"),
+        },
+    )
+
     return {
         "accepted": True,
         "observe_only": automation_mode_data.get("is_observe_only", True),
         "automation_mode": automation_mode_data.get("mode", "observe_only"),
-        "event": _serialize_source_event(source_event),
+        "event": _serialize_source_event(source_event, db),
         "case_id": case_info.get("case_id"),
         "case_code": case_info.get("case_code"),
     }
@@ -714,7 +749,7 @@ def _load_event_views_from_source_events(
     if netbox_device_id is not None:
         query = query.filter(SourceEvent.netbox_device_id == netbox_device_id)
     items = query.order_by(SourceEvent.occurred_at.desc()).all()
-    return [_serialize_source_event(item) for item in items]
+    return [_serialize_source_event(item, db) for item in items]
 
 def _find_source_event_by_any_event_id(db: Session, event_id: int) -> Optional[SourceEvent]:
     item = db.query(SourceEvent).filter(SourceEvent.id == event_id).first()
@@ -812,11 +847,73 @@ def _update_source_event_projection(
         source_event.status = status
 
 
+async def _try_topology_correlation(
+    db: Session,
+    source_event: SourceEvent,
+) -> Optional[Dict[str, Any]]:
+    """
+    Phase 4.B：建 Case 前判断本事件设备是否在某未关闭 Case 的拓扑下游。
+    命中则把事件作为衍生证据归并进父 Case，返回父 case_info；否则返回 None。
+    任何异常一律 fail-open（回滚 + 返回 None，照常建独立 Case）。
+    """
+    if not source_event.netbox_device_id:
+        return None
+    try:
+        decision = event_decision_service.evaluate_source_event(source_event)
+        signal_family = decision.get("signal_family")
+        hit = await topology_correlation_service.find_parent_case(
+            db,
+            site_id=source_event.site_id,
+            netbox_device_id=source_event.netbox_device_id,
+            device_ip=source_event.device_ip,
+            host=source_event.host,
+            signal_family=signal_family,
+            occurred_at=source_event.occurred_at,
+        )
+        if hit is None:
+            return None
+        topology_correlation_service.attach_derivative_evidence(
+            db,
+            hit,
+            derivative_dedup_key=source_event.dedup_key,
+            candidate_summary=f"{source_event.title}（拓扑衍生，归并至 {hit.parent_case_code}）",
+            candidate_payload={
+                "source_event_id": int(source_event.id),
+                "signal_family": signal_family,
+            },
+        )
+        case_info = {
+            "case_id": hit.parent_case_id,
+            "case_code": hit.parent_case_code,
+            "created_at": datetime.now().isoformat(),
+            "correlated": True,
+            "correlation": hit.to_dict(),
+        }
+        _update_source_event_projection(
+            source_event,
+            case_info=case_info,
+            event_decision={
+                "disposition": "case_required",
+                "reason": "topology_correlated_to_parent",
+                "confidence": hit.confidence,
+                "updated_at": datetime.now().isoformat(),
+            },
+            acknowledged=True,
+            status=SourceEventStatus.CORRELATED,
+        )
+        db.commit()
+        return case_info
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        return None
+
+
 async def _resolve_case_for_source_event(
     db: Session,
     source_event: SourceEvent,
     *,
     force_create: bool = False,
+    correlate: bool = False,
 ) -> Dict[str, Any]:
     payload = dict(source_event.normalized_payload or {})
     existing_case = payload.get("case") or {}
@@ -825,12 +922,19 @@ async def _resolve_case_for_source_event(
 
     if not force_create:
         decision = event_decision_service.evaluate_source_event(source_event)
+        decision = event_decision_service.enrich_decision_for_context(db, source_event, decision)
         if decision.get("disposition") != "case_required":
             return {
                 "case_id": None,
                 "case_code": None,
                 "created_at": None,
             }
+
+    # Phase 4.B：自动建 Case 前先做拓扑降噪（仅自动 ingest 路径启用，手动操作不归并）。
+    if correlate:
+        correlated = await _try_topology_correlation(db, source_event)
+        if correlated is not None:
+            return correlated
 
     case = await case_orchestrator.intake_case(
         db,
@@ -879,9 +983,12 @@ async def _resolve_case_for_binding(
     *,
     source_event: Optional[SourceEvent],
     force_create: bool = False,
+    correlate: bool = False,
 ) -> Dict[str, Any]:
     if source_event is not None:
-        return await _resolve_case_for_source_event(db, source_event, force_create=force_create)
+        return await _resolve_case_for_source_event(
+            db, source_event, force_create=force_create, correlate=correlate
+        )
     return {
         "case_id": None,
         "case_code": None,

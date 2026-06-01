@@ -3,7 +3,6 @@
     <div class="page-header app-page-header">
       <div class="app-page-copy">
         <h1>记忆中心</h1>
-        <p>统一管理 episode、pattern、outcome 和 feedback 记忆。</p>
       </div>
       <div class="header-actions app-actions">
         <button class="app-button app-button-secondary" :disabled="loading" @click="loadData">

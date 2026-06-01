@@ -8,7 +8,6 @@
           </span>
           <div class="app-page-copy">
             <h1>系统设置</h1>
-            <p>统一维护 NetBox/ELK/Zabbix 集成、日志范围、模型，以及 SSH 维护执行通道配置。</p>
           </div>
         </div>
       </div>
@@ -44,8 +43,8 @@
               </div>
               <p class="mode-description">
                 {{ automationMode?.is_observe_only
-                  ? '观察模式：只读分析，不自动创建 Case 或执行 Agent 操作'
-                  : '自动模式：自动创建 Case 并触发 Agent 执行，实现全自动事件处置' }}
+                  ? '只读分析'
+                  : '自动处置' }}
               </p>
             </div>
             <div class="mode-controls">
@@ -70,8 +69,7 @@
 
           <div class="helper-banner">
             <div>
-              <strong>敏感字段不会明文回显。</strong>
-              <p>NetBox、ELK、Zabbix 的连接参数存入数据库，密钥字段使用服务器上的 <code>APP_SECRET_KEY</code> 加密。</p>
+              <strong>敏感字段已启用密文存储</strong>
             </div>
             <span :class="['banner-status', sshSecurity?.app_secret_key_configured ? 'ok' : 'warn']">
               {{ sshSecurity?.app_secret_key_configured ? '主密钥已配置' : '缺少 APP_SECRET_KEY' }}
@@ -834,10 +832,14 @@ async function setAutomationMode(mode: string) {
 
 async function loadSiteOptions() {
   try {
-    const response = await axios.get(`${API_BASE_URL}/assets/sites`)
-    siteOptions.value = response.data?.sites || []
+    const response = await axios.get(`${API_BASE_URL}/sites`)
+    siteOptions.value = (response.data?.sites || []).map((site: any) => ({
+      id: site.id,
+      name: site.name || site.site_name || site.site_code || `Site ${site.id}`,
+      slug: site.slug || site.site_code || ''
+    }))
   } catch (error) {
-    console.error('Error loading site options:', error)
+    siteOptions.value = []
   }
 }
 
@@ -1024,27 +1026,36 @@ async function loadModels() {
 }
 
 async function loadSSHCredentials() {
-  const response = await listSSHCredentials()
-  sshCredentials.value = response.data || []
-  if (!selectedCredentialId.value && sshCredentials.value.length > 0) {
-    selectedCredentialId.value = sshCredentials.value[0].id
-    await loadCredentialBindings()
+  try {
+    const response = await listSSHCredentials()
+    sshCredentials.value = response.data || []
+    if (!selectedCredentialId.value && sshCredentials.value.length > 0) {
+      selectedCredentialId.value = sshCredentials.value[0].id
+      await loadCredentialBindings()
+    }
+  } catch (error) {
+    sshCredentials.value = []
   }
 }
 
 async function loadNetBoxDeviceCandidates() {
-  const response = await queryNetBoxDevices({
-    site: siteFilter.value || undefined,
-    tag: tagFilter.value || undefined,
-    name: deviceNameFilter.value || undefined,
-    role: deviceRoleFilter.value || undefined,
-    vendor: deviceVendorFilter.value || undefined,
-    device_type: deviceTypeFilter.value || undefined
-  })
-  candidateDevices.value = response.data || []
-  selectedDeviceIds.value = selectedDeviceIds.value.filter((id) =>
-    candidateDevices.value.some((device: any) => device.id === id)
-  )
+  try {
+    const response = await queryNetBoxDevices({
+      site: siteFilter.value || undefined,
+      tag: tagFilter.value || undefined,
+      name: deviceNameFilter.value || undefined,
+      role: deviceRoleFilter.value || undefined,
+      vendor: deviceVendorFilter.value || undefined,
+      device_type: deviceTypeFilter.value || undefined
+    })
+    candidateDevices.value = response.data || []
+    selectedDeviceIds.value = selectedDeviceIds.value.filter((id) =>
+      candidateDevices.value.some((device: any) => device.id === id)
+    )
+  } catch (error) {
+    candidateDevices.value = []
+    selectedDeviceIds.value = []
+  }
 }
 
 function toggleAllCandidateDevices() {

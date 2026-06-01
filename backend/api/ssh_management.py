@@ -66,6 +66,8 @@ async def query_netbox_devices(
         )
         return {"success": True, "data": devices}
     except Exception as exc:  # noqa: BLE001
+        if "netbox_not_configured" in str(exc):
+            return {"success": True, "data": [], "status": "netbox_not_configured"}
         raise HTTPException(status_code=500, detail=str(exc))
 
 

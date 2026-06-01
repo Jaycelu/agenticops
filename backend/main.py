@@ -48,6 +48,45 @@ async def data_retention_cleanup_task():
             logger.error(f"Error in data retention cleanup: {e}", exc_info=True)
 
 
+async def memory_embedding_backfill_task():
+    """Phase 5：定期回填 MemoryEntry.embedding。仅在配置了嵌入模型时运行。"""
+    from services.embedding_service import build_embedder
+
+    if not getattr(build_embedder(), "is_enabled", False):
+        logger.info("Memory embedding backfill disabled (llm_embedding_model not configured)")
+        return
+
+    logger.info("Memory embedding backfill task started")
+    while True:
+        try:
+            # 每小时回填一批新记忆
+            await asyncio.sleep(3600)
+            from database import SessionLocal
+            from services.embedding_service import backfill_memory_embeddings
+
+            db = SessionLocal()
+            try:
+                result = await backfill_memory_embeddings(db, limit=200)
+            finally:
+                db.close()
+            logger.info(f"Memory embedding backfill: {result}")
+        except Exception as e:
+            logger.error(f"Error in memory embedding backfill: {e}", exc_info=True)
+
+
+def register_execution_components():
+    """Register concrete executors used by the guarded execution service."""
+    from services.api_executor import api_executor
+    from services.execution_engine import execution_engine
+    from services.notification_executor import notification_executor
+    from services.script_executor import script_executor
+
+    execution_engine.register_executor(api_executor)
+    execution_engine.register_executor(notification_executor)
+    execution_engine.register_executor(script_executor)
+    logger.info("Execution components registered: {}", execution_engine.list_executors())
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting NetOps AI Platform...")
@@ -57,11 +96,16 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database initialized successfully")
 
+    register_execution_components()
+
     # 启动缓存清理任务
     cleanup_task = asyncio.create_task(cleanup_cache_task())
 
     # 启动数据保留清理任务
     retention_cleanup_task = asyncio.create_task(data_retention_cleanup_task())
+
+    # 启动记忆 embedding 回填任务（Phase 5）
+    embedding_backfill_task = asyncio.create_task(memory_embedding_backfill_task())
 
     # 启动日志采样服务
     from services.log_sampler import log_sampler
@@ -73,6 +117,7 @@ async def lifespan(app: FastAPI):
     # 清理任务
     cleanup_task.cancel()
     retention_cleanup_task.cancel()
+    embedding_backfill_task.cancel()
 
     # 停止日志采样服务
     from services.log_sampler import log_sampler

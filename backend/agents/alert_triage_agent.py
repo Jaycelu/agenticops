@@ -45,10 +45,15 @@ class AlertTriageAgent(BaseOpsAgent):
             priority = "P2"
 
         gaps = []
+        next_evidence_requests: List[Dict[str, str]] = []
         if not context.netbox_device_id and not context.device_ip:
             gaps.append("缺少明确设备标识，后续诊断可能只能停留在站点级")
+            next_evidence_requests.append({"type": "netbox_resolve", "reason": "missing_device_anchor"})
         if context.source_system.lower() == "zabbix" and not context.runtime.get("zabbix_alerts"):
             gaps.append("未取到 Zabbix 实时告警详情")
+            next_evidence_requests.append({"type": "zabbix_recent_alerts", "reason": "zabbix_context_missing"})
+        if not log_summary.get("devices") and context.host:
+            next_evidence_requests.append({"type": "elk_widen_window", "reason": "no_log_devices_for_host"})
 
         summary = f"已完成初步分诊，分类为 {classification}，优先级 {priority}。"
         if hot_devices:
@@ -69,8 +74,10 @@ class AlertTriageAgent(BaseOpsAgent):
                 "hot_devices": hot_devices,
                 "requires_topology": bool(context.netbox_device_id),
                 "requires_execution_channel": False,
+                "next_evidence_requests": next_evidence_requests,
             },
-            metadata={"priority": priority},
+            metadata={"priority": priority, "next_evidence_requests": next_evidence_requests},
+            next_evidence_requests=next_evidence_requests,
         )
 
 

@@ -43,6 +43,11 @@ class AgentType(str, enum.Enum):
     HISTORICAL = "historical_analysis"
     INSIGHT = "insight_analysis"
     REMEDIATION = "autonomous_remediation"
+    # Phase 2: independent post-remediation safety reviewer (bypass critic, no LLM).
+    # NOTE: Adding a value to a PostgreSQL native enum requires manual migration:
+    #   ALTER TYPE agenttype ADD VALUE IF NOT EXISTS 'safety_critic';
+    # init_db() creates fresh DBs with the new value; existing DBs need the ALTER.
+    SAFETY_CRITIC = "safety_critic"
 
 
 class EvidenceType(str, enum.Enum):
@@ -253,6 +258,10 @@ class MemoryEntry(Base):
     confidence = Column(Float, default=0.0)
     success_score = Column(Float, default=0.0)
     content = Column(JSON, default=dict)
+    # Phase 5: semantic embedding vector stored as a JSON float array.
+    # Portable across SQLite/PostgreSQL; for very large memory stores this can later be
+    # migrated to a native pgvector column + ANN index (retriever cosine math is isolated).
+    embedding = Column(JSON, nullable=True)
     last_accessed_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

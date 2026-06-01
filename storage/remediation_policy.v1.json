@@ -1,0 +1,158 @@
+{
+  "version": "1.0.0",
+  "description": "Versioned remediation action templates (harness policy data).",
+  "rules": [
+    {
+      "id": "link_interface",
+      "priority": 10,
+      "match": {
+        "families": ["crc", "interface", "flap", "link"],
+        "tokens_any": ["链路", "接口"]
+      },
+      "actions": [
+        {
+          "priority_order": 1,
+          "action_type": "topology_trace",
+          "title": "优先检查上下联链路",
+          "reason": "策略规则 link_interface：接口/链路类信号。",
+          "mode": "manual_check"
+        },
+        {
+          "priority_order": 2,
+          "action_type": "alert_correlation",
+          "title": "对齐 Zabbix 相关告警",
+          "reason": "确认是否存在接口 down、errors、availability 类告警。",
+          "mode": "manual_check"
+        },
+        {
+          "priority_order": 3,
+          "action_type": "ticket_or_change",
+          "title": "准备人工维护或变更窗口",
+          "reason": "链路类问题通常需要人工维护确认，避免直接自动执行。",
+          "mode": "manual_check"
+        }
+      ]
+    },
+    {
+      "id": "routing_neighbor",
+      "priority": 20,
+      "match": {
+        "families": ["neighbor", "routing", "ospf", "bgp"],
+        "tokens_any": ["邻居", "路由"]
+      },
+      "actions": [
+        {
+          "priority_order": 1,
+          "action_type": "topology_neighbors",
+          "title": "检查邻接和路由关系",
+          "reason": "策略规则 routing_neighbor：邻居/路由稳定性。",
+          "mode": "manual_check"
+        },
+        {
+          "priority_order": 2,
+          "action_type": "blast_radius",
+          "title": "评估相邻设备影响面",
+          "reason": "优先确认是否存在同站点或相邻设备的连锁异常。",
+          "mode": "manual_check"
+        },
+        {
+          "priority_order": 3,
+          "action_type": "ticket_or_change",
+          "title": "准备网络侧人工处置",
+          "reason": "邻居/路由类问题通常需要人工维护确认。",
+          "mode": "manual_check"
+        }
+      ]
+    },
+    {
+      "id": "hardware",
+      "priority": 30,
+      "match": {
+        "families": ["hardware", "fan", "power", "temperature"],
+        "tokens_any": ["硬件", "光模块"]
+      },
+      "actions": [
+        {
+          "priority_order": 1,
+          "action_type": "hardware_validation",
+          "title": "核查硬件与模块状态",
+          "reason": "策略规则 hardware：硬件或光模块异常。",
+          "mode": "manual_check"
+        },
+        {
+          "priority_order": 2,
+          "action_type": "spare_plan",
+          "title": "准备备件或替换计划",
+          "reason": "硬件类问题通常无法依靠软件动作直接恢复。",
+          "mode": "manual_check"
+        },
+        {
+          "priority_order": 3,
+          "action_type": "ticket_only",
+          "title": "转人工工单处理",
+          "reason": "硬件问题优先走工单和现场维护闭环。",
+          "mode": "manual_check"
+        }
+      ]
+    },
+    {
+      "id": "security_auth",
+      "priority": 40,
+      "match": {
+        "families": ["auth", "security"],
+        "tokens_any": ["认证", "安全"]
+      },
+      "actions": [
+        {
+          "priority_order": 1,
+          "action_type": "security_review",
+          "title": "检查认证与访问控制策略",
+          "reason": "策略规则 security_auth。",
+          "mode": "manual_check"
+        },
+        {
+          "priority_order": 2,
+          "action_type": "alert_correlation",
+          "title": "核对同设备安全告警",
+          "reason": "确认是否存在重复失败、锁定或 ACL 命中。",
+          "mode": "manual_check"
+        },
+        {
+          "priority_order": 3,
+          "action_type": "ticket_only",
+          "title": "转安全/网络协同工单",
+          "reason": "该类问题建议按审批流程人工介入。",
+          "mode": "manual_check"
+        }
+      ]
+    },
+    {
+      "id": "generic",
+      "priority": 1000,
+      "match": {},
+      "actions": [
+        {
+          "priority_order": 1,
+          "action_type": "cross_source_review",
+          "title": "先做跨源证据复核",
+          "reason": "策略规则 generic：根因仍较泛化。",
+          "mode": "manual_check"
+        },
+        {
+          "priority_order": 2,
+          "action_type": "blast_radius",
+          "title": "确认影响面",
+          "reason": "优先明确是否为单设备异常还是站点级问题。",
+          "mode": "manual_check"
+        },
+        {
+          "priority_order": 3,
+          "action_type": "ticket_only",
+          "title": "必要时转人工工单",
+          "reason": "证据不足时不建议直接执行修复动作。",
+          "mode": "manual_check"
+        }
+      ]
+    }
+  ]
+}
