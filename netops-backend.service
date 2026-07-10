@@ -7,6 +7,7 @@ Type=simple
 User=root
 WorkingDirectory=/path/to/netops_bs/backend
 Environment="PATH=/usr/bin:/usr/local/bin"
+ExecStartPre=/usr/bin/python3 -m alembic -c /path/to/netops_bs/backend/alembic.ini upgrade head
 ExecStart=/usr/bin/python3 /path/to/netops_bs/backend/main.py
 Restart=always
 RestartSec=10

@@ -1,13 +1,30 @@
 from __future__ import annotations
 
 import pytest
+from alembic import command
 from sqlalchemy import inspect, text
 
 
 pytestmark = pytest.mark.integration
 
 
-def test_current_schema_initializes_on_postgres() -> None:
+@pytest.fixture(scope="module", autouse=True)
+def migrated_database():
+    from database import engine, get_alembic_config
+
+    database_name = engine.url.database or ""
+    if not database_name.endswith("_test"):
+        raise RuntimeError(f"Refusing to reset non-test database: {database_name}")
+
+    with engine.begin() as connection:
+        connection.execute(text("DROP SCHEMA public CASCADE"))
+        connection.execute(text("CREATE SCHEMA public"))
+
+    command.upgrade(get_alembic_config(), "head")
+    yield
+
+
+def test_migrations_create_current_schema_on_postgres() -> None:
     from database import engine, init_db
 
     init_db()
@@ -25,3 +42,11 @@ def test_current_schema_initializes_on_postgres() -> None:
         "remediation_plan",
         "execution_run",
     }.issubset(tables)
+
+
+def test_upgrade_head_is_idempotent() -> None:
+    from database import current_database_revisions, expected_database_revisions, get_alembic_config
+
+    command.upgrade(get_alembic_config(), "head")
+
+    assert current_database_revisions() == expected_database_revisions()

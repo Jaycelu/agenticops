@@ -49,6 +49,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -60,6 +62,20 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+
+  migrate:
+    build:
+      context: ./backend
+    container_name: netops-migrate
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-docker_dev_secret_change_me}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-netops}:${POSTGRES_PASSWORD:-netops}@postgres:5432/${POSTGRES_DB:-netops_agenticops}
+      AUTOMATION_DATABASE_URL: postgresql://${POSTGRES_USER:-netops}:${POSTGRES_PASSWORD:-netops}@postgres:5432/${POSTGRES_DB:-netops_agenticops}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   frontend:
     build:

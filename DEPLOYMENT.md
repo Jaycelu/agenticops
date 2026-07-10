@@ -32,8 +32,20 @@ cd backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+alembic upgrade head
 python3 main.py
 ```
+
+首次将已有 AgenticOps 数据库纳入 Alembic 管理时，不要直接执行基线建表迁移。
+先备份数据库，再运行结构校验与基线接管：
+
+```bash
+cd backend
+python3 scripts/adopt_alembic_baseline.py --confirm-existing-schema
+```
+
+该命令只在活动表完整且数据库尚未被 Alembic 管理时执行；校验失败时不会写入
+版本标记。接管完成后，应用启动只验证数据库已位于 migration head，不再自动执行 DDL。
 
 启动后可访问：
 

@@ -91,10 +91,10 @@ def register_execution_components():
 async def lifespan(app: FastAPI):
     logger.info("Starting NetOps AI Platform...")
 
-    # 初始化数据库
+    # 数据库迁移必须由部署步骤显式执行；应用启动只校验版本。
     from database import init_db
     init_db()
-    logger.info("Database initialized successfully")
+    logger.info("Database migration revision verified")
 
     register_execution_components()
 

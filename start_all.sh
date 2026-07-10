@@ -31,6 +31,7 @@ fi
 echo "[1/4] 启动 FastAPI 后端..."
 (
     cd "$ROOT_DIR/backend"
+    alembic upgrade head
     nohup python3 main.py > "$LOG_DIR/backend.log" 2>&1 &
 )
 sleep 3

@@ -28,6 +28,10 @@ source venv/bin/activate
 echo "安装 Python 依赖..."
 pip install -r requirements.txt -q
 
+# 显式升级数据库。应用启动只校验版本，不再自动修改 schema。
+echo "升级数据库结构..."
+alembic upgrade head
+
 # 启动后端服务
 echo "启动后端服务..."
 python3 main.py &

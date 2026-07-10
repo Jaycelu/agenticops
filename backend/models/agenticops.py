@@ -43,10 +43,8 @@ class AgentType(str, enum.Enum):
     HISTORICAL = "historical_analysis"
     INSIGHT = "insight_analysis"
     REMEDIATION = "autonomous_remediation"
-    # Phase 2: independent post-remediation safety reviewer (bypass critic, no LLM).
-    # NOTE: Adding a value to a PostgreSQL native enum requires manual migration:
-    #   ALTER TYPE agenttype ADD VALUE IF NOT EXISTS 'safety_critic';
-    # init_db() creates fresh DBs with the new value; existing DBs need the ALTER.
+    # Independent post-remediation safety reviewer (bypass critic, no LLM).
+    # PostgreSQL enum changes are managed exclusively through Alembic migrations.
     SAFETY_CRITIC = "safety_critic"
 
 
