@@ -38,6 +38,15 @@ def active_tables() -> list[Table]:
         SiteAutomationSwitch,
     )
     from models.automation_settings import AutomationSetting
+    from models.auth import (
+        ApiToken,
+        AuthSession,
+        ExternalIdentity,
+        IdentityProvider,
+        RoleBinding,
+        SecurityAuditEvent,
+        UserAccount,
+    )
     from models.integration_settings import IntegrationSetting
     from models.log_scope import LogScope
 
@@ -64,6 +73,13 @@ def active_tables() -> list[Table]:
         IntegrationSetting.__table__,
         LogScope.__table__,
         AutomationSetting.__table__,
+        IdentityProvider.__table__,
+        UserAccount.__table__,
+        ExternalIdentity.__table__,
+        RoleBinding.__table__,
+        AuthSession.__table__,
+        ApiToken.__table__,
+        SecurityAuditEvent.__table__,
     ]
 
 

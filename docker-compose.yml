@@ -21,7 +21,7 @@ services:
       context: ./backend
     container_name: netops-backend
     environment:
-      APP_SECRET_KEY: ${APP_SECRET_KEY:-docker_dev_secret_change_me}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-docker_dev_secret_change_me_32_bytes_minimum}
       DATABASE_URL: postgresql://${POSTGRES_USER:-netops}:${POSTGRES_PASSWORD:-netops}@postgres:5432/${POSTGRES_DB:-netops_agenticops}
       AUTOMATION_DATABASE_URL: postgresql://${POSTGRES_USER:-netops}:${POSTGRES_PASSWORD:-netops}@postgres:5432/${POSTGRES_DB:-netops_agenticops}
       BACKEND_HOST: 0.0.0.0
@@ -69,7 +69,7 @@ services:
     container_name: netops-migrate
     command: ["alembic", "upgrade", "head"]
     environment:
-      APP_SECRET_KEY: ${APP_SECRET_KEY:-docker_dev_secret_change_me}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-docker_dev_secret_change_me_32_bytes_minimum}
       DATABASE_URL: postgresql://${POSTGRES_USER:-netops}:${POSTGRES_PASSWORD:-netops}@postgres:5432/${POSTGRES_DB:-netops_agenticops}
       AUTOMATION_DATABASE_URL: postgresql://${POSTGRES_USER:-netops}:${POSTGRES_PASSWORD:-netops}@postgres:5432/${POSTGRES_DB:-netops_agenticops}
     depends_on:

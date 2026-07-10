@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from alembic import command
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import DBAPIError
 
 
 pytestmark = pytest.mark.integration
@@ -41,6 +42,13 @@ def test_migrations_create_current_schema_on_postgres() -> None:
         "agent_claim",
         "remediation_plan",
         "execution_run",
+        "identity_provider",
+        "user_account",
+        "external_identity",
+        "role_binding",
+        "auth_session",
+        "api_token",
+        "security_audit_event",
     }.issubset(tables)
 
 
@@ -50,3 +58,28 @@ def test_upgrade_head_is_idempotent() -> None:
     command.upgrade(get_alembic_config(), "head")
 
     assert current_database_revisions() == expected_database_revisions()
+
+
+def test_security_audit_table_is_append_only() -> None:
+    from audit.service import security_audit_service
+    from database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        first = security_audit_service.append(
+            db,
+            event_type="auth.integration_test",
+            outcome="success",
+            details={"sequence": 1},
+        )
+        db.commit()
+        event_id = int(first.id)
+
+        with pytest.raises(DBAPIError, match="append-only"):
+            db.execute(
+                text("UPDATE security_audit_event SET outcome = 'tampered' WHERE id = :id"),
+                {"id": event_id},
+            )
+        db.rollback()
+    finally:
+        db.close()

@@ -8,6 +8,13 @@ class Settings(BaseSettings):
 
     app_secret_key: str = ""
 
+    # Authentication sessions. External Provider configuration is stored in the
+    # database; only process-wide cookie policy lives in environment settings.
+    auth_cookie_name: str = "agenticops_session"
+    auth_session_ttl_hours: int = 8
+    auth_cookie_secure: bool = True
+    auth_cookie_samesite: str = "lax"
+
     # NetBox Configuration
     netbox_url: str = ""
     netbox_api_token: str = ""

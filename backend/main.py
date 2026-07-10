@@ -96,6 +96,10 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database migration revision verified")
 
+    from auth.session_service import auth_secret_bytes
+    auth_secret_bytes()
+    logger.info("Authentication secret policy verified")
+
     register_execution_components()
 
     # 启动缓存清理任务

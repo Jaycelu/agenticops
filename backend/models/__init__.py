@@ -23,6 +23,15 @@ from models.agenticops import (
 )
 from models.integration_settings import IntegrationSetting
 from models.log_scope import LogScope
+from models.auth import (
+    ApiToken,
+    AuthSession,
+    ExternalIdentity,
+    IdentityProvider,
+    RoleBinding,
+    SecurityAuditEvent,
+    UserAccount,
+)
 
 __all__ = [
     "Site",
@@ -43,4 +52,11 @@ __all__ = [
     "ExecutionRun",
     "IntegrationSetting",
     "LogScope",
+    "IdentityProvider",
+    "UserAccount",
+    "ExternalIdentity",
+    "RoleBinding",
+    "AuthSession",
+    "ApiToken",
+    "SecurityAuditEvent",
 ]
