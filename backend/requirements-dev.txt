@@ -1,0 +1,11 @@
+-r requirements.txt
+
+# Tests
+pytest==8.4.2
+pytest-asyncio==0.23.5
+pytest-cov==7.1.0
+
+# Static analysis and dependency audit
+ruff==0.15.21
+bandit==1.9.4
+pip-audit==2.10.1

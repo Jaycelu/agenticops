@@ -4,6 +4,10 @@
 # Python tooling (local venv / pytest)
 backend/.venv/
 backend/.pytest_cache/
+backend/.coverage
+backend/htmlcov/
+**/__pycache__/
+*.py[cod]
 
 # Local environment files
 **/.env
