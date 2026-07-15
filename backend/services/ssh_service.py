@@ -23,6 +23,15 @@ logger = logging.getLogger(__name__)
 
 
 class SSHService:
+    ALLOWED_CAPABILITY_SCOPES = {"probe.read", "device.mutate"}
+
+    def _validate_capability_scope(self, value: Any) -> List[str]:
+        scope = sorted({str(item) for item in (value or [])})
+        unknown = set(scope) - self.ALLOWED_CAPABILITY_SCOPES
+        if unknown or not scope:
+            raise ValueError(f"invalid SSH capability scope: {sorted(unknown)}")
+        return scope
+
     def _build_secret_key(self) -> bytes:
         secret = (settings.app_secret_key or "").strip()
         if not secret:
@@ -94,7 +103,7 @@ class SSHService:
             encrypted_passphrase=self._encrypt(payload.get("passphrase")),
             port=payload.get("port", 22),
             enabled=True,
-            capability_scope=["probe.read"],
+            capability_scope=self._validate_capability_scope(payload.get("capability_scope") or ["probe.read"]),
         )
         db.add(credential)
         db.commit()
@@ -109,6 +118,8 @@ class SSHService:
         for field in ["name", "username", "auth_type", "port", "enabled"]:
             if payload.get(field) is not None:
                 setattr(credential, field, payload[field])
+        if "capability_scope" in payload:
+            credential.capability_scope = self._validate_capability_scope(payload["capability_scope"])
 
         if "password" in payload:
             credential.encrypted_password = self._encrypt(payload.get("password"))

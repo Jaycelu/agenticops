@@ -4,6 +4,7 @@
       "tool_id": "manual.review",
       "name": "人工复核",
       "category": "manual",
+      "capability": "manual",
       "executor_type": "manual",
       "risk_level": 0,
       "modes": ["observe"],
@@ -17,6 +18,7 @@
       "tool_id": "notify.dingtalk",
       "name": "钉钉通知",
       "category": "notification",
+      "capability": "notification",
       "executor_type": "notification",
       "risk_level": 0,
       "modes": ["observe", "execute"],
@@ -32,6 +34,7 @@
       "tool_id": "api.request",
       "name": "HTTP API 请求",
       "category": "api",
+      "capability": "mutation",
       "executor_type": "api",
       "risk_level": 1,
       "modes": ["observe", "execute"],
@@ -47,6 +50,7 @@
       "tool_id": "script.run",
       "name": "本地脚本执行",
       "category": "script",
+      "capability": "mutation",
       "executor_type": "script",
       "risk_level": 2,
       "modes": ["execute"],
@@ -63,6 +67,7 @@
       "tool_id": "ssh.show_command",
       "name": "SSH 只读命令",
       "category": "network_device",
+      "capability": "read_only",
       "executor_type": "script",
       "risk_level": 0,
       "modes": ["observe"],
@@ -80,17 +85,18 @@
       "tool_id": "ssh.config_change",
       "name": "SSH 配置变更",
       "category": "network_device",
-      "executor_type": "script",
+      "capability": "mutation",
+      "executor_type": "ssh",
       "risk_level": 3,
       "modes": ["execute"],
-      "executable": false,
+      "executable": true,
       "allowed_commands": [],
       "blocked_patterns": [],
       "requires_approval": true,
       "timeout": 60,
       "audit": true,
       "param_schema": {
-        "required": ["commands"]
+        "required": ["commands", "credential_id"]
       }
     }
   ]

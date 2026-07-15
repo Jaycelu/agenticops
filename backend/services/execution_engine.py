@@ -18,6 +18,7 @@ class ExecutorType(str, Enum):
     SCRIPT = "script"
     API = "api"
     NOTIFICATION = "notification"
+    SSH = "ssh"
 
 
 class ExecutionStatus(str, Enum):

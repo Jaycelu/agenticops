@@ -51,6 +51,8 @@ def active_tables() -> list[Table]:
     from models.integration_settings import IntegrationSetting
     from models.log_scope import LogScope
     from models.probe import DeviceHostKey, ProbeRun, ProbeTemplateVersion
+    from models.approval import ApprovalDecision, PlanVersion
+    from models.execution_job import ExecutionActionResult, ExecutionJob, IdempotencyRecord
 
     return [
         Site.__table__,
@@ -86,6 +88,11 @@ def active_tables() -> list[Table]:
         DeviceHostKey.__table__,
         ProbeTemplateVersion.__table__,
         ProbeRun.__table__,
+        PlanVersion.__table__,
+        ApprovalDecision.__table__,
+        ExecutionJob.__table__,
+        ExecutionActionResult.__table__,
+        IdempotencyRecord.__table__,
     ]
 
 

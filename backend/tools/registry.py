@@ -12,6 +12,7 @@ class ToolSpec:
     tool_id: str
     name: str
     category: str
+    capability: str
     executor_type: str
     risk_level: int
     modes: List[str] = field(default_factory=list)
@@ -29,6 +30,7 @@ class ToolSpec:
             tool_id=str(data["tool_id"]),
             name=str(data.get("name") or data["tool_id"]),
             category=str(data.get("category") or "unknown"),
+            capability=str(data.get("capability") or "mutation"),
             executor_type=str(data.get("executor_type") or data.get("category") or "unknown"),
             risk_level=int(data.get("risk_level") or 0),
             modes=[str(item) for item in data.get("modes") or []],

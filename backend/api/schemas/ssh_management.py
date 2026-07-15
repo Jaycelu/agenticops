@@ -10,6 +10,7 @@ class SSHCredentialCreateRequest(BaseModel):
     private_key: Optional[str] = None
     passphrase: Optional[str] = None
     port: int = Field(default=22, ge=1, le=65535)
+    capability_scope: List[str] = Field(default_factory=lambda: ["probe.read"])
 
 
 class SSHCredentialUpdateRequest(BaseModel):
@@ -21,6 +22,7 @@ class SSHCredentialUpdateRequest(BaseModel):
     passphrase: Optional[str] = None
     port: Optional[int] = Field(default=None, ge=1, le=65535)
     enabled: Optional[bool] = None
+    capability_scope: Optional[List[str]] = None
 
 
 class DeviceBindingRequest(BaseModel):

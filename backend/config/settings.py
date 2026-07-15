@@ -78,6 +78,8 @@ class Settings(BaseSettings):
     probe_global_concurrency: int = 20
     probe_command_timeout_seconds: int = 20
     probe_max_output_bytes: int = 262144
+    approval_ttl_hours: int = 24
+    idempotency_ttl_hours: int = 72
 
     # Ticket integration mode: local|external
     ticket_mode: str = "local"

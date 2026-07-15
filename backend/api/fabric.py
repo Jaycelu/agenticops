@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -117,7 +117,7 @@ async def initiate_remediation_plan_approval(
     db: Session = Depends(get_db),
 ):
     try:
-        return initiate_plan_approval(db, plan_id, payload, initiator=principal.username)
+        return initiate_plan_approval(db, plan_id, payload, principal=principal)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
@@ -132,7 +132,7 @@ async def decide_remediation_plan_approval(
     db: Session = Depends(get_db),
 ):
     try:
-        return decide_plan_approval(db, plan_id, payload, approver=principal.username)
+        return decide_plan_approval(db, plan_id, payload, principal=principal)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
@@ -171,6 +171,7 @@ async def submit_remediation_plan_feedback(
 )
 async def execute_remediation_plan(
     plan_id: int,
+    idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=16, max_length=160),
     principal: Principal = Depends(require_permissions(Permission.EXECUTIONS_RUN.value)),
     db: Session = Depends(get_db),
 ):
@@ -178,7 +179,8 @@ async def execute_remediation_plan(
         return await execution_service.execute_plan(
             db,
             plan_id,
-            triggered_by=principal.username,
+            principal=principal,
+            idempotency_key=idempotency_key,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))

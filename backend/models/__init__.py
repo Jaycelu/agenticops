@@ -33,6 +33,8 @@ from models.auth import (
     UserAccount,
 )
 from models.probe import DeviceHostKey, ProbeRun, ProbeTemplateVersion
+from models.approval import ApprovalDecision, PlanVersion
+from models.execution_job import ExecutionActionResult, ExecutionJob, IdempotencyRecord
 
 __all__ = [
     "Site",
@@ -63,4 +65,9 @@ __all__ = [
     "DeviceHostKey",
     "ProbeTemplateVersion",
     "ProbeRun",
+    "PlanVersion",
+    "ApprovalDecision",
+    "ExecutionJob",
+    "ExecutionActionResult",
+    "IdempotencyRecord",
 ]

@@ -51,6 +51,31 @@
                 <span>{{ action.reason }}</span>
               </div>
             </div>
+            <textarea
+              v-if="plan.approval_status === 'pending' && canApprove"
+              v-model="approvalComments[plan.id]"
+              class="approval-comment"
+              placeholder="审批意见（拒绝时建议必填）"
+              maxlength="4000"
+            />
+            <div class="plan-actions">
+              <button
+                v-if="plan.status === 'draft' && canRequestApproval"
+                class="app-button app-button-secondary"
+                :disabled="actingPlanId === plan.id"
+                @click="initiateApproval(plan)"
+              >提交审批</button>
+              <template v-if="plan.approval_status === 'pending' && canApprove">
+                <button class="app-button app-button-primary" :disabled="actingPlanId === plan.id" @click="decide(plan, 'approved')">批准</button>
+                <button class="app-button app-button-danger" :disabled="actingPlanId === plan.id" @click="decide(plan, 'rejected')">拒绝</button>
+              </template>
+              <button
+                v-if="plan.approval_status === 'approved' && canExecute"
+                class="app-button app-button-primary"
+                :disabled="actingPlanId === plan.id"
+                @click="execute(plan)"
+              >执行已冻结方案</button>
+            </div>
           </div>
         </div>
       </section>
@@ -83,8 +108,10 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { fabricApi } from '@/api/fabric'
+import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
+const auth = useAuthStore()
 const loading = ref(false)
 const message = ref('')
 const overview = ref({
@@ -96,6 +123,11 @@ const overview = ref({
 })
 const plans = ref<any[]>([])
 const executions = ref<any[]>([])
+const actingPlanId = ref<number | null>(null)
+const approvalComments = ref<Record<number, string>>({})
+const canRequestApproval = computed(() => auth.user?.permissions.includes('approvals.request'))
+const canApprove = computed(() => auth.user?.permissions.includes('approvals.decide'))
+const canExecute = computed(() => auth.user?.permissions.includes('executions.run'))
 const requestedCaseId = computed(() => {
   const raw = Array.isArray(route.query.caseId) ? route.query.caseId[0] : route.query.caseId
   const caseId = Number(raw)
@@ -124,6 +156,37 @@ async function loadData() {
   } finally {
     loading.value = false
   }
+}
+
+async function withPlanAction(planId: number, action: () => Promise<any>) {
+  actingPlanId.value = planId
+  message.value = ''
+  try {
+    const result = await action()
+    const successMessage = result.message || (result.success ? '操作成功' : '操作未成功')
+    await loadData()
+    message.value = successMessage
+  } catch (error: any) {
+    message.value = error?.response?.data?.detail || '操作失败'
+  } finally {
+    actingPlanId.value = null
+  }
+}
+
+async function initiateApproval(plan: any) {
+  await withPlanAction(plan.id, () => fabricApi.initiateApproval(plan.id, plan.risk_level))
+}
+
+async function decide(plan: any, decision: 'approved' | 'rejected') {
+  await withPlanAction(plan.id, () => fabricApi.decideApproval(
+    plan.id,
+    decision,
+    approvalComments.value[plan.id] || ''
+  ))
+}
+
+async function execute(plan: any) {
+  await withPlanAction(plan.id, () => fabricApi.executePlan(plan.id, crypto.randomUUID()))
 }
 
 onMounted(async () => {
@@ -211,6 +274,9 @@ watch(
   color: #5e738f;
   font-size: 12px;
 }
+
+.approval-comment { width: 100%; min-height: 72px; box-sizing: border-box; margin-top: 12px; padding: 10px; border: 1px solid #cbd5e1; border-radius: 10px; resize: vertical; }
+.plan-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 
 @media (max-width: 980px) {
   .overview-grid,

@@ -72,3 +72,4 @@ class RemediationPlanExecuteResponse(BaseModel):
     status: str
     case_status: str
     executions: List[ExecutionActionSummary] = Field(default_factory=list)
+    execution_job_id: int

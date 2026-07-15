@@ -43,7 +43,14 @@ class ProbeTarget:
 
 
 class SSHProbeTransport:
-    def resolve_target(self, db: Session, credential_id: int, netbox_device_id: int) -> ProbeTarget:
+    def resolve_target(
+        self,
+        db: Session,
+        credential_id: int,
+        netbox_device_id: int,
+        *,
+        required_scope: str = "probe.read",
+    ) -> ProbeTarget:
         binding = (
             db.query(SSHCredentialDeviceBinding)
             .filter(
@@ -57,8 +64,8 @@ class SSHProbeTransport:
         credential = db.query(SSHCredential).filter(SSHCredential.id == credential_id).first()
         if credential is None or not credential.enabled:
             raise ValueError("credential_unavailable")
-        if "probe.read" not in (credential.capability_scope or []):
-            raise ValueError("credential_not_scoped_for_read_only_probes")
+        if required_scope not in (credential.capability_scope or []):
+            raise ValueError(f"credential_missing_scope:{required_scope}")
         device = ssh_service._device_by_id(netbox_device_id)
         device_ip = ssh_service._extract_primary_ip(device)
         if not device_ip:

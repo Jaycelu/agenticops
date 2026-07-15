@@ -99,7 +99,7 @@ class PolicyGuard:
             {"autonomy_level": autonomy_level, "approval_threshold": approval_threshold},
         ))
 
-        mutating = risk > 0 or request.mode == "execute"
+        mutating = spec.capability == "mutation"
 
         # Gate 5a — autonomy floor:
         #   L0: block everything (including notifications).

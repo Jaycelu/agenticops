@@ -86,10 +86,12 @@ def register_execution_components():
     from services.execution_engine import execution_engine
     from services.notification_executor import notification_executor
     from services.script_executor import script_executor
+    from services.ssh_mutation_executor import ssh_mutation_executor
 
     execution_engine.register_executor(api_executor)
     execution_engine.register_executor(notification_executor)
     execution_engine.register_executor(script_executor)
+    execution_engine.register_executor(ssh_mutation_executor)
     logger.info("Execution components registered: {}", execution_engine.list_executors())
 
 

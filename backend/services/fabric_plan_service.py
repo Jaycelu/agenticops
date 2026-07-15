@@ -6,7 +6,9 @@ from typing import Any, Dict
 from sqlalchemy.orm import Session
 
 from api.schemas.automation import ApprovalDecisionRequest, ApprovalInitiateRequest, TaskFeedbackRequest
-from models.agenticops import RemediationPlan, RemediationPlanStatus
+from models.agenticops import RemediationPlan
+from approvals.service import approval_service
+from auth.schemas import Principal
 from services.memory_ingestion_service import memory_ingestion_service
 
 
@@ -22,31 +24,19 @@ def initiate_plan_approval(
     plan_id: int,
     payload: ApprovalInitiateRequest,
     *,
-    initiator: str,
+    principal: Principal,
 ) -> Dict[str, Any]:
     plan = get_plan_or_raise(db, plan_id)
-    safety_checks = dict(plan.safety_checks or {})
-    approval_history = list(safety_checks.get("approval_history") or [])
-    approval_history.append(
-        {
-            "stage": "initiate",
-            "risk_level": (payload.risk_level or "medium").lower(),
-            "initiator": initiator,
-            "created_at": datetime.now().isoformat(),
-        }
-    )
-    safety_checks["approval_history"] = approval_history
-    plan.safety_checks = safety_checks
-    plan.approval_status = "pending"
-    plan.status = RemediationPlanStatus.PENDING_APPROVAL
-    db.commit()
-    db.refresh(plan)
+    if (payload.risk_level or "").lower() != (plan.risk_level or "").lower():
+        raise ValueError("request risk_level must match the frozen plan")
+    version = approval_service.initiate(db, plan_id, principal)
     return {
         "success": True,
         "plan_id": int(plan.id),
         "message": "Approval initiated for remediation plan",
         "approval_status": plan.approval_status,
         "status": plan.status.value if hasattr(plan.status, "value") else str(plan.status),
+        "data": {"version": version.version, "plan_hash": version.plan_hash, "expires_at": version.expires_at},
     }
 
 
@@ -55,43 +45,23 @@ def decide_plan_approval(
     plan_id: int,
     payload: ApprovalDecisionRequest,
     *,
-    approver: str,
+    principal: Principal,
 ) -> Dict[str, Any]:
-    decision = (payload.decision or "").lower()
-    if decision not in {"approved", "rejected"}:
-        raise ValueError("decision must be approved or rejected")
-
+    record = approval_service.decide(db, plan_id, payload.decision, payload.comment, principal)
     plan = get_plan_or_raise(db, plan_id)
-    safety_checks = dict(plan.safety_checks or {})
-    approval_history = list(safety_checks.get("approval_history") or [])
-    approval_history.append(
-        {
-            "stage": "decision",
-            "approver": approver,
-            "decision": decision,
-            "comment": payload.comment or "",
-            "decided_at": datetime.now().isoformat(),
-        }
-    )
-    safety_checks["approval_history"] = approval_history
-    plan.safety_checks = safety_checks
-    plan.approval_status = decision
-    plan.status = RemediationPlanStatus.APPROVED if decision == "approved" else RemediationPlanStatus.CANCELLED
-    plan.approved_at = datetime.now() if decision == "approved" else None
-    db.commit()
-    db.refresh(plan)
     return {
         "success": True,
         "plan_id": int(plan.id),
         "message": "Approval decision recorded",
         "approval_status": plan.approval_status,
         "status": plan.status.value if hasattr(plan.status, "value") else str(plan.status),
+        "data": {"decision_id": int(record.id), "decided_plan_hash": record.decided_plan_hash},
     }
 
 
 def get_plan_approval_history(db: Session, plan_id: int) -> Dict[str, Any]:
     plan = get_plan_or_raise(db, plan_id)
-    history = list((plan.safety_checks or {}).get("approval_history") or [])
+    history = approval_service.history(db, plan_id)
     return {"plan_id": int(plan.id), "total": len(history), "approvals": history}
 
 

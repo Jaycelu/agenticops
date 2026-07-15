@@ -1,10 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import hashlib
+import json
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+from approvals.service import approval_service
+from audit.service import security_audit_service
+from auth.schemas import Principal
+from config.settings import settings
 from models.agenticops import (
     CaseRecord,
     CaseStatus,
@@ -13,8 +19,9 @@ from models.agenticops import (
     RemediationPlan,
     RemediationPlanStatus,
 )
+from models.execution_job import ExecutionActionResult, ExecutionJob, IdempotencyRecord
 from policies.guard import PolicyGuard, policy_guard
-from services.execution_engine import ExecutionStatus, ExecutorType, execution_engine
+from services.execution_engine import ExecutionStatus, ExecutorType, RetryPolicy, execution_engine
 from services.post_execution_verification_service import post_execution_verification_service
 from tools.base import ToolRequest
 from tools.registry import ToolSpec, tool_registry
@@ -30,18 +37,113 @@ class ExecutionService:
     def __init__(self, guard: Optional[PolicyGuard] = None) -> None:
         self.guard = guard or policy_guard
 
-    async def execute_plan(self, db: Session, plan_id: int, *, triggered_by: str) -> Dict[str, Any]:
-        plan = db.query(RemediationPlan).filter(RemediationPlan.id == plan_id).first()
+    async def execute_plan(
+        self,
+        db: Session,
+        plan_id: int,
+        *,
+        principal: Principal,
+        idempotency_key: str,
+    ) -> Dict[str, Any]:
+        plan = db.query(RemediationPlan).filter(RemediationPlan.id == plan_id).with_for_update().first()
         if plan is None:
             raise LookupError("Plan not found")
-
         case = db.query(CaseRecord).filter(CaseRecord.id == plan.case_id).first()
         if case is None:
             raise LookupError("Case not found")
-
-        actions = list((plan.plan_payload or {}).get("recommended_actions") or [])
-        if not actions:
+        version = approval_service.active_approved_version(db, plan, lock=True)
+        frozen_actions = list(
+            (version.canonical_payload.get("plan_payload") or {}).get("recommended_actions") or []
+        )
+        if not frozen_actions:
             raise ValueError("Plan has no recommended actions")
+        request_hash = hashlib.sha256(
+            json.dumps(
+                {"plan_id": plan_id, "plan_version_id": int(version.id), "plan_hash": version.plan_hash},
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        existing = db.query(IdempotencyRecord).filter(
+            IdempotencyRecord.scope == "plan.execute",
+            IdempotencyRecord.idempotency_key == idempotency_key,
+        ).first()
+        if existing:
+            if existing.request_hash != request_hash:
+                raise ValueError("idempotency key was already used for a different request")
+            if existing.status == "completed":
+                return dict(existing.response_snapshot or {})
+            raise ValueError("execution with this idempotency key is still in progress")
+        prior_job = db.query(ExecutionJob).filter(ExecutionJob.plan_version_id == version.id).first()
+        if prior_job:
+            if prior_job.result:
+                return dict(prior_job.result)
+            raise ValueError("this approved plan version already has an execution job")
+        job = ExecutionJob(
+            plan_version_id=version.id,
+            remediation_plan_id=plan.id,
+            case_id=case.id,
+            plan_hash=version.plan_hash,
+            idempotency_key=idempotency_key,
+            status="running",
+            requested_by_user_id=principal.user_id,
+            requested_by_session_id=principal.session_id,
+            result={},
+        )
+        record = IdempotencyRecord(
+            scope="plan.execute",
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+            status="in_progress",
+            resource_type="execution_job",
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=settings.idempotency_ttl_hours),
+            response_snapshot={},
+        )
+        db.add_all([job, record])
+        db.flush()
+        record.resource_id = str(job.id)
+        security_audit_service.append(
+            db,
+            event_type="execution.accepted",
+            outcome="success",
+            actor_user_id=principal.user_id,
+            actor_session_id=principal.session_id,
+            target_type="execution_job",
+            target_id=str(job.id),
+            details={"plan_id": plan_id, "plan_version_id": int(version.id), "plan_hash": version.plan_hash},
+        )
+        db.commit()
+
+        # Worker boundary: lock and verify the frozen hash again immediately before
+        # any external side effect.
+        try:
+            plan = db.query(RemediationPlan).filter(RemediationPlan.id == plan_id).with_for_update().one()
+            case = db.query(CaseRecord).filter(CaseRecord.id == plan.case_id).with_for_update().one()
+            version = approval_service.active_approved_version(db, plan, lock=True)
+            if version.plan_hash != job.plan_hash:
+                raise ValueError("execution job plan hash mismatch")
+        except Exception as exc:
+            db.rollback()
+            job = db.query(ExecutionJob).filter(ExecutionJob.id == job.id).with_for_update().one()
+            record = db.query(IdempotencyRecord).filter(IdempotencyRecord.id == record.id).with_for_update().one()
+            response = {
+                "success": False,
+                "plan_id": plan_id,
+                "case_id": int(job.case_id),
+                "status": "failed",
+                "case_status": "unchanged",
+                "executions": [],
+                "execution_job_id": int(job.id),
+            }
+            job.status = "failed"
+            job.error_code = type(exc).__name__[:80]
+            job.result = response
+            job.finished_at = datetime.now(timezone.utc)
+            record.status = "completed"
+            record.response_snapshot = response
+            db.commit()
+            return response
+        actions = list((version.canonical_payload.get("plan_payload") or {}).get("recommended_actions") or [])
 
         plan.status = RemediationPlanStatus.EXECUTING
         case.status = CaseStatus.EXECUTING
@@ -55,7 +157,7 @@ class ExecutionService:
         skipped_count = 0
 
         for index, action in enumerate(actions, start=1):
-            request = self._build_tool_request(action, case=case, plan=plan, triggered_by=triggered_by)
+            request = self._build_tool_request(action, case=case, plan=plan, triggered_by=principal.username)
             spec = tool_registry.get(request.tool_id)
 
             # Advisory action — record as skipped, no ExecutionRun, not a failure.
@@ -71,6 +173,7 @@ class ExecutionService:
                         "effective_risk": int(getattr(spec, "risk_level", 0) or 0),
                     }
                 )
+                self._record_action_result(db, job, index, request, spec, "skipped", execution_summaries[-1])
                 continue
 
             decision = self.guard.check(request, case=case, plan=plan, db=db)
@@ -91,6 +194,7 @@ class ExecutionService:
                 hard_failure = True
                 db.flush()
                 execution_summaries.append(self._summary(run, decision.to_dict()))
+                self._record_action_result(db, job, index, request, spec, "failed", execution_summaries[-1])
                 continue
 
             result = await self._execute_allowed_action(run, request, spec, case=case)
@@ -106,13 +210,54 @@ class ExecutionService:
             db.flush()
 
             if run.status == ExecutionRunStatus.SUCCEEDED:
-                verification = await post_execution_verification_service.verify_execution_readonly(db, execution_id=int(run.id))
+                try:
+                    verification = await post_execution_verification_service.verify_execution_readonly(
+                        db, execution_id=int(run.id)
+                    )
+                except Exception as exc:  # verification failure cannot turn execution into success
+                    verification = {"success": False, "status": "inconclusive", "error": type(exc).__name__}
                 run.result_payload = {**result, "post_verification": verification}
                 verified_resolved = verified_resolved or case.status == CaseStatus.RESOLVED
 
             execution_summaries.append(self._summary(run, decision.to_dict()))
+            self._record_action_result(
+                db,
+                job,
+                index,
+                request,
+                spec,
+                "succeeded" if run.status == ExecutionRunStatus.SUCCEEDED else "failed",
+                {"summary": execution_summaries[-1], "result": run.result_payload or {}},
+            )
 
-        if allowed_success and not hard_failure:
+        rollback_attempted = False
+        rollback_succeeded = False
+        if allowed_success and hard_failure:
+            rollback_actions = list(
+                (version.canonical_payload.get("rollback_payload") or {}).get("recommended_actions") or []
+            )
+            if rollback_actions:
+                rollback_attempted = True
+                rollback_succeeded, rollback_summaries = await self._execute_rollback(
+                    db,
+                    job=job,
+                    plan=plan,
+                    case=case,
+                    actions=rollback_actions,
+                    start_index=len(actions) + 1,
+                    requested_by=principal.username,
+                )
+                execution_summaries.extend(rollback_summaries)
+
+        if rollback_attempted and rollback_succeeded:
+            plan.status = RemediationPlanStatus.ROLLED_BACK
+            case.status = CaseStatus.ESCALATED
+            case.current_phase = "execution_rolled_back"
+        elif rollback_attempted:
+            plan.status = RemediationPlanStatus.FAILED
+            case.status = CaseStatus.ESCALATED
+            case.current_phase = "rollback_failed"
+        elif allowed_success and not hard_failure:
             plan.status = RemediationPlanStatus.SUCCEEDED
             if not verified_resolved:
                 case.status = CaseStatus.VERIFYING
@@ -132,15 +277,38 @@ class ExecutionService:
             case.status = CaseStatus.PLANNED
             case.current_phase = "advisory_only"
 
-        db.commit()
-        return {
+        response = {
             "success": not hard_failure,
             "plan_id": int(plan.id),
             "case_id": int(case.id),
             "status": plan.status.value if hasattr(plan.status, "value") else str(plan.status),
             "case_status": case.status.value if hasattr(case.status, "value") else str(case.status),
             "executions": execution_summaries,
+            "execution_job_id": int(job.id),
         }
+        job.status = (
+            "succeeded"
+            if response["success"]
+            else "rolled_back"
+            if plan.status == RemediationPlanStatus.ROLLED_BACK
+            else "failed"
+        )
+        job.result = response
+        job.finished_at = datetime.now(timezone.utc)
+        record.status = "completed"
+        record.response_snapshot = response
+        security_audit_service.append(
+            db,
+            event_type="execution.completed",
+            outcome="success" if response["success"] else "failed",
+            actor_user_id=principal.user_id,
+            actor_session_id=principal.session_id,
+            target_type="execution_job",
+            target_id=str(job.id),
+            details={"plan_id": plan_id, "status": job.status},
+        )
+        db.commit()
+        return response
 
     def _build_tool_request(
         self,
@@ -161,11 +329,8 @@ class ExecutionService:
             "role": (case.case_metadata or {}).get("device_role"),
             "tags": (case.case_metadata or {}).get("tags") or [],
         }
-        mode = str(action.get("tool_mode") or action.get("mode") or ("execute" if tool_id != "manual.review" else "observe"))
-        if tool_id == "notify.dingtalk":
-            mode = "execute"
-        elif tool_id == "manual.review":
-            mode = "observe"
+        spec = tool_registry.get(tool_id)
+        mode = "observe" if spec and spec.capability in {"read_only", "manual"} else "execute"
         return ToolRequest(
             tool_id=tool_id,
             params=params,
@@ -274,6 +439,8 @@ class ExecutionService:
         action_config = dict(request.params)
         action_config.setdefault("timeout", spec.timeout)
         action_config.setdefault("read_only", request.mode == "observe" and request.tool_id != "script.run")
+        if case.netbox_device_id:
+            action_config.setdefault("netbox_device_id", int(case.netbox_device_id))
         context = {
             "case_id": int(case.id),
             "case_code": case.case_code,
@@ -282,7 +449,10 @@ class ExecutionService:
             "plan_id": request.plan_id,
             "execution_run_id": int(run.id),
         }
-        result = await execution_engine.execute_action(int(run.id), executor_type, action_config, context)
+        retry_policy = RetryPolicy(max_retries=0) if spec.capability == "mutation" else None
+        result = await execution_engine.execute_action(
+            int(run.id), executor_type, action_config, context, retry_policy=retry_policy
+        )
         return result.to_dict()
 
     def _summary(self, run: ExecutionRun, decision: Dict[str, Any]) -> Dict[str, Any]:
@@ -294,6 +464,90 @@ class ExecutionService:
             "allowed": decision.get("allowed"),
             "effective_risk": decision.get("effective_risk"),
         }
+
+    async def _execute_rollback(
+        self,
+        db: Session,
+        *,
+        job: ExecutionJob,
+        plan: RemediationPlan,
+        case: CaseRecord,
+        actions: List[Dict[str, Any]],
+        start_index: int,
+        requested_by: str,
+    ) -> tuple[bool, List[Dict[str, Any]]]:
+        summaries: List[Dict[str, Any]] = []
+        all_succeeded = True
+        for offset, action in enumerate(actions):
+            index = start_index + offset
+            request = self._build_tool_request(action, case=case, plan=plan, triggered_by=requested_by)
+            spec = tool_registry.get(request.tool_id)
+            decision = self.guard.check(request, case=case, plan=plan, db=db)
+            run = self._create_execution_run(
+                db,
+                case=case,
+                plan=plan,
+                request=request,
+                spec=spec,
+                action_index=index,
+                decision={**decision.to_dict(), "rollback": True},
+            )
+            if not decision.allowed:
+                run.status = ExecutionRunStatus.FAILED
+                run.error_message = decision.blocked_reason or "rollback_policy_blocked"
+                result: Dict[str, Any] = {"error": run.error_message}
+            else:
+                result = await self._execute_allowed_action(run, request, spec, case=case)
+                if result.get("status") == ExecutionStatus.SUCCESS.value:
+                    run.status = ExecutionRunStatus.ROLLED_BACK
+                else:
+                    run.status = ExecutionRunStatus.FAILED
+                    run.error_message = result.get("error") or result.get("message") or "rollback_failed"
+            run.result_payload = {**result, "rollback": True}
+            run.finished_at = datetime.now(timezone.utc)
+            db.flush()
+            succeeded = run.status == ExecutionRunStatus.ROLLED_BACK
+            all_succeeded = all_succeeded and succeeded
+            summary = {**self._summary(run, decision.to_dict()), "rollback": True}
+            summaries.append(summary)
+            self._record_action_result(
+                db,
+                job,
+                index,
+                request,
+                spec,
+                "rolled_back" if succeeded else "rollback_failed",
+                {"summary": summary, "result": result},
+            )
+        return all_succeeded, summaries
+
+    @staticmethod
+    def _record_action_result(
+        db: Session,
+        job: ExecutionJob,
+        index: int,
+        request: ToolRequest,
+        spec: Optional[ToolSpec],
+        status: str,
+        result: Dict[str, Any],
+    ) -> None:
+        request_hash = hashlib.sha256(
+            json.dumps(request.to_dict(), sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+        ).hexdigest()
+        db.add(
+            ExecutionActionResult(
+                execution_job_id=job.id,
+                action_index=index,
+                tool_id=request.tool_id,
+                capability=getattr(spec, "capability", "unknown"),
+                status=status,
+                request_hash=request_hash,
+                result=result,
+                error_message=result.get("error") or result.get("blocked_reason"),
+                finished_at=datetime.now(timezone.utc),
+            )
+        )
+        db.flush()
 
 
 execution_service = ExecutionService()

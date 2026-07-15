@@ -26,5 +26,27 @@ export const fabricApi = {
   }) {
     const response = await axios.get(buildUrl('/api/fabric/executions'), { params })
     return response.data
+  },
+
+  async initiateApproval(planId: number, riskLevel: string) {
+    const response = await axios.post(buildUrl(`/api/fabric/plans/${planId}/approval/initiate`), {
+      risk_level: riskLevel
+    })
+    return response.data
+  },
+
+  async decideApproval(planId: number, decision: 'approved' | 'rejected', comment: string) {
+    const response = await axios.post(buildUrl(`/api/fabric/plans/${planId}/approval/decision`), {
+      decision,
+      comment
+    })
+    return response.data
+  },
+
+  async executePlan(planId: number, idempotencyKey: string) {
+    const response = await axios.post(buildUrl(`/api/fabric/plans/${planId}/execute`), {}, {
+      headers: { 'Idempotency-Key': idempotencyKey }
+    })
+    return response.data
   }
 }
