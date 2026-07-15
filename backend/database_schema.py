@@ -54,6 +54,7 @@ def active_tables() -> list[Table]:
     from models.approval import ApprovalDecision, PlanVersion
     from models.execution_job import ExecutionActionResult, ExecutionJob, IdempotencyRecord
     from models.webhook import OutboxEvent, WebhookDelivery, WebhookEndpoint
+    from models.verification import BaselineSnapshot, VerificationCheck, VerificationRun
 
     return [
         Site.__table__,
@@ -97,6 +98,9 @@ def active_tables() -> list[Table]:
         WebhookEndpoint.__table__,
         OutboxEvent.__table__,
         WebhookDelivery.__table__,
+        VerificationRun.__table__,
+        BaselineSnapshot.__table__,
+        VerificationCheck.__table__,
     ]
 
 

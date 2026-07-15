@@ -22,10 +22,11 @@ from models.agenticops import (
 from models.execution_job import ExecutionActionResult, ExecutionJob, IdempotencyRecord
 from policies.guard import PolicyGuard, policy_guard
 from services.execution_engine import ExecutionStatus, ExecutorType, RetryPolicy, execution_engine
-from services.post_execution_verification_service import post_execution_verification_service
 from tools.base import ToolRequest
 from tools.registry import ToolSpec, tool_registry
 from webhooks.service import webhook_service
+from verifications.baseline import baseline_service
+from verifications.service import verification_service
 
 
 # Advisory tools describe human process steps, not executor invocations.
@@ -162,6 +163,7 @@ class ExecutionService:
         allowed_success = False
         hard_failure = False
         verified_resolved = False
+        mutation_verdicts: List[str] = []
         skipped_count = 0
 
         for index, action in enumerate(actions, start=1):
@@ -205,10 +207,37 @@ class ExecutionService:
                 self._record_action_result(db, job, index, request, spec, "failed", execution_summaries[-1])
                 continue
 
+            verification_run = None
+            if spec and spec.capability == "mutation":
+                verification_run = await baseline_service.capture(
+                    db,
+                    execution_job_id=int(job.id),
+                    case_id=int(case.id),
+                    action_index=index,
+                    policy_payload=request.action.get("verification") or {},
+                )
+                if verification_run.status != "baseline_ready":
+                    run.status = ExecutionRunStatus.FAILED
+                    run.error_message = "mandatory verification baseline failed"
+                    run.result_payload = {
+                        "status": ExecutionStatus.FAILED.value,
+                        "error": "verification_baseline_failed",
+                        "verification_run_id": int(verification_run.id),
+                    }
+                    run.finished_at = datetime.now(timezone.utc)
+                    hard_failure = True
+                    db.flush()
+                    execution_summaries.append(self._summary(run, decision.to_dict()))
+                    self._record_action_result(
+                        db, job, index, request, spec, "failed", {"summary": execution_summaries[-1], "result": run.result_payload}
+                    )
+                    continue
+
             result = await self._execute_allowed_action(db, run, request, spec, case=case)
             run.result_payload = result
             run.finished_at = datetime.now(timezone.utc)
-            if result.get("status") == ExecutionStatus.SUCCESS.value:
+            action_succeeded = result.get("status") == ExecutionStatus.SUCCESS.value
+            if action_succeeded:
                 run.status = ExecutionRunStatus.SUCCEEDED
                 allowed_success = True
             else:
@@ -217,15 +246,12 @@ class ExecutionService:
                 hard_failure = True
             db.flush()
 
-            if run.status == ExecutionRunStatus.SUCCEEDED:
-                try:
-                    verification = await post_execution_verification_service.verify_execution_readonly(
-                        db, execution_id=int(run.id)
-                    )
-                except Exception as exc:  # verification failure cannot turn execution into success
-                    verification = {"success": False, "status": "inconclusive", "error": type(exc).__name__}
+            if run.status == ExecutionRunStatus.SUCCEEDED and verification_run:
+                verification = await verification_service.evaluate(
+                    db, verification_run, execution_run_id=int(run.id)
+                )
                 run.result_payload = {**result, "post_verification": verification}
-                verified_resolved = verified_resolved or case.status == CaseStatus.RESOLVED
+                mutation_verdicts.append(str(verification.get("verdict") or "inconclusive"))
 
             execution_summaries.append(self._summary(run, decision.to_dict()))
             self._record_action_result(
@@ -234,10 +260,11 @@ class ExecutionService:
                 index,
                 request,
                 spec,
-                "succeeded" if run.status == ExecutionRunStatus.SUCCEEDED else "failed",
+                "succeeded" if action_succeeded else "failed",
                 {"summary": execution_summaries[-1], "result": run.result_payload or {}},
             )
 
+        verified_resolved = bool(mutation_verdicts) and all(item == "verified" for item in mutation_verdicts)
         rollback_attempted = False
         rollback_succeeded = False
         if allowed_success and hard_failure:

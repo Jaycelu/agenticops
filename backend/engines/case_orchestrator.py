@@ -42,6 +42,7 @@ from services.memory_retriever import memory_retriever
 from probes.gateway import probe_gateway
 from probes.schemas import ProbeRequest
 from webhooks.service import webhook_service
+from tools.registry import tool_registry
 
 
 class CaseOrchestrator:
@@ -745,9 +746,14 @@ class CaseOrchestrator:
         plan.approval_status = payload.get("approval_status") or "required"
         plan.risk_level = case.risk_level
         plan.summary = claim.claim_text
+        recommended_actions = payload.get("recommended_actions") or []
+        for action in recommended_actions:
+            spec = tool_registry.get(str(action.get("tool_id") or "manual.review"))
+            if spec and spec.capability == "mutation" and not action.get("verification"):
+                action["verification"] = self._default_verification_policy(case)
         plan.plan_payload = {
             "recommendations": payload.get("recommendations") or [],
-            "recommended_actions": payload.get("recommended_actions") or [],
+            "recommended_actions": recommended_actions,
             "root_cause": payload.get("root_cause"),
             "impact_scope": payload.get("impact_scope"),
             "policy_audit": payload.get("policy_audit") or {},
@@ -760,6 +766,44 @@ class CaseOrchestrator:
             "policy_audit": payload.get("policy_audit") or {},
         }
         return plan
+
+    @staticmethod
+    def _default_verification_policy(case: CaseRecord) -> Dict[str, Any]:
+        source_system = (case.source_event.source_system if case.source_event else "").lower()
+        raw = (case.source_event.raw_payload if case.source_event else {}) or {}
+        if source_system == "zabbix":
+            event_id = raw.get("event_id") or raw.get("eventid") or raw.get("object_id")
+            target = {
+                "host": (case.case_metadata or {}).get("zabbix_host") or case.host or case.device_ip,
+                "name_contains": case.title,
+            }
+            if event_id:
+                target["event_id"] = str(event_id)
+            return {
+                "checks": [
+                    {
+                        "check_id": "originating-zabbix-alert",
+                        "kind": "zabbix_alert_absent",
+                        "target": target,
+                        "max_age_seconds": 300,
+                    }
+                ],
+                "max_rounds": 3,
+                "interval_seconds": 60,
+            }
+        return {
+            "checks": [
+                {
+                    "check_id": "originating-log-rate",
+                    "kind": "elk_count_reduced",
+                    "target": {"query": case.host or case.device_ip or case.title, "time_range": "-15m,now"},
+                    "max_age_seconds": 300,
+                    "max_ratio": 0.5,
+                }
+            ],
+            "max_rounds": 3,
+            "interval_seconds": 60,
+        }
 
     def _apply_safety_critic_decision(
         self,

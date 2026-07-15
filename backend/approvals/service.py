@@ -14,6 +14,8 @@ from config.settings import settings
 from models.agenticops import RemediationPlan, RemediationPlanStatus
 from models.approval import ApprovalDecision, PlanVersion
 from webhooks.service import webhook_service
+from tools.registry import tool_registry
+from verifications.schemas import VerificationPolicy
 
 
 def canonical_plan_payload(plan: RemediationPlan) -> dict[str, Any]:
@@ -42,6 +44,7 @@ class ApprovalService:
             raise LookupError("Plan not found")
         if plan.status not in {RemediationPlanStatus.DRAFT, RemediationPlanStatus.PENDING_APPROVAL}:
             raise ValueError("only draft or pending plans can be frozen for approval")
+        self._validate_mutation_verification(plan)
         payload = canonical_plan_payload(plan)
         digest = plan_payload_hash(payload)
         db.query(PlanVersion).filter(
@@ -203,6 +206,17 @@ class ApprovalService:
             }
             for version, decision in rows
         ]
+
+    @staticmethod
+    def _validate_mutation_verification(plan: RemediationPlan) -> None:
+        actions = list((plan.plan_payload or {}).get("recommended_actions") or [])
+        for index, action in enumerate(actions, start=1):
+            spec = tool_registry.get(str(action.get("tool_id") or "manual.review"))
+            if spec and spec.capability == "mutation":
+                try:
+                    VerificationPolicy.model_validate(action.get("verification"))
+                except Exception as exc:
+                    raise ValueError(f"mutation action {index} requires a valid verification policy") from exc
 
     @staticmethod
     def _audit(

@@ -30,4 +30,4 @@ def test_database_startup_hook_contains_no_schema_mutation() -> None:
 def test_expected_revision_matches_migration_head() -> None:
     from database import expected_database_revisions
 
-    assert expected_database_revisions() == {"0007_webhook_outbox"}
+    assert expected_database_revisions() == {"0008_verification_loop"}

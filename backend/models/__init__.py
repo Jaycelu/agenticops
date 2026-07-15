@@ -36,6 +36,7 @@ from models.probe import DeviceHostKey, ProbeRun, ProbeTemplateVersion
 from models.approval import ApprovalDecision, PlanVersion
 from models.execution_job import ExecutionActionResult, ExecutionJob, IdempotencyRecord
 from models.webhook import OutboxEvent, WebhookDelivery, WebhookEndpoint
+from models.verification import BaselineSnapshot, VerificationCheck, VerificationRun
 
 __all__ = [
     "Site",
@@ -74,4 +75,7 @@ __all__ = [
     "WebhookEndpoint",
     "OutboxEvent",
     "WebhookDelivery",
+    "VerificationRun",
+    "BaselineSnapshot",
+    "VerificationCheck",
 ]
