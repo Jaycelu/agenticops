@@ -87,7 +87,7 @@ async function updateStatus(ticketCode: string) {
   const status = statusMap.value[ticketCode]
   if (!status) return
   try {
-    const result = await ticketsApi.updateStatus(ticketCode, status, 'manual_update_from_ui', 'ticket-ui')
+    const result = await ticketsApi.updateStatus(ticketCode, status, 'manual_update_from_ui')
     message.value = result.message
     await loadTickets()
   } catch (e: any) {

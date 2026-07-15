@@ -719,7 +719,7 @@ async def _maybe_create_case_for_aggregate(
     aggregated: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
     dedup_raw = f"log-aggregate|{request.base_name}|{request.time_range}|{request.filter or ''}"
-    dedup_key = hashlib.md5(dedup_raw.encode()).hexdigest()
+    dedup_key = hashlib.sha256(dedup_raw.encode()).hexdigest()
     top_group = aggregated[0] if aggregated else {}
     summary = (
         f"Log aggregate for {request.base_name}, total_logs={len(all_logs)}, "
@@ -833,7 +833,7 @@ async def _maybe_create_case_for_device_analysis(
     analysis_text: str,
 ) -> Dict[str, Any]:
     dedup_raw = f"log-device|{request.base_name}|{request.device}|{len(request.logs)}"
-    dedup_key = hashlib.md5(dedup_raw.encode()).hexdigest()
+    dedup_key = hashlib.sha256(dedup_raw.encode()).hexdigest()
     if not request.create_case:
         db = SessionLocal()
         try:

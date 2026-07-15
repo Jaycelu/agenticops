@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { configureAxios } from '@/api/http'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
@@ -6,13 +7,13 @@ function buildUrl(path: string): string {
   return API_BASE_URL.startsWith('http') ? path : path.replace('/api', '')
 }
 
-const api = axios.create({
+const api = configureAxios(axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
   }
-})
+}))
 
 export const listSSHCredentials = async () => {
   const response = await api.get(buildUrl('/api/ssh/credentials'))

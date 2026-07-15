@@ -631,7 +631,7 @@ async function dispatchReadonlySelected() {
   actionLoading.value = true
   actionMessage.value = ''
   try {
-    const result = await eventsApi.dispatchReadonly(selectedEvent.value.id, 'operator')
+    const result = await eventsApi.dispatchReadonly(selectedEvent.value.id)
     actionMessage.value = result.message
       + (result.case_code ? `，Case: ${result.case_code}` : result.case_id ? `，Case ID: ${result.case_id}` : '')
       + (result.task_id ? `，任务ID: ${result.task_id}` : '')

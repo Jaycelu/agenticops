@@ -19,7 +19,7 @@ class SimpleCache:
         """生成缓存键"""
         # 将参数转换为字符串并排序，确保相同的参数生成相同的键
         params_str = json.dumps(params, sort_keys=True)
-        hash_obj = hashlib.md5(params_str.encode())
+        hash_obj = hashlib.sha256(params_str.encode())
         return f"{prefix}:{hash_obj.hexdigest()}"
 
     def get(self, prefix: str, params: Dict[str, Any]) -> Optional[Any]:

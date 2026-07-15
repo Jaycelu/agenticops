@@ -34,11 +34,11 @@ export const ticketsApi = {
     }
   },
 
-  async updateStatus(ticketCode: string, status: string, comment?: string, operator = 'ui-operator') {
+  async updateStatus(ticketCode: string, status: string, comment?: string) {
     const apiUrl = API_BASE_URL.startsWith('http')
       ? `${API_BASE_URL}/api/tickets/${ticketCode}`
       : `${API_BASE_URL}/tickets/${ticketCode}`
-    const response = await axios.patch(apiUrl, { status, comment, operator })
+    const response = await axios.patch(apiUrl, { status, comment })
     return response.data as { success: boolean; message: string; ticket?: LocalTicketItem }
   }
 }

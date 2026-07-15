@@ -83,14 +83,14 @@ class FingerprintGenerator:
             fingerprint_str = f"{vendor}|{facility}|{normalized_message}"
             
             # 5. 生成hash
-            fingerprint_hash = hashlib.md5(fingerprint_str.encode()).hexdigest()
+            fingerprint_hash = hashlib.sha256(fingerprint_str.encode()).hexdigest()
             
             return fingerprint_hash
             
         except Exception as e:
             logger.error(f"Error generating fingerprint: {e}", exc_info=True)
             # 返回默认指纹
-            return hashlib.md5(log_message.encode()).hexdigest()
+            return hashlib.sha256(log_message.encode()).hexdigest()
     
     @classmethod
     def _extract_facility(cls, log_message: str) -> str:

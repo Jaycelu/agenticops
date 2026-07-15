@@ -180,15 +180,14 @@ export const eventsApi = {
   },
 
   async dispatchReadonly(
-    eventId: number,
-    reviewer: string = 'operator'
+    eventId: number
   ): Promise<{ success: boolean; message: string; task_id?: number | null; case_id?: number | null; case_code?: string | null; playbook_check?: Record<string, any> }> {
     const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/events/${eventId}/dispatch-readonly` : `${API_BASE_URL}/events/${eventId}/dispatch-readonly`
-    const response = await axios.post(apiUrl, { reviewer })
+    const response = await axios.post(apiUrl, {})
     return response.data
   },
 
-  async createTicket(eventId: number, payload?: { title?: string; description?: string; priority?: string; requester?: string }): Promise<{ success: boolean; message: string; ticket_id?: string; provider?: string }> {
+  async createTicket(eventId: number, payload?: { title?: string; description?: string; priority?: string }): Promise<{ success: boolean; message: string; ticket_id?: string; provider?: string }> {
     const apiUrl = API_BASE_URL.startsWith('http') ? `${API_BASE_URL}/api/events/${eventId}/ticket` : `${API_BASE_URL}/events/${eventId}/ticket`
     const response = await axios.post(apiUrl, payload || {})
     return response.data

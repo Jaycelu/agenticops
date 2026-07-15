@@ -1,5 +1,21 @@
 # Runbook
 
+## 首个管理员初始化
+
+数据库迁移完成后，只允许在空用户库中执行一次初始化。密码只能通过进程环境传入，命令不会接受明文密码参数：
+
+```bash
+cd backend
+BOOTSTRAP_ADMIN_PASSWORD='使用密码管理器生成的长随机密码' \
+  python -m scripts.bootstrap_admin \
+  --username admin \
+  --display-name Administrator \
+  --confirm-create-first-admin
+unset BOOTSTRAP_ADMIN_PASSWORD
+```
+
+命令会创建并启用 `local` 紧急身份源、首个管理员及审计事件。发现任何已有用户时会拒绝执行。日常访问应配置 OIDC、LDAP/AD 或 SAML；本地紧急管理员只用于身份源故障恢复。
+
 ## 1. 适用范围
 
 本手册用于 NetOps 事件中心迁移后的日常运行、验证、排障与发布，覆盖后端 FastAPI、前端 Vue、事件链路与 Case/Fabric 联动。

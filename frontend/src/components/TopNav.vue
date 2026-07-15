@@ -26,8 +26,9 @@
     </div>
 
     <div class="sidebar-foot">
-      <span>数据源</span>
-      <p>NetBox / ELK / Zabbix</p>
+      <span>{{ auth.user?.display_name || auth.user?.username }}</span>
+      <p>{{ auth.user?.roles.join(' / ') || '已认证用户' }}</p>
+      <button class="logout-button" @click="logout">退出登录</button>
     </div>
 
     <div class="sidebar-version">{{ appVersion }}</div>
@@ -35,7 +36,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import packageJson from '../../package.json'
 import {
   Activity,
@@ -51,7 +54,16 @@ import {
   FileText
 } from 'lucide-vue-next'
 
-const navSections = ref([
+type NavItem = {
+  path: string
+  label: string
+  icon: typeof House
+  permission?: string
+}
+
+type NavSection = { title: string; items: NavItem[] }
+
+const rawNavSections: NavSection[] = [
   {
     title: '指挥层',
     items: [
@@ -75,10 +87,23 @@ const navSections = ref([
       { path: '/zabbix', label: 'Zabbix 中心', icon: Bell },
       { path: '/assets', label: '资产拓扑', icon: Server },
       { path: '/tickets', label: '工单', icon: Ticket },
-      { path: '/settings', label: '设置', icon: Settings }
+      { path: '/settings', label: '设置', icon: Settings },
+      { path: '/identity', label: '身份与权限', icon: ShieldCheck, permission: 'identities.manage' }
     ]
   }
-])
+]
+
+const auth = useAuthStore()
+const router = useRouter()
+const navSections = computed(() => rawNavSections.map((section) => ({
+  ...section,
+  items: section.items.filter((item) => !item.permission || auth.user?.permissions.includes(item.permission))
+})).filter((section) => section.items.length > 0))
+
+async function logout() {
+  await auth.logout()
+  await router.replace({ name: 'Login' })
+}
 
 const appVersion = `v${packageJson.version}`
 </script>
@@ -123,6 +148,17 @@ const appVersion = `v${packageJson.version}`
   height: 32px;
   border-radius: 8px;
   animation: pulse 2s ease-in-out infinite;
+}
+
+.logout-button {
+  margin-top: 10px;
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 9px;
+  padding: 8px 10px;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.5);
+  cursor: pointer;
 }
 
 .nav-section {

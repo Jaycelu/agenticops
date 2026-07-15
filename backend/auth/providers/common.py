@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from auth.crypto import decrypt_text
+from auth.crypto import decrypt_text, encrypt_text
 from models.auth import IdentityProvider
 
 
@@ -26,6 +26,12 @@ def provider_secret(provider: IdentityProvider, key: str) -> str:
     if not encrypted:
         raise ProviderConfigurationError(f"provider secret is missing: {key}")
     return decrypt_text(encrypted, purpose=f"identity-provider:{provider.id}:{key}")
+
+
+def encrypt_provider_secret(provider: IdentityProvider, key: str, value: str) -> str:
+    if provider.id is None:
+        raise ProviderConfigurationError("provider must be persisted before encrypting secrets")
+    return encrypt_text(value, purpose=f"identity-provider:{provider.id}:{key}")
 
 
 def string_list(value: Any, *, default: tuple[str, ...] = ()) -> tuple[str, ...]:
