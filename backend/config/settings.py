@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     idempotency_ttl_hours: int = 72
     webhook_allow_http: bool = False
     webhook_lease_seconds: int = 60
+    elk_checkpoint_lease_seconds: int = 120
+    elk_ingestion_page_size: int = 500
+    elk_initial_lookback_hours: int = 1
 
     # Ticket integration mode: local|external
     ticket_mode: str = "local"

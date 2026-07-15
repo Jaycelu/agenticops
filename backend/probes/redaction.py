@@ -5,8 +5,9 @@ import re
 
 _PATTERNS = (
     re.compile(r"(?im)^(\s*(?:password|secret|community|pre-shared-key|private-key)\s+)(\S+).*$"),
+    re.compile(r"(?i)\b((?:password|secret|community|pre-shared-key|private-key)\s*[=:]?\s*)(?!<redacted>)\S+"),
     re.compile(r"(?i)\b(Bearer\s+)[A-Za-z0-9._~+/=-]+"),
-    re.compile(r"(?i)\b(snmp-server\s+community\s+)\S+"),
+    re.compile(r"(?i)\b(snmp-server\s+community\s+)(?!<redacted>)\S+"),
 )
 
 

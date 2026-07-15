@@ -55,6 +55,7 @@ def active_tables() -> list[Table]:
     from models.execution_job import ExecutionActionResult, ExecutionJob, IdempotencyRecord
     from models.webhook import OutboxEvent, WebhookDelivery, WebhookEndpoint
     from models.verification import BaselineSnapshot, VerificationCheck, VerificationRun
+    from models.ingestion import IngestedLogEvent, IngestionCheckpoint, LogAggregationBucket, NoiseReductionSnapshot
 
     return [
         Site.__table__,
@@ -101,6 +102,10 @@ def active_tables() -> list[Table]:
         VerificationRun.__table__,
         BaselineSnapshot.__table__,
         VerificationCheck.__table__,
+        IngestionCheckpoint.__table__,
+        IngestedLogEvent.__table__,
+        LogAggregationBucket.__table__,
+        NoiseReductionSnapshot.__table__,
     ]
 
 

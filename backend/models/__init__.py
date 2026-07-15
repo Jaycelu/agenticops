@@ -37,6 +37,7 @@ from models.approval import ApprovalDecision, PlanVersion
 from models.execution_job import ExecutionActionResult, ExecutionJob, IdempotencyRecord
 from models.webhook import OutboxEvent, WebhookDelivery, WebhookEndpoint
 from models.verification import BaselineSnapshot, VerificationCheck, VerificationRun
+from models.ingestion import IngestedLogEvent, IngestionCheckpoint, LogAggregationBucket, NoiseReductionSnapshot
 
 __all__ = [
     "Site",
@@ -78,4 +79,8 @@ __all__ = [
     "VerificationRun",
     "BaselineSnapshot",
     "VerificationCheck",
+    "IngestionCheckpoint",
+    "IngestedLogEvent",
+    "LogAggregationBucket",
+    "NoiseReductionSnapshot",
 ]
