@@ -1,21 +1,11 @@
 # 生产部署、恢复与放量
 
-## 1. 单数据库部署
+首次安装、旧库接管和管理员初始化请先执行根目录 [DEPLOYMENT.md](../DEPLOYMENT.md)。本文只描述生产运行责任，不重复安装步骤。
+
+## 1. 运行拓扑边界
 
 生产只创建一个 PostgreSQL 逻辑数据库 `netops_agenticops`，认证、审批、执行、Webhook、ELK checkpoint 和审计表共用该库。CI 的测试库是隔离资源，不属于生产拓扑。
-
-```bash
-cp deploy/docker.env.example .env
-# 使用密码管理器写入 APP_SECRET_KEY、POSTGRES_PASSWORD 及外部系统凭据
-docker compose config -q
-docker compose pull
-docker compose up -d postgres
-docker compose run --rm migrate
-docker compose up -d backend worker frontend
-docker compose ps
-```
-
-首次部署保持 `AUTOMATION_OBSERVE_ONLY=true`。不要把 PostgreSQL 端口暴露到公网；Compose 默认只绑定 `127.0.0.1`。
+API 与 Worker 是独立运行单元；迁移是一次性任务，不能由多个 API 实例并发执行。首次部署保持 `AUTOMATION_OBSERVE_ONLY=true`。不要把 PostgreSQL 端口暴露到公网；Compose 默认只绑定 `127.0.0.1`。
 
 ## 2. 集成验收
 
@@ -25,12 +15,29 @@ docker compose ps
 - ELK：代理必须返回稳定唯一 document ID，并支持按时间戳和 ID 的升序 `search_after`。无法保证时采集器会拒绝推进 checkpoint。
 - 观测：采集 `/metrics`，对 Worker 不存活、checkpoint lag、Webhook dead、待验证积压和执行中任务设置告警。
 
+建议至少建立以下告警：
+
+| 信号 | 建议条件 | 处理 |
+| --- | --- | --- |
+| `agenticops_worker_alive` | 连续 2 分钟为 `0` | 停止放量，检查 Worker 日志和数据库 |
+| `agenticops_elk_checkpoint_lag_seconds` | 超过业务允许延迟并持续 10 分钟 | 检查 ELK、分页契约和 Worker 吞吐 |
+| `agenticops_webhook_deliveries_dead` | 大于 `0` | 检查接收端后人工重投 |
+| `agenticops_webhook_deliveries_pending` | 持续增长 | 检查 DNS、TLS、限流和接收端容量 |
+| `agenticops_verifications_pending` | 超过验证窗口仍增长 | 禁止继续扩大变更范围 |
+| `agenticops_execution_jobs_running` | 超过动作超时仍未下降 | 检查设备锁和执行记录，禁止盲目重试 |
+
+日志应按 `request_id`、`case_id`、`execution_job_id`、`event_id` 和 Worker 名称建立检索视图。任何告警都应链接到对应 Runbook，而不是只发送无上下文通知。
+
 ## 3. 备份与恢复演练
 
 ```bash
-docker compose exec -T postgres pg_dump -U netops -d netops_agenticops -Fc > netops_agenticops.dump
-createdb netops_agenticops_restore_test
-pg_restore --exit-on-error --clean --if-exists -d netops_agenticops_restore_test netops_agenticops.dump
+docker compose exec -T postgres sh -c \
+  'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > netops_agenticops.dump
+docker compose exec -T postgres sh -c \
+  'createdb -U "$POSTGRES_USER" netops_agenticops_restore_test'
+docker compose exec -T postgres sh -c \
+  'pg_restore -U "$POSTGRES_USER" --exit-on-error -d netops_agenticops_restore_test' \
+  < netops_agenticops.dump
 ```
 
 恢复测试应核对 Alembic revision、用户/角色、审计链、审批与执行记录、Webhook outbox、ELK checkpoint。备份文件必须加密并按组织策略保留。

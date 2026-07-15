@@ -12,7 +12,7 @@ NetBox / ELK / Zabbix AgenticOps 运维系统
   <img src="https://img.shields.io/badge/Vue-3-42b883?logo=vue.js&logoColor=white" alt="Vue 3">
   <img src="https://img.shields.io/badge/FastAPI-0.104-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/PostgreSQL-14%2B-336791?logo=postgresql&logoColor=white" alt="PostgreSQL">
-  <img src="https://img.shields.io/badge/Release-v0.1.0-blue" alt="Release">
+  <img src="https://img.shields.io/badge/Release-v0.1.1-blue" alt="Release">
   <img src="https://img.shields.io/github/stars/Jaycelu/netops_bs?style=social" alt="GitHub stars">
 </p>
 
@@ -28,6 +28,7 @@ NetBox / ELK / Zabbix AgenticOps 运维系统
 - [核心能力](#核心能力)
 - [界面预览](#界面预览)
 - [典型链路](#典型链路)
+- [当前状态](#当前状态)
 - [快速开始](#快速开始)
 - [配置说明](#配置说明)
 - [核心模块](#核心模块)
@@ -38,6 +39,12 @@ NetBox / ELK / Zabbix AgenticOps 运维系统
 AgenticOps 是面向网络运维场景的事件治理与执行闭环系统。系统通过统一事件模型接入 `NetBox`、`ELK`、`Zabbix` 等数据源，并将事件处理链路收敛到：
 
 `Event -> Case -> Multi-Agent -> Memory -> Fabric / Execution`
+
+## 当前状态
+
+仓库已经具备生产候选版本的代码基础：单 PostgreSQL 数据库、OIDC/LDAP/SAML/本地紧急登录、RBAC、受控只读设备采证、人工审批、冻结计划、幂等执行、通用 Webhook、ELK checkpoint 与降噪回放、变更后可信验证、独立 Worker 和 Prometheus 指标。
+
+“可部署”不等于“已经生产认证”。首次上线必须保持 `AUTOMATION_OBSERVE_ONLY=true`，完成真实 SSO、设备、ELK、Zabbix、Webhook 联调以及至少 14 天 Shadow Mode 后，才能逐项开放设备变更能力。
 
 ## 核心能力
 
@@ -103,10 +110,70 @@ flowchart LR
 
 ### 默认方式：Docker Compose
 
-Compose 编排包含 PostgreSQL、后端 API、前端 Web 三个服务。
+Compose 编排包含一个 PostgreSQL 数据库、一次性迁移任务、后端 API、后台 Worker 和前端 Web。生产数据库只有一个逻辑库，CI 测试库不属于生产拓扑。
+
+#### 1. 准备配置
 
 ```bash
-docker compose up --build
+cp deploy/docker.env.example .env
+openssl rand -hex 32
+openssl rand -hex 24
+```
+
+将第一条随机值写入 `.env` 的 `APP_SECRET_KEY`，第二条写入 `POSTGRES_PASSWORD`。至少还要修改：
+
+| 必改变量 | 应填写内容 |
+| --- | --- |
+| `APP_SECRET_KEY` | 64 位十六进制随机值；上线后不可随意更换，否则已加密配置无法解密 |
+| `POSTGRES_PASSWORD` | 数据库随机密码；建议使用 URL 安全字符 |
+| `AUTH_PUBLIC_BASE_URL` | 用户访问系统的 HTTPS 根地址，例如 `https://agenticops.example.com` |
+| `FRONTEND_URL` | 同一前端公开 Origin，例如 `https://agenticops.example.com` |
+
+NetBox、ELK、Zabbix 和 LLM 变量按实际接入情况修改。首次部署不要修改以下安全默认值：
+
+```dotenv
+AUTOMATION_OBSERVE_ONLY=True
+AUTH_COOKIE_SECURE=True
+WEBHOOK_ALLOW_HTTP=False
+```
+
+生产环境还必须自行配置 HTTPS 反向代理或负载均衡，将公开域名转发到前端端口；仓库 Compose 不负责签发 TLS 证书。
+
+#### 2. 校验并启动
+
+```bash
+docker compose config -q
+docker compose build
+docker compose up -d postgres
+docker compose run --rm migrate
+docker compose up -d backend worker frontend
+docker compose ps
+```
+
+#### 3. 创建首个紧急管理员
+
+该命令只允许在空用户库执行一次：
+
+```bash
+export BOOTSTRAP_ADMIN_PASSWORD='密码管理器生成的长随机密码'
+docker compose exec -e BOOTSTRAP_ADMIN_PASSWORD="$BOOTSTRAP_ADMIN_PASSWORD" backend \
+  python -m scripts.bootstrap_admin \
+  --username admin \
+  --display-name Administrator \
+  --confirm-create-first-admin
+unset BOOTSTRAP_ADMIN_PASSWORD
+```
+
+登录后从“身份与权限”配置 OIDC、LDAP/AD 或 SAML；本地管理员只作为身份源故障时的紧急入口。
+
+#### 4. 验证
+
+```bash
+curl -f http://127.0.0.1:8000/health/live
+curl -f http://127.0.0.1:8000/health/ready
+curl -f http://127.0.0.1:8000/health/dependencies
+curl -f http://127.0.0.1:8000/metrics
+docker compose exec worker python -m scripts.check_worker_health
 ```
 
 默认访问地址：
@@ -114,21 +181,19 @@ docker compose up --build
 - Web UI: `http://localhost:5173`
 - API: `http://localhost:8000`
 - Docs: `http://localhost:8000/docs`
-- Health: `http://localhost:8000/health`
+- Health: `http://localhost:8000/health/ready`
 
 服务清单：
 
-| 服务 | 容器 | 端口 |
+| 服务 | 容器 | 端口/类型 |
 | --- | --- | --- |
-| PostgreSQL | `netops-postgres` | `5432` |
+| PostgreSQL | `netops-postgres` | 仅绑定 `127.0.0.1:5432` |
+| Migration | `netops-migrate` | 一次性任务 |
 | Backend | `netops-backend` | `8000` |
+| Worker | `netops-worker` | 无公开端口 |
 | Frontend | `netops-frontend` | `5173` |
 
-根目录 `.env` 可覆盖 Compose 变量。示例见 `deploy/docker.env.example`。生产环境必须替换：
-
-- `APP_SECRET_KEY`
-- `POSTGRES_PASSWORD`
-- 外部系统连接参数：`NETBOX_*`、`ELK_*`、`ZABBIX_*`、`LLM_*`
+完整的新装、已有数据库接管、升级和卸载步骤见 [DEPLOYMENT.md](./DEPLOYMENT.md)；生产备份、恢复、监控和放量见 [生产运行手册](./docs/PRODUCTION_DEPLOYMENT.md)。
 
 停止服务：
 
@@ -136,7 +201,7 @@ docker compose up --build
 docker compose down
 ```
 
-如需同时删除本地 PostgreSQL 数据卷：
+以下命令会永久删除数据库，只能用于确认不再需要数据的开发环境：
 
 ```bash
 docker compose down -v
@@ -161,6 +226,8 @@ cp deploy/env.example backend/.env
 
 补齐 `backend/.env` 中的数据库、数据源与模型配置。
 
+本机 HTTP 开发使用本地账号时设置 `AUTH_COOKIE_SECURE=False`；OIDC/SAML 仍要求可访问的 HTTPS 回调地址。
+
 #### 3. 启动后端
 
 ```bash
@@ -169,7 +236,15 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 alembic upgrade head
-python3 main.py
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+另开终端启动 Worker：
+
+```bash
+cd backend
+source venv/bin/activate
+python -m worker
 ```
 
 #### 4. 启动前端
@@ -205,7 +280,9 @@ curl http://localhost:8000/health
 | `ZABBIX_URL` / `ZABBIX_API_URL` / `ZABBIX_USERNAME` / `ZABBIX_PASSWORD` | 告警与状态数据源 |
 | `LLM_API_URL` / `LLM_API_KEY` / `LLM_MODEL_NAME` | 模型服务配置 |
 | `FRONTEND_URL` | CORS 前端地址 |
-| `AUTOMATION_OBSERVE_ONLY` | 安全开关，阻止非只读自动化动作 |
+| `AUTOMATION_OBSERVE_ONLY` | 安全开关，首次上线保持 `true`，阻止非只读自动化动作 |
+
+身份源详细配置保存在数据库并加密敏感字段。环境变量中的外部集成配置可用于首次启动，也可以登录后在管理界面配置。Webhook Endpoint 在 `/webhooks` 管理，默认只允许解析到公网地址的 HTTPS URL，并使用 `X-AgenticOps-Signature` 进行 HMAC-SHA256 验签。
 
 浏览器接口使用服务端 Session + CSRF 双提交校验；事件接入使用权限受限的 Bearer API Token。API Token 首期只允许 `events.ingest`，不能用于人工审批或设备执行。
 
@@ -232,11 +309,18 @@ netops_bs/
 ├── backend/
 │   ├── api/                 # FastAPI 路由
 │   ├── agents/              # 多智能体逻辑
+│   ├── auth/                # 本地、OIDC、LDAP、SAML、RBAC 与会话
+│   ├── approvals/           # 冻结计划与人工审批
+│   ├── probes/              # 只读设备采证网关
+│   ├── ingestion/           # ELK checkpoint、聚合与降噪
+│   ├── verifications/       # 变更前基线与变更后验证
+│   ├── webhooks/            # 通用 Webhook Outbox
 │   ├── services/            # 领域服务
 │   ├── models/              # 数据模型
 │   ├── config/              # 配置与日志
 │   ├── database.py          # 数据库初始化
-│   └── main.py              # FastAPI 入口
+│   ├── main.py              # FastAPI API 入口
+│   └── worker.py            # 后台任务入口
 ├── frontend/
 │   ├── src/
 │   │   ├── api/             # 前端 API 封装
@@ -245,7 +329,8 @@ netops_bs/
 │   │   └── router/          # 路由配置
 │   └── package.json
 ├── deploy/
-│   ├── env.example          # 示例环境变量
+│   ├── docker.env.example   # Compose 生产配置模板
+│   ├── env.example          # 本地开发配置模板
 │   └── start.sh             # 后端启动脚本
 ├── docs/
 │   └── images/readme/       # README 系统截图

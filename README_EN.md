@@ -14,13 +14,16 @@ AgenticOps normalizes infrastructure signals into a single workflow:
 
 - Unified event center for deduplication, clustering, correlation, and routing
 - Case workspace for evidence, agent output, and remediation plans
-- Four built-in agents:
+- Five built-in agents:
   - `Alert Triage Agent`
   - `Historical Analysis Agent`
   - `Insight Analysis Agent`
   - `Autonomous Remediation Agent`
+  - `Safety Critic Agent`
 - Memory center for episode, pattern, and outcome reuse
 - Execution center for remediation plans and run history
+- Local/OIDC/LDAP/SAML authentication, RBAC, frozen approvals, and immutable audit records
+- Guarded read-only device probes, generic signed webhooks, durable ELK ingestion, and post-change verification
 - Source-oriented workspaces for assets, logs, Zabbix, tickets, and settings
 
 ## Screenshot
@@ -31,10 +34,16 @@ AgenticOps normalizes infrastructure signals into a single workflow:
 
 ### Docker Compose
 
-Compose starts PostgreSQL, backend API, and frontend Web.
+Compose starts one PostgreSQL database, a one-shot migration job, backend API, background worker, and frontend Web.
 
 ```bash
-docker compose up --build
+cp deploy/docker.env.example .env
+# Replace APP_SECRET_KEY, POSTGRES_PASSWORD, AUTH_PUBLIC_BASE_URL, and FRONTEND_URL.
+docker compose config -q
+docker compose build
+docker compose up -d postgres
+docker compose run --rm migrate
+docker compose up -d backend worker frontend
 ```
 
 Endpoints:
@@ -42,17 +51,19 @@ Endpoints:
 - Web UI: `http://localhost:5173`
 - API: `http://localhost:8000`
 - Docs: `http://localhost:8000/docs`
-- Health: `http://localhost:8000/health`
+- Health: `http://localhost:8000/health/ready`
 
 Services:
 
 | Service | Container | Port |
 | --- | --- | --- |
 | PostgreSQL | `netops-postgres` | `5432` |
+| Migration | `netops-migrate` | one-shot job |
 | Backend | `netops-backend` | `8000` |
+| Worker | `netops-worker` | no public port |
 | Frontend | `netops-frontend` | `5173` |
 
-Use `deploy/docker.env.example` as the root `.env` template. Replace `APP_SECRET_KEY`, `POSTGRES_PASSWORD`, and external integration variables for production.
+Keep `AUTOMATION_OBSERVE_ONLY=True` during initial deployment and the 14-day shadow period. Production also requires an HTTPS reverse proxy; Compose does not issue TLS certificates. See [DEPLOYMENT.md](./DEPLOYMENT.md) for the complete installation and upgrade procedure.
 
 ```bash
 docker compose down
@@ -76,7 +87,8 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 alembic upgrade head
-python3 main.py
+uvicorn main:app --host 0.0.0.0 --port 8000
+# Start `python -m worker` in a second terminal.
 ```
 
 Frontend:
@@ -118,4 +130,4 @@ netops_bs/
 
 - Frontend: `Vue 3 + Vite + Nginx`
 - Backend: `FastAPI + PostgreSQL`
-- Compose: PostgreSQL, backend, frontend
+- Compose: PostgreSQL, migration, backend API, worker, frontend
