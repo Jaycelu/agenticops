@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from adapters.elk_adapter import elk_adapter
 from adapters.netbox_adapter import netbox_adapter
+from adapters.ssh_adapter import ssh_adapter
 from adapters.zabbix_adapter import zabbix_adapter
 from agents.alert_triage_agent import alert_triage_agent
 from agents.autonomous_remediation_agent import autonomous_remediation_agent
@@ -29,7 +30,6 @@ from models.agenticops import (
     EvidenceItem,
     EvidenceType,
     MemoryEntry,
-    MemoryType,
     RemediationPlan,
     RemediationPlanStatus,
     SourceEvent,
@@ -39,6 +39,8 @@ from services.embedding_service import embedding_service
 from services.event_decision_service import event_decision_service
 from services.memory_ingestion_service import memory_ingestion_service
 from services.memory_retriever import memory_retriever
+from probes.gateway import probe_gateway
+from probes.schemas import ProbeRequest
 
 
 class CaseOrchestrator:
@@ -289,13 +291,37 @@ class CaseOrchestrator:
             if topology_result.get("success"):
                 runtime["topology"] = topology_result.get("data") or {}
 
-            # SSH 已从默认诊断链路降级为执行/人工维护通道，不再自动采集现场证据。
-            runtime["ssh_result"] = {
-                "success": False,
-                "skipped": True,
-                "reason": "ssh_demoted_to_execution_channel",
-                "credential_id": credential_id,
-            }
+            effective_credential_id = credential_id or ssh_adapter.resolve_credential_id(db, case.netbox_device_id)
+            if effective_credential_id:
+                probe_result = probe_gateway.run(
+                    db,
+                    ProbeRequest(
+                        probe_id="network.system_status",
+                        netbox_device_id=case.netbox_device_id,
+                        credential_id=effective_credential_id,
+                        parameters={},
+                    ),
+                )
+                runtime["ssh_result"] = probe_result.model_dump(mode="json")
+                if probe_result.evidence:
+                    self._create_evidence(
+                        db,
+                        case_id=case.id,
+                        source_event_id=case.source_event_id,
+                        evidence_type=EvidenceType.COMMAND_OUTPUT,
+                        source_system="ProbeGateway",
+                        source_ref=str(probe_result.run_id),
+                        device_ip=case.device_ip,
+                        host=case.host,
+                        summary="只读设备基础状态",
+                        payload=probe_result.evidence.model_dump(mode="json"),
+                    )
+            else:
+                runtime["ssh_result"] = {
+                    "success": False,
+                    "skipped": True,
+                    "reason": "missing_read_only_ssh_binding",
+                }
 
         if (case.source_event and case.source_event.source_system.lower() == "zabbix") or (
             case.case_metadata or {}

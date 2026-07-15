@@ -73,6 +73,12 @@ class Settings(BaseSettings):
     # Safety guard: observe-only mode blocks non read-only automation actions
     automation_observe_only: bool = True
 
+    # Read-only device evidence gateway. Cross-process concurrency is enforced
+    # with PostgreSQL advisory locks; one device can only have one active probe.
+    probe_global_concurrency: int = 20
+    probe_command_timeout_seconds: int = 20
+    probe_max_output_bytes: int = 262144
+
     # Ticket integration mode: local|external
     ticket_mode: str = "local"
 

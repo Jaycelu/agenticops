@@ -71,6 +71,7 @@ class SSHService:
             "updated_at": credential.updated_at,
             "has_password": bool(credential.encrypted_password),
             "has_private_key": bool(credential.encrypted_private_key),
+            "capability_scope": credential.capability_scope or [],
         }
 
     def list_credentials(self, db: Session) -> List[Dict[str, Any]]:
@@ -93,6 +94,7 @@ class SSHService:
             encrypted_passphrase=self._encrypt(payload.get("passphrase")),
             port=payload.get("port", 22),
             enabled=True,
+            capability_scope=["probe.read"],
         )
         db.add(credential)
         db.commit()

@@ -50,6 +50,7 @@ def active_tables() -> list[Table]:
     )
     from models.integration_settings import IntegrationSetting
     from models.log_scope import LogScope
+    from models.probe import DeviceHostKey, ProbeRun, ProbeTemplateVersion
 
     return [
         Site.__table__,
@@ -82,6 +83,9 @@ def active_tables() -> list[Table]:
         AuthLoginTransaction.__table__,
         ApiToken.__table__,
         SecurityAuditEvent.__table__,
+        DeviceHostKey.__table__,
+        ProbeTemplateVersion.__table__,
+        ProbeRun.__table__,
     ]
 
 

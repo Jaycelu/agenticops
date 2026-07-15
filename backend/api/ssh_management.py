@@ -4,7 +4,6 @@ from sqlalchemy.orm import Session
 from api.schemas.ssh_management import (
     ConnectivityTestRequest,
     DeviceBindingRequest,
-    ExecuteCommandRequest,
     SSHCredentialCreateRequest,
     SSHCredentialUpdateRequest,
 )
@@ -98,16 +97,9 @@ async def test_connectivity(payload: ConnectivityTestRequest, db: Session = Depe
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.post("/execute-commands")
-async def execute_commands(payload: ExecuteCommandRequest, db: Session = Depends(get_db)):
-    try:
-        result = ssh_service.execute_commands(
-            db,
-            credential_id=payload.credential_id,
-            netbox_device_id=payload.netbox_device_id,
-            commands=payload.commands,
-            timeout=payload.timeout,
-        )
-        return {"success": True, "data": result}
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=str(exc))
+@router.post("/execute-commands", deprecated=True)
+async def execute_commands_disabled():
+    raise HTTPException(
+        status_code=410,
+        detail="arbitrary SSH commands are disabled; use a registered read-only probe or an approved execution plan",
+    )

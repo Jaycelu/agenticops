@@ -389,6 +389,7 @@ class SSHCredential(Base):
     encrypted_passphrase = Column(Text)
     port = Column(Integer, nullable=False, default=22)
     enabled = Column(Boolean, default=True)
+    capability_scope = Column(JSON, nullable=False, default=lambda: ["probe.read"])
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

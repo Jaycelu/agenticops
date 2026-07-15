@@ -32,6 +32,7 @@ from models.auth import (
     SecurityAuditEvent,
     UserAccount,
 )
+from models.probe import DeviceHostKey, ProbeRun, ProbeTemplateVersion
 
 __all__ = [
     "Site",
@@ -59,4 +60,7 @@ __all__ = [
     "AuthSession",
     "ApiToken",
     "SecurityAuditEvent",
+    "DeviceHostKey",
+    "ProbeTemplateVersion",
+    "ProbeRun",
 ]

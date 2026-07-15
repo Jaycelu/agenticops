@@ -1,0 +1,43 @@
+{
+  "catalog_version": "2026.07.1",
+  "probes": [
+    {
+      "probe_id": "network.system_status",
+      "name": "设备基础状态",
+      "platforms": {
+        "huawei": ["display version", "display device"],
+        "comware": ["display version", "display device"],
+        "cisco": ["show version", "show inventory"],
+        "junos": ["show version", "show chassis hardware"],
+        "default": ["show version"]
+      },
+      "parameters": {}
+    },
+    {
+      "probe_id": "network.interface_status",
+      "name": "接口运行状态",
+      "platforms": {
+        "huawei": ["display interface {interface}"],
+        "comware": ["display interface {interface}"],
+        "cisco": ["show interface {interface}"],
+        "junos": ["show interfaces {interface} extensive"],
+        "default": ["show interface {interface}"]
+      },
+      "parameters": {
+        "interface": {"required": true, "pattern": "^[A-Za-z][A-Za-z0-9./_-]{0,63}$"}
+      }
+    },
+    {
+      "probe_id": "network.routing_summary",
+      "name": "路由摘要",
+      "platforms": {
+        "huawei": ["display ip routing-table statistics"],
+        "comware": ["display ip routing-table statistics"],
+        "cisco": ["show ip route summary"],
+        "junos": ["show route summary"],
+        "default": ["show ip route summary"]
+      },
+      "parameters": {}
+    }
+  ]
+}
