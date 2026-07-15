@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, text
 from sqlalchemy.sql import func
 
 from database import Base
@@ -16,8 +16,8 @@ class IngestionCheckpoint(Base):
     lease_owner = Column(String(120))
     lease_expires_at = Column(DateTime(timezone=True), index=True)
     last_success_at = Column(DateTime(timezone=True))
-    last_page_count = Column(Integer, nullable=False, default=0)
-    total_documents = Column(BigInteger, nullable=False, default=0)
+    last_page_count = Column(Integer, nullable=False, default=0, server_default="0")
+    total_documents = Column(BigInteger, nullable=False, default=0, server_default="0")
     lag_seconds = Column(Integer)
     last_error_code = Column(String(120))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -35,8 +35,8 @@ class IngestedLogEvent(Base):
     severity = Column(String(30), nullable=False, index=True)
     signature = Column(String(64), nullable=False, index=True)
     normalized_message = Column(Text, nullable=False)
-    source_metadata = Column(JSON, nullable=False, default=dict)
-    decision = Column(String(30), nullable=False, default="pending", index=True)
+    source_metadata = Column(JSON, nullable=False, default=dict, server_default=text("'{}'::json"))
+    decision = Column(String(30), nullable=False, default="pending", server_default="pending", index=True)
     aggregation_bucket_id = Column(BigInteger, ForeignKey("log_aggregation_bucket.id", ondelete="SET NULL"), index=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
@@ -57,8 +57,8 @@ class LogAggregationBucket(Base):
     device_key = Column(String(255), nullable=False, index=True)
     signature = Column(String(64), nullable=False, index=True)
     severity = Column(String(30), nullable=False, index=True)
-    event_count = Column(Integer, nullable=False, default=0)
-    sample_document_ids = Column(JSON, nullable=False, default=list)
+    event_count = Column(Integer, nullable=False, default=0, server_default="0")
+    sample_document_ids = Column(JSON, nullable=False, default=list, server_default=text("'[]'::json"))
     rule_version = Column(String(40), nullable=False)
     decision = Column(String(30), nullable=False, index=True)
     decision_reason = Column(String(255), nullable=False)
@@ -85,6 +85,6 @@ class NoiseReductionSnapshot(Base):
     bucket_count = Column(Integer, nullable=False)
     emitted_count = Column(Integer, nullable=False)
     suppressed_count = Column(Integer, nullable=False)
-    critical_suppressed_count = Column(Integer, nullable=False, default=0)
-    metrics = Column(JSON, nullable=False, default=dict)
+    critical_suppressed_count = Column(Integer, nullable=False, default=0, server_default="0")
+    metrics = Column(JSON, nullable=False, default=dict, server_default=text("'{}'::json"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

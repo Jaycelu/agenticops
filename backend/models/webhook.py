@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, text
 from sqlalchemy.sql import func
 
 from database import Base
@@ -12,12 +12,12 @@ class WebhookEndpoint(Base):
     id = Column(BigInteger, primary_key=True)
     name = Column(String(120), nullable=False, unique=True)
     url = Column(Text, nullable=False)
-    enabled = Column(Boolean, nullable=False, default=True, index=True)
-    event_types = Column(JSON, nullable=False, default=list)
+    enabled = Column(Boolean, nullable=False, default=True, server_default=text("true"), index=True)
+    event_types = Column(JSON, nullable=False, default=list, server_default=text("'[]'::json"))
     secret_encrypted = Column(Text, nullable=False)
     secret_fingerprint = Column(String(16), nullable=False)
-    timeout_seconds = Column(Integer, nullable=False, default=10)
-    max_attempts = Column(Integer, nullable=False, default=8)
+    timeout_seconds = Column(Integer, nullable=False, default=10, server_default="10")
+    max_attempts = Column(Integer, nullable=False, default=8, server_default="8")
     created_by_user_id = Column(BigInteger, ForeignKey("user_account.id", ondelete="RESTRICT"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
@@ -27,15 +27,18 @@ class OutboxEvent(Base):
     __tablename__ = "outbox_event"
 
     id = Column(BigInteger, primary_key=True)
-    event_id = Column(String(36), nullable=False, unique=True, index=True)
+    event_id = Column(String(36), nullable=False, unique=True)
     event_type = Column(String(120), nullable=False, index=True)
-    payload_version = Column(Integer, nullable=False, default=1)
+    payload_version = Column(Integer, nullable=False, default=1, server_default="1")
     aggregate_type = Column(String(80), nullable=False, index=True)
     aggregate_id = Column(String(160), nullable=False, index=True)
     payload = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
 
-    __table_args__ = (Index("idx_outbox_aggregate", "aggregate_type", "aggregate_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_outbox_event_event_id", "event_id"),
+        Index("idx_outbox_aggregate", "aggregate_type", "aggregate_id", "created_at"),
+    )
 
 
 class WebhookDelivery(Base):
@@ -45,7 +48,7 @@ class WebhookDelivery(Base):
     outbox_event_id = Column(BigInteger, ForeignKey("outbox_event.id", ondelete="CASCADE"), nullable=False, index=True)
     endpoint_id = Column(BigInteger, ForeignKey("webhook_endpoint.id", ondelete="RESTRICT"), nullable=False, index=True)
     status = Column(String(30), nullable=False, index=True)
-    attempt_count = Column(Integer, nullable=False, default=0)
+    attempt_count = Column(Integer, nullable=False, default=0, server_default="0")
     next_attempt_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
     lease_expires_at = Column(DateTime(timezone=True), index=True)
     last_http_status = Column(Integer)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, text
 from sqlalchemy.sql import func
 
 from database import Base
@@ -18,7 +18,7 @@ class ExecutionJob(Base):
     status = Column(String(30), nullable=False, index=True)
     requested_by_user_id = Column(BigInteger, ForeignKey("user_account.id", ondelete="RESTRICT"), nullable=False)
     requested_by_session_id = Column(String(64), nullable=False)
-    result = Column(JSON, nullable=False, default=dict)
+    result = Column(JSON, nullable=False, default=dict, server_default=text("'{}'::json"))
     error_code = Column(String(80))
     started_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     finished_at = Column(DateTime(timezone=True))
@@ -39,7 +39,7 @@ class ExecutionActionResult(Base):
     capability = Column(String(30), nullable=False)
     status = Column(String(30), nullable=False, index=True)
     request_hash = Column(String(64), nullable=False)
-    result = Column(JSON, nullable=False, default=dict)
+    result = Column(JSON, nullable=False, default=dict, server_default=text("'{}'::json"))
     error_message = Column(Text)
     started_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     finished_at = Column(DateTime(timezone=True))
@@ -57,7 +57,7 @@ class IdempotencyRecord(Base):
     status = Column(String(30), nullable=False, index=True)
     resource_type = Column(String(80))
     resource_id = Column(String(120))
-    response_snapshot = Column(JSON, nullable=False, default=dict)
+    response_snapshot = Column(JSON, nullable=False, default=dict, server_default=text("'{}'::json"))
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

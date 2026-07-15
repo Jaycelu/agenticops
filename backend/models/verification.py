@@ -16,7 +16,7 @@ class VerificationRun(Base):
     action_index = Column(Integer, nullable=False)
     policy = Column(JSON, nullable=False)
     status = Column(String(30), nullable=False, index=True)
-    rounds_completed = Column(Integer, nullable=False, default=0)
+    rounds_completed = Column(Integer, nullable=False, default=0, server_default="0")
     next_check_at = Column(DateTime(timezone=True), index=True)
     verdict_reason = Column(Text)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

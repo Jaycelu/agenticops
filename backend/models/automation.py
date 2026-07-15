@@ -3,12 +3,11 @@
 """
 from sqlalchemy import (
     Column, Integer, BigInteger, String, Text, Boolean, DateTime, ForeignKey,
-    JSON, Index, Float, Numeric, Enum as SQLEnum
+    JSON, Index, Float, Numeric, text
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
-import enum
 
 
 class Site(Base):
@@ -389,7 +388,12 @@ class SSHCredential(Base):
     encrypted_passphrase = Column(Text)
     port = Column(Integer, nullable=False, default=22)
     enabled = Column(Boolean, default=True)
-    capability_scope = Column(JSON, nullable=False, default=lambda: ["probe.read"])
+    capability_scope = Column(
+        JSON,
+        nullable=False,
+        default=lambda: ["probe.read"],
+        server_default=text("'[\"probe.read\"]'::json"),
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

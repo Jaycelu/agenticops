@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text, text
 from sqlalchemy.sql import func
 
 from database import Base
@@ -12,11 +12,11 @@ class DeviceHostKey(Base):
     id = Column(BigInteger, primary_key=True)
     netbox_device_id = Column(Integer, nullable=False, index=True)
     hostname = Column(String(255), nullable=False)
-    port = Column(Integer, nullable=False, default=22)
+    port = Column(Integer, nullable=False, default=22, server_default="22")
     algorithm = Column(String(80), nullable=False)
     public_key_base64 = Column(Text, nullable=False)
     fingerprint_sha256 = Column(String(120), nullable=False)
-    active = Column(Boolean, nullable=False, default=True, index=True)
+    active = Column(Boolean, nullable=False, default=True, server_default=text("true"), index=True)
     verified_by_user_id = Column(BigInteger, ForeignKey("user_account.id", ondelete="RESTRICT"), nullable=False)
     verified_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -34,7 +34,7 @@ class ProbeTemplateVersion(Base):
     version = Column(String(40), nullable=False)
     catalog_hash = Column(String(64), nullable=False)
     definition = Column(JSON, nullable=False)
-    active = Column(Boolean, nullable=False, default=True, index=True)
+    active = Column(Boolean, nullable=False, default=True, server_default=text("true"), index=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     __table_args__ = (Index("uq_probe_template_version", "probe_id", "version", unique=True),)
@@ -51,9 +51,9 @@ class ProbeRun(Base):
     requested_by_user_id = Column(BigInteger, ForeignKey("user_account.id", ondelete="SET NULL"), index=True)
     requested_by_session_id = Column(String(64), index=True)
     status = Column(String(30), nullable=False, index=True)
-    request_parameters = Column(JSON, nullable=False, default=dict)
-    rendered_commands = Column(JSON, nullable=False, default=list)
-    evidence = Column(JSON, nullable=False, default=dict)
+    request_parameters = Column(JSON, nullable=False, default=dict, server_default=text("'{}'::json"))
+    rendered_commands = Column(JSON, nullable=False, default=list, server_default=text("'[]'::json"))
+    evidence = Column(JSON, nullable=False, default=dict, server_default=text("'{}'::json"))
     error_code = Column(String(80))
     error_detail = Column(Text)
     started_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
