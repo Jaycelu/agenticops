@@ -23,7 +23,7 @@ def _ensure_postgres(url: str) -> str:
     return db_url
 
 
-db_url = _ensure_postgres(settings.automation_database_url or settings.database_url)
+db_url = _ensure_postgres(settings.database_url)
 engine = create_engine(
     db_url,
     pool_pre_ping=True,

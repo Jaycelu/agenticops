@@ -17,6 +17,7 @@ from api import (
     memories_router,
     fabric_router,
     zabbix_router,
+    auth_router,
 )
 from api.ssh_management import router as ssh_management_router
 from api.events import router as events_router
@@ -165,6 +166,7 @@ app.include_router(agents_router)
 app.include_router(memories_router)
 app.include_router(fabric_router)
 app.include_router(zabbix_router)
+app.include_router(auth_router)
 
 
 @app.get("/")

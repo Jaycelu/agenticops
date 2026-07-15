@@ -11,7 +11,6 @@ DEFAULT_TEST_DATABASE_URL = "postgresql://netops:netops@127.0.0.1:55432/netops_a
 # production modules are imported by individual test files.
 os.environ.setdefault("APP_SECRET_KEY", "pytest-only-secret-at-least-32-bytes")
 os.environ.setdefault("DATABASE_URL", DEFAULT_TEST_DATABASE_URL)
-os.environ.setdefault("AUTOMATION_DATABASE_URL", os.environ["DATABASE_URL"])
 os.environ.setdefault("AUTOMATION_OBSERVE_ONLY", "true")
 
 

@@ -18,10 +18,13 @@
 配置文件：`backend/.env`（可由 `deploy/env.example` 复制）。
 
 关键项：
-1. 数据库：`DATABASE_URL` / `AUTOMATION_DATABASE_URL`（必须为 `postgresql://`）
+1. 数据库：`DATABASE_URL`（必须为 `postgresql://`，所有业务域共用一个逻辑数据库）
 2. 安全开关：`automation_observe_only=true`
-3. 外部系统：`NETBOX_*`, `ELK_*`
-4. 工单配置：`TICKET_MODE=local`（当前固定本地工单闭环）；`ticket_system_*` 仅做后续外部对接预留
+3. SSO 回调：`AUTH_PUBLIC_BASE_URL`（必须为对外可访问的 HTTPS 根地址）
+4. 外部系统：`NETBOX_*`, `ELK_*`
+5. 工单配置：`TICKET_MODE=local`（当前固定本地工单闭环）；`ticket_system_*` 仅做后续外部对接预留
+
+CI 使用独立的 `netops_agenticops_test` 测试库并会清理其中数据；它不是生产部署的第二个数据库，也绝不能指向生产库。
 
 ## 4. 启动流程
 

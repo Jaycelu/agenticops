@@ -31,3 +31,9 @@ class SessionCredentials:
     session_token: str
     csrf_token: str
     expires_at: datetime
+
+
+@dataclass(frozen=True)
+class LoginStart:
+    redirect_url: str
+    context: dict[str, str] = field(default_factory=dict)

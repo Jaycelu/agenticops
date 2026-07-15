@@ -5,7 +5,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from auth.schemas import AuthenticatedIdentity
+from auth.schemas import AuthenticatedIdentity, LoginStart
 from models.auth import IdentityProvider
 
 
@@ -33,7 +33,8 @@ class IdentityProviderAdapter(ABC):
         callback_url: str,
         state: str,
         nonce: str,
-    ) -> str:
+        code_verifier: str,
+    ) -> LoginStart:
         raise ProviderFlowNotSupported(f"{self.provider_type} does not support redirect login")
 
     async def complete_login(
@@ -44,5 +45,6 @@ class IdentityProviderAdapter(ABC):
         callback_url: str,
         expected_state: str,
         expected_nonce: str,
+        transaction_context: dict[str, str],
     ) -> AuthenticatedIdentity:
         raise ProviderFlowNotSupported(f"{self.provider_type} does not support redirect login")

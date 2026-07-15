@@ -124,6 +124,22 @@ class AuthSession(Base):
     )
 
 
+class AuthLoginTransaction(Base):
+    __tablename__ = "auth_login_transaction"
+
+    id = Column(String(64), primary_key=True)
+    provider_id = Column(Integer, ForeignKey("identity_provider.id", ondelete="CASCADE"), nullable=False, index=True)
+    flow_type = Column(String(20), nullable=False)
+    encrypted_context = Column(Text, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    consumed_at = Column(DateTime(timezone=True), index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_auth_login_transaction_active", "provider_id", "consumed_at", "expires_at"),
+    )
+
+
 class ApiToken(Base):
     __tablename__ = "api_token"
 

@@ -1,6 +1,5 @@
 from pydantic import ConfigDict, field_validator
 from pydantic_settings import BaseSettings
-from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -11,9 +10,12 @@ class Settings(BaseSettings):
     # Authentication sessions. External Provider configuration is stored in the
     # database; only process-wide cookie policy lives in environment settings.
     auth_cookie_name: str = "agenticops_session"
+    auth_csrf_cookie_name: str = "agenticops_csrf"
     auth_session_ttl_hours: int = 8
+    auth_login_transaction_ttl_minutes: int = 10
     auth_cookie_secure: bool = True
     auth_cookie_samesite: str = "lax"
+    auth_public_base_url: str = ""
 
     # NetBox Configuration
     netbox_url: str = ""
@@ -57,10 +59,8 @@ class Settings(BaseSettings):
     database_password: str = "password"
     database_name: str = "netops_agenticops"
 
-    # Automation DB / Retention
-    # 建议为自动化中心使用独立数据库（同一PostgreSQL实例）
-    # 例如：postgresql://user:pass@localhost:5432/netops_automation
-    automation_database_url: str = ""
+    # Retention. All application domains share the single DATABASE_URL database;
+    # isolation is enforced by schemas/tables, roles, and transaction boundaries.
     retention_raw_anomaly_days: int = 30
     retention_log_sample_days: int = 30
     retention_analysis_days: int = 60
@@ -87,7 +87,7 @@ class Settings(BaseSettings):
     # Ansible EDA webhook integration
     eda_webhook_token: str = ""
 
-    @field_validator("database_url", "automation_database_url", mode="before")
+    @field_validator("database_url", mode="before")
     @classmethod
     def validate_postgres_url(cls, value):
         if value is None:
@@ -98,6 +98,14 @@ class Settings(BaseSettings):
         if not raw.startswith("postgresql://") and not raw.startswith("postgresql+psycopg2://"):
             raise ValueError("database url must use PostgreSQL scheme: postgresql://")
         return raw
+
+    @field_validator("auth_cookie_samesite")
+    @classmethod
+    def validate_cookie_samesite(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"lax", "strict", "none"}:
+            raise ValueError("AUTH_COOKIE_SAMESITE must be lax, strict, or none")
+        return normalized
 
 
 settings = Settings()

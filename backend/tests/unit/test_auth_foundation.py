@@ -32,7 +32,7 @@ def test_local_password_policy_rejects_short_or_padded_values() -> None:
 
 
 def test_provider_registry_fails_closed_for_unknown_type() -> None:
-    assert identity_provider_registry.list_types() == ("local",)
+    assert identity_provider_registry.list_types() == ("ldap", "local", "oidc", "saml")
     with pytest.raises(LookupError):
         identity_provider_registry.get("unknown")
 

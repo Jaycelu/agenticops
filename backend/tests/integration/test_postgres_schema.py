@@ -47,6 +47,7 @@ def test_migrations_create_current_schema_on_postgres() -> None:
         "external_identity",
         "role_binding",
         "auth_session",
+        "auth_login_transaction",
         "api_token",
         "security_audit_event",
     }.issubset(tables)

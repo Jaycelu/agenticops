@@ -23,11 +23,12 @@ services:
     environment:
       APP_SECRET_KEY: ${APP_SECRET_KEY:-docker_dev_secret_change_me_32_bytes_minimum}
       DATABASE_URL: postgresql://${POSTGRES_USER:-netops}:${POSTGRES_PASSWORD:-netops}@postgres:5432/${POSTGRES_DB:-netops_agenticops}
-      AUTOMATION_DATABASE_URL: postgresql://${POSTGRES_USER:-netops}:${POSTGRES_PASSWORD:-netops}@postgres:5432/${POSTGRES_DB:-netops_agenticops}
       BACKEND_HOST: 0.0.0.0
       BACKEND_PORT: 8000
       DEBUG: ${DEBUG:-False}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      AUTH_PUBLIC_BASE_URL: ${AUTH_PUBLIC_BASE_URL:-}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-True}
       AUTOMATION_OBSERVE_ONLY: ${AUTOMATION_OBSERVE_ONLY:-True}
       TICKET_MODE: ${TICKET_MODE:-local}
       NETBOX_URL: ${NETBOX_URL:-}
@@ -71,7 +72,6 @@ services:
     environment:
       APP_SECRET_KEY: ${APP_SECRET_KEY:-docker_dev_secret_change_me_32_bytes_minimum}
       DATABASE_URL: postgresql://${POSTGRES_USER:-netops}:${POSTGRES_PASSWORD:-netops}@postgres:5432/${POSTGRES_DB:-netops_agenticops}
-      AUTOMATION_DATABASE_URL: postgresql://${POSTGRES_USER:-netops}:${POSTGRES_PASSWORD:-netops}@postgres:5432/${POSTGRES_DB:-netops_agenticops}
     depends_on:
       postgres:
         condition: service_healthy

@@ -11,6 +11,7 @@ from .agents import router as agents_router
 from .memories import router as memories_router
 from .fabric import router as fabric_router
 from .zabbix import router as zabbix_router
+from .auth import router as auth_router
 
 __all__ = [
     "assets_router",
@@ -26,4 +27,5 @@ __all__ = [
     "memories_router",
     "fabric_router",
     "zabbix_router",
+    "auth_router",
 ]

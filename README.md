@@ -197,8 +197,9 @@ curl http://localhost:8000/health
 | 变量名 | 说明 |
 | --- | --- |
 | `APP_SECRET_KEY` | 应用密钥，生产环境请使用长随机值 |
-| `DATABASE_URL` | 主 PostgreSQL 连接串 |
-| `AUTOMATION_DATABASE_URL` | 自动化数据库连接串，可与主库分离 |
+| `DATABASE_URL` | 唯一的应用 PostgreSQL 连接串；认证、事件、Case、审批与执行共用该逻辑数据库 |
+| `AUTH_PUBLIC_BASE_URL` | SSO 对外 HTTPS 根地址，用于生成 OIDC/SAML 回调地址 |
+| `AUTH_COOKIE_SECURE` | 生产环境保持 `true`，仅通过 HTTPS 发送认证 Cookie |
 | `NETBOX_URL` / `NETBOX_API_TOKEN` | 资产与拓扑数据源 |
 | `ELK_URL` / `ELK_USERNAME` / `ELK_PASSWORD` | 日志数据源 |
 | `ZABBIX_URL` / `ZABBIX_API_URL` / `ZABBIX_USERNAME` / `ZABBIX_PASSWORD` | 告警与状态数据源 |

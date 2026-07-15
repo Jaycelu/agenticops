@@ -40,6 +40,7 @@ def active_tables() -> list[Table]:
     from models.automation_settings import AutomationSetting
     from models.auth import (
         ApiToken,
+        AuthLoginTransaction,
         AuthSession,
         ExternalIdentity,
         IdentityProvider,
@@ -78,6 +79,7 @@ def active_tables() -> list[Table]:
         ExternalIdentity.__table__,
         RoleBinding.__table__,
         AuthSession.__table__,
+        AuthLoginTransaction.__table__,
         ApiToken.__table__,
         SecurityAuditEvent.__table__,
     ]

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from auth.providers.base import IdentityProviderAdapter
 from auth.providers.local import LocalIdentityProvider
+from auth.providers.ldap import LDAPIdentityProvider
+from auth.providers.oidc import OIDCIdentityProvider
+from auth.providers.saml import SAMLIdentityProvider
 
 
 class IdentityProviderRegistry:
@@ -25,3 +28,6 @@ class IdentityProviderRegistry:
 
 identity_provider_registry = IdentityProviderRegistry()
 identity_provider_registry.register(LocalIdentityProvider())
+identity_provider_registry.register(LDAPIdentityProvider())
+identity_provider_registry.register(OIDCIdentityProvider())
+identity_provider_registry.register(SAMLIdentityProvider())
