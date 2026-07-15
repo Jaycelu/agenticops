@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     backend_host: str = "0.0.0.0"
     backend_port: int = 8000
     debug: bool = True
+    log_level: str = "INFO"
+    log_json: bool = True
+    log_file_enabled: bool = False
 
     # Frontend Configuration
     frontend_url: str = "http://localhost:5173"

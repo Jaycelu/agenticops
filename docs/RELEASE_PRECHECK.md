@@ -1,78 +1,37 @@
-# AgenticOps 发布前最终检查清单
+# AgenticOps 生产发布门禁
 
-日期：2026-03-10
+代码合并、镜像构建成功只代表“可部署”，不代表已经达到生产认证。以下门禁必须在目标服务器与真实集成环境执行并留存证据。
 
-## 结论
+## 自动门禁
 
-当前仓库已经完成一轮公开发布清理，技术层面已接近可发布状态。
+- 后端单元测试、PostgreSQL 集成测试与 Alembic `check` 通过。
+- Ruff、Bandit、pip-audit、Python compileall 通过。
+- 前端 `npm ci && npm run build` 通过。
+- `APP_SECRET_KEY`、`POSTGRES_PASSWORD` 注入后 `docker compose config -q` 通过。
+- API `/health/ready`、Worker heartbeat 与 `/metrics` 可被监控系统采集。
 
-当前唯一明确的发布阻塞项：
+## 环境门禁
 
-- 缺少开源许可证文件 `LICENSE`
+- 仅一个生产 PostgreSQL 逻辑数据库；测试库不得使用生产连接串。
+- 数据库完成 `pg_dump -Fc` 备份，并在隔离实例成功恢复一次。
+- OIDC/LDAP/SAML 至少一种 SSO 完成登录、登出、角色映射和身份源故障演练；本地紧急管理员凭据托管。
+- 设备 SSH host key 全量入库；只读命令白名单和参数约束通过抽样检查。
+- 通用 Webhook 接收端验证 HMAC、时间戳、事件 ID 幂等；死信告警和人工重投演练成功。
+- ELK 代理保证 `(timestamp, document_id)` 稳定排序及 `search_after`；分页超过 1000 条无漏采、重采可去重。
+- Zabbix/ELK 变更后验证可区分 verified、regressed、inconclusive；失败不会自动关闭 Case。
 
-在补齐许可证之前，不建议作为正式开源 release 发布。
+## Shadow Mode 门禁
 
-## 已通过
+至少连续 14 天保持 `AUTOMATION_OBSERVE_ONLY=true`：
 
-- README 已更新为公开发布版，包含中文主文档和英文入口
-- 示例环境变量已脱敏
-- 已删除仓库中跟踪的运行日志、采集结果和本地会话历史
-- 已补充根级 `.gitignore`，避免再次提交日志、结果文件和本地环境文件
-- 已清理文档、脚本和服务配置中的内网 IP、硬编码密码和固定私有部署路径
-- 前端生产构建通过：`cd frontend && npm run build`
-- Python 脚本语法检查通过
-- Shell 脚本语法检查通过
-- 当前主图 `agenticops.jpg` 不含明显敏感业务信息
+- 严重事件误降噪数必须为 0；任何一条都阻断放量。
+- checkpoint 无无法解释的倒退、跨页遗漏或长期滞后。
+- 告警压缩率、Case 数量、人工误报/漏报标注均形成日报。
+- Webhook 死信、Worker 心跳缺失、审批/执行异常均已接入告警。
+- 人工抽检确认冻结计划与实际命令、设备、参数完全一致。
 
-## 已处理的风险项
+只有门禁责任人签字后，才可按命令目录逐项开启变更能力；不得一次性关闭 observe-only。
 
-- 硬编码 SSH 凭据改为环境变量读取
-- `frontend/.env` 已移除，改为 `frontend/.env.example`
-- `logs/` 与 `backend/storage/chat_history/` 改为仅保留 `.gitkeep`
-- 旧的部署文档和端口说明已改写为公开版描述
+## 当前发布结论
 
-## 待确认项
-
-### 1. 许可证
-
-仓库当前没有以下任一文件：
-
-- `LICENSE`
-- `LICENSE.md`
-- `LICENSE.txt`
-
-这会导致项目在法律层面处于“默认保留所有权利”的状态，不适合作为正式开源 release 发布。
-
-建议优先选择并补齐许可证，例如：
-
-- MIT
-- Apache-2.0
-- GPL-3.0
-
-### 2. 额外演示截图
-
-README 当前使用的 `agenticops.jpg` 没有明显敏感信息。  
-如果你后续把事件中心、日志中心、Zabbix 中心、资产拓扑等截图也加入仓库，需要再次检查：
-
-- 内网 IP
-- 主机名
-- 域名
-- 工单号
-- 设备名称
-- 站点名称
-
-## 建议的发布顺序
-
-1. 选定许可证并添加 `LICENSE`
-2. 如需补更多截图，先脱敏再提交
-3. 检查 `git diff` 是否仅包含预期的公开发布修改
-4. 提交首个 release commit
-5. 打 tag 或创建 GitHub Release
-
-## 建议的首个 release commit 范围
-
-- README 与英文入口
-- 发布前清理
-- 示例配置脱敏
-- 启动脚本与服务模板通用化
-- 文档公开化改写
+仓库实现完成后仍处于“候选生产版本”。服务器安装、真实 SSO/ELK/Zabbix/设备/Webhook 联调、恢复演练及 14 天 Shadow Mode 未完成前，不能宣称生产级可用。

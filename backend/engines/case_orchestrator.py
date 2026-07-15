@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 
 from adapters.elk_adapter import elk_adapter
 from adapters.netbox_adapter import netbox_adapter
-from adapters.ssh_adapter import ssh_adapter
 from adapters.zabbix_adapter import zabbix_adapter
 from agents.alert_triage_agent import alert_triage_agent
 from agents.autonomous_remediation_agent import autonomous_remediation_agent
@@ -22,11 +21,9 @@ from services.automation_settings_service import automation_settings_service
 from models.agenticops import (
     AgentClaim,
     AgentRun,
-    AgentRunStatus,
     AgentType,
     CaseRecord,
     CaseStatus,
-    ClaimStatus,
     EvidenceItem,
     EvidenceType,
     MemoryEntry,
@@ -39,10 +36,11 @@ from services.embedding_service import embedding_service
 from services.event_decision_service import event_decision_service
 from services.memory_ingestion_service import memory_ingestion_service
 from services.memory_retriever import memory_retriever
-from probes.gateway import probe_gateway
-from probes.schemas import ProbeRequest
 from webhooks.service import webhook_service
-from tools.registry import tool_registry
+from orchestration.agent_runner import agent_runner
+from orchestration.context_collector import context_collector
+from orchestration.plan_builder import plan_builder
+from orchestration.state_finalizer import state_finalizer
 
 
 class CaseOrchestrator:
@@ -262,103 +260,16 @@ class CaseOrchestrator:
         log_limit: int,
         credential_id: Optional[int],
     ) -> Dict[str, Any]:
-        runtime: Dict[str, Any] = {}
-
-        logs_result = await elk_adapter.collect_logs(
+        return await context_collector.collect(
+            db,
+            case=case,
             base_name=base_name,
-            query=log_query,
+            log_query=log_query,
             time_range=time_range,
-            limit=log_limit,
+            log_limit=log_limit,
+            credential_id=credential_id,
+            evidence_writer=self._create_evidence,
         )
-        if logs_result.get("success"):
-            runtime["log_summary"] = elk_adapter.aggregate_logs(logs_result.get("logs") or [])
-            self._create_evidence(
-                db,
-                case_id=case.id,
-                source_event_id=case.source_event_id,
-                evidence_type=EvidenceType.LOG,
-                source_system="ELK",
-                source_ref=base_name or log_query or "*",
-                device_ip=case.device_ip,
-                host=case.host,
-                summary="ELK 日志聚合摘要",
-                payload=runtime["log_summary"],
-                fingerprint=(runtime["log_summary"].get("devices") or [{}])[0].get("top_signatures", [{}])[0].get("signature"),
-            )
-
-        if case.netbox_device_id:
-            device_result = await netbox_adapter.get_device(case.netbox_device_id)
-            topology_result = await netbox_adapter.get_topology(case.netbox_device_id)
-            if device_result.get("success"):
-                runtime["device"] = device_result.get("data") or {}
-                self._create_evidence(
-                    db,
-                    case_id=case.id,
-                    source_event_id=case.source_event_id,
-                    evidence_type=EvidenceType.TOPOLOGY,
-                    source_system="NetBox",
-                    source_ref=str(case.netbox_device_id),
-                    device_ip=case.device_ip,
-                    host=case.host,
-                    summary="NetBox 设备上下文",
-                    payload=runtime["device"],
-                )
-            if topology_result.get("success"):
-                runtime["topology"] = topology_result.get("data") or {}
-
-            effective_credential_id = credential_id or ssh_adapter.resolve_credential_id(db, case.netbox_device_id)
-            if effective_credential_id:
-                probe_result = probe_gateway.run(
-                    db,
-                    ProbeRequest(
-                        probe_id="network.system_status",
-                        netbox_device_id=case.netbox_device_id,
-                        credential_id=effective_credential_id,
-                        parameters={},
-                    ),
-                )
-                runtime["ssh_result"] = probe_result.model_dump(mode="json")
-                if probe_result.evidence:
-                    self._create_evidence(
-                        db,
-                        case_id=case.id,
-                        source_event_id=case.source_event_id,
-                        evidence_type=EvidenceType.COMMAND_OUTPUT,
-                        source_system="ProbeGateway",
-                        source_ref=str(probe_result.run_id),
-                        device_ip=case.device_ip,
-                        host=case.host,
-                        summary="只读设备基础状态",
-                        payload=probe_result.evidence.model_dump(mode="json"),
-                    )
-            else:
-                runtime["ssh_result"] = {
-                    "success": False,
-                    "skipped": True,
-                    "reason": "missing_read_only_ssh_binding",
-                }
-
-        if (case.source_event and case.source_event.source_system.lower() == "zabbix") or (
-            case.case_metadata or {}
-        ).get("zabbix_host"):
-            host = (case.case_metadata or {}).get("zabbix_host") or case.host
-            zabbix_result = await zabbix_adapter.get_recent_alerts(host=host)
-            runtime["zabbix_alerts"] = zabbix_result
-            if zabbix_result.get("success"):
-                self._create_evidence(
-                    db,
-                    case_id=case.id,
-                    source_event_id=case.source_event_id,
-                    evidence_type=EvidenceType.METRIC,
-                    source_system="Zabbix",
-                    source_ref=host,
-                    device_ip=case.device_ip,
-                    host=case.host,
-                    summary="Zabbix 告警上下文",
-                    payload={"alerts": zabbix_result.get("alerts", [])},
-                )
-
-        return runtime
 
     def _find_similar_closed_cases(self, db: Session, case: CaseRecord, limit: int = 5) -> List[Dict[str, Any]]:
         """Structured case retrieval for Historical agent (RAG-lite, no vectors)."""
@@ -473,82 +384,7 @@ class CaseOrchestrator:
                 context.runtime["topology"] = topology_result.get("data") or {}
 
     async def _execute_agent(self, db: Session, case: CaseRecord, agent, context: AgentExecutionContext):
-        started_at = datetime.utcnow()
-        claim_meta: Dict[str, Any] = {
-            "insight_round": context.insight_round,
-            "harness_trace": list(context.harness_trace),
-        }
-        run = AgentRun(
-            case_id=case.id,
-            agent_type=agent.agent_type,
-            agent_name=agent.agent_name,
-            status=AgentRunStatus.RUNNING,
-            input_payload={
-                "case_id": case.id,
-                "evidence_count": len(context.evidence_items),
-                "memory_hits": len(context.memory_hits),
-                "evidence_bundle": context.evidence_bundle,
-                "episode_goal": context.episode_goal,
-                "insight_round": context.insight_round,
-            },
-            started_at=started_at,
-        )
-        db.add(run)
-        db.flush()
-
-        try:
-            decision = await agent.run(context)
-            finished_at = datetime.utcnow()
-            run.status = AgentRunStatus.COMPLETED
-            run.finished_at = finished_at
-            run.duration_ms = int((finished_at - started_at).total_seconds() * 1000)
-            run.output_payload = decision.output_payload
-
-            merged_meta = dict(decision.metadata)
-            merged_meta.update(claim_meta)
-            if decision.next_evidence_requests:
-                merged_meta["next_evidence_requests"] = decision.next_evidence_requests
-            if decision.cited_evidence_item_ids:
-                merged_meta["cited_evidence_item_ids"] = decision.cited_evidence_item_ids
-            if decision.stopped_reason:
-                merged_meta["stopped_reason"] = decision.stopped_reason
-
-            claim = AgentClaim(
-                case_id=case.id,
-                agent_run_id=run.id,
-                agent_type=agent.agent_type,
-                claim_type=decision.claim_type,
-                claim_text=decision.claim_text,
-                status=ClaimStatus(decision.status),
-                confidence=decision.confidence,
-                evidence_refs=decision.evidence_refs,
-                gaps=decision.gaps,
-                claim_metadata=merged_meta,
-            )
-            db.add(claim)
-            db.flush()
-            return run, claim
-        except Exception as exc:  # noqa: BLE001
-            finished_at = datetime.utcnow()
-            run.status = AgentRunStatus.FAILED
-            run.finished_at = finished_at
-            run.duration_ms = int((finished_at - started_at).total_seconds() * 1000)
-            run.error_message = str(exc)
-            claim = AgentClaim(
-                case_id=case.id,
-                agent_run_id=run.id,
-                agent_type=agent.agent_type,
-                claim_type="agent_failure",
-                claim_text=f"{agent.agent_name} 执行失败: {exc}",
-                status=ClaimStatus.REJECTED,
-                confidence=0.0,
-                evidence_refs=[],
-                gaps=[str(exc)],
-                claim_metadata={},
-            )
-            db.add(claim)
-            db.flush()
-            return run, claim
+        return await agent_runner.execute(db, case, agent, context)
 
     def _find_memory_hits(
         self,
@@ -726,84 +562,11 @@ class CaseOrchestrator:
         claim: AgentClaim,
         payload: Dict[str, Any],
     ) -> RemediationPlan:
-        plan = (
-            db.query(RemediationPlan)
-            .filter(RemediationPlan.case_id == case.id)
-            .order_by(RemediationPlan.created_at.desc())
-            .first()
-        )
-        if plan is None:
-            plan = RemediationPlan(
-                case_id=case.id,
-                plan_code=f"PLAN-{case.case_code}",
-            )
-            db.add(plan)
-            db.flush()
-
-        plan.generated_by_agent_run_id = agent_run.id
-        plan.status = RemediationPlanStatus.DRAFT
-        plan.execution_mode = payload.get("execution_mode") or "manual"
-        plan.approval_status = payload.get("approval_status") or "required"
-        plan.risk_level = case.risk_level
-        plan.summary = claim.claim_text
-        recommended_actions = payload.get("recommended_actions") or []
-        for action in recommended_actions:
-            spec = tool_registry.get(str(action.get("tool_id") or "manual.review"))
-            if spec and spec.capability == "mutation" and not action.get("verification"):
-                action["verification"] = self._default_verification_policy(case)
-        plan.plan_payload = {
-            "recommendations": payload.get("recommendations") or [],
-            "recommended_actions": recommended_actions,
-            "root_cause": payload.get("root_cause"),
-            "impact_scope": payload.get("impact_scope"),
-            "policy_audit": payload.get("policy_audit") or {},
-        }
-        plan.rollback_payload = {"steps": payload.get("rollback_plan") or []}
-        # safety_checks 由 agent 写入（含 policy_pre_check 等），
-        # 再合并一份 policy_audit 兜底（remediation_recommendation_service 的策略文件审计）。
-        plan.safety_checks = {
-            **(payload.get("safety_checks") or {}),
-            "policy_audit": payload.get("policy_audit") or {},
-        }
-        return plan
+        return plan_builder.build(db, case, agent_run, claim, payload)
 
     @staticmethod
     def _default_verification_policy(case: CaseRecord) -> Dict[str, Any]:
-        source_system = (case.source_event.source_system if case.source_event else "").lower()
-        raw = (case.source_event.raw_payload if case.source_event else {}) or {}
-        if source_system == "zabbix":
-            event_id = raw.get("event_id") or raw.get("eventid") or raw.get("object_id")
-            target = {
-                "host": (case.case_metadata or {}).get("zabbix_host") or case.host or case.device_ip,
-                "name_contains": case.title,
-            }
-            if event_id:
-                target["event_id"] = str(event_id)
-            return {
-                "checks": [
-                    {
-                        "check_id": "originating-zabbix-alert",
-                        "kind": "zabbix_alert_absent",
-                        "target": target,
-                        "max_age_seconds": 300,
-                    }
-                ],
-                "max_rounds": 3,
-                "interval_seconds": 60,
-            }
-        return {
-            "checks": [
-                {
-                    "check_id": "originating-log-rate",
-                    "kind": "elk_count_reduced",
-                    "target": {"query": case.host or case.device_ip or case.title, "time_range": "-15m,now"},
-                    "max_age_seconds": 300,
-                    "max_ratio": 0.5,
-                }
-            ],
-            "max_rounds": 3,
-            "interval_seconds": 60,
-        }
+        return plan_builder.default_verification_policy(case)
 
     def _apply_safety_critic_decision(
         self,
@@ -1051,16 +814,7 @@ class CaseOrchestrator:
         self._store_pattern_memories(state.db, state.case, state.context.runtime, state.claims)
 
     async def _hook_finalize_case_state(self, state: PipelineState) -> None:
-        case = state.case
-        if state.critic_decision == "rejected":
-            case.status = CaseStatus.ESCALATED
-            case.current_phase = "safety_escalated"
-        else:
-            case.status = CaseStatus.PLANNED if state.remediation_plan else CaseStatus.INVESTIGATING
-            case.current_phase = "remediation_draft" if state.remediation_plan else "analysis"
-        case.last_activity_at = datetime.utcnow()
-        state.db.commit()
-        state.db.refresh(case)
+        state_finalizer.finalize(state)
 
     # ---- predicates ---------------------------------------------------
 

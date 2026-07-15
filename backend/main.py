@@ -1,8 +1,8 @@
 from fastapi import Depends, FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from contextlib import asynccontextmanager
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.exc import SQLAlchemyError
 from config.settings import settings
 from config.logging import setup_logging
@@ -22,64 +22,19 @@ from api import (
     probes_router,
     webhooks_router,
     ingestion_router,
+    events_router,
 )
 from api.ssh_management import router as ssh_management_router
-from api.events import router as events_router
 from api.tickets import router as tickets_router
 from database import SessionLocal
-from utils.cache import netbox_cache
 from auth.csrf import CSRFMiddleware
 from auth.dependencies import require_permissions
 from auth.rbac import Permission
-import asyncio
+from observability.middleware import ObservabilityMiddleware
+from observability.metrics import metrics_registry
+from api.errors import install_error_handlers
 
 logger = setup_logging()
-
-
-async def cleanup_cache_task():
-    """定期清理过期缓存的定时任务"""
-    while True:
-        await asyncio.sleep(60)  # 每分钟清理一次
-        netbox_cache.cleanup_expired()
-
-
-async def data_retention_cleanup_task():
-    """定期执行自动化数据保留清理"""
-    logger.info("Data retention cleanup task started")
-    while True:
-        try:
-            # 每12小时执行一次
-            await asyncio.sleep(43200)
-            from services.data_retention_service import data_retention_service
-            data_retention_service.cleanup()
-        except Exception as e:
-            logger.error(f"Error in data retention cleanup: {e}", exc_info=True)
-
-
-async def memory_embedding_backfill_task():
-    """Phase 5：定期回填 MemoryEntry.embedding。仅在配置了嵌入模型时运行。"""
-    from services.embedding_service import build_embedder
-
-    if not getattr(build_embedder(), "is_enabled", False):
-        logger.info("Memory embedding backfill disabled (llm_embedding_model not configured)")
-        return
-
-    logger.info("Memory embedding backfill task started")
-    while True:
-        try:
-            # 每小时回填一批新记忆
-            await asyncio.sleep(3600)
-            from database import SessionLocal
-            from services.embedding_service import backfill_memory_embeddings
-
-            db = SessionLocal()
-            try:
-                result = await backfill_memory_embeddings(db, limit=200)
-            finally:
-                db.close()
-            logger.info(f"Memory embedding backfill: {result}")
-        except Exception as e:
-            logger.error(f"Error in memory embedding backfill: {e}", exc_info=True)
 
 
 def register_execution_components():
@@ -112,30 +67,7 @@ async def lifespan(app: FastAPI):
 
     register_execution_components()
 
-    # 启动缓存清理任务
-    cleanup_task = asyncio.create_task(cleanup_cache_task())
-
-    # 启动数据保留清理任务
-    retention_cleanup_task = asyncio.create_task(data_retention_cleanup_task())
-
-    # 启动记忆 embedding 回填任务（Phase 5）
-    embedding_backfill_task = asyncio.create_task(memory_embedding_backfill_task())
-
-    # 启动日志采样服务
-    from services.log_sampler import log_sampler
-    await log_sampler.start()
-    logger.info("Log sampler started successfully")
-
     yield
-
-    # 清理任务
-    cleanup_task.cancel()
-    retention_cleanup_task.cancel()
-    embedding_backfill_task.cancel()
-
-    # 停止日志采样服务
-    from services.log_sampler import log_sampler
-    await log_sampler.stop()
 
     logger.info("Shutting down NetOps AI Platform...")
 
@@ -162,6 +94,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(ObservabilityMiddleware)
+install_error_handlers(app)
 
 read_dependency = [Depends(require_permissions(Permission.CASES_READ.value))]
 app.include_router(assets_router, dependencies=read_dependency)
@@ -198,40 +132,104 @@ async def root():
     return {"message": "NetOps AI Platform API", "version": "0.1.1"}
 
 
-@app.get("/health")
-async def health_check():
-    checks = {
-        "database": {
-            "status": "unknown",
-            "message": "",
-        }
-    }
+@app.get("/health/live")
+async def health_live():
+    return {"status": "alive"}
 
-    overall_status = "healthy"
 
+@app.get("/health/ready")
+async def health_ready():
     db = SessionLocal()
     try:
         db.execute(text("SELECT 1"))
-        checks["database"] = {
-            "status": "healthy",
-            "message": "postgres connection ok",
-        }
-    except SQLAlchemyError as exc:
-        overall_status = "unhealthy"
-        checks["database"] = {
-            "status": "unhealthy",
-            "message": str(exc.__cause__ or exc),
+        from database import current_database_revisions, expected_database_revisions
+
+        current = current_database_revisions(db.connection())
+        expected = expected_database_revisions()
+        if current != expected:
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={"status": "not_ready", "checks": {"database": "schema_revision_mismatch"}},
+            )
+        return {"status": "ready", "checks": {"database": "ready"}}
+    except SQLAlchemyError:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "not_ready", "checks": {"database": "unavailable"}},
+        )
+    finally:
+        db.close()
+
+
+@app.get("/health")
+async def health_compatibility():
+    return await health_ready()
+
+
+@app.get("/health/dependencies")
+async def health_dependencies():
+    from services.integration_config_service import integration_config_service
+
+    db = SessionLocal()
+    try:
+        from models.auth import IdentityProvider
+        from models.ingestion import IngestionCheckpoint
+        from models.runtime import WorkerHeartbeat
+        from datetime import datetime, timedelta, timezone
+
+        netbox = integration_config_service.get_netbox_runtime_config(db=db)
+        elk = integration_config_service.get_elk_runtime_config(db=db)
+        zabbix = integration_config_service.get_zabbix_runtime_config(db=db)
+        enabled_identity_count = db.query(IdentityProvider.id).filter(IdentityProvider.enabled.is_(True)).count()
+        lag = db.query(func.max(IngestionCheckpoint.lag_seconds)).scalar()
+        worker_alive = db.query(WorkerHeartbeat.worker_name).filter(
+            WorkerHeartbeat.last_seen_at >= datetime.now(timezone.utc) - timedelta(minutes=2),
+            WorkerHeartbeat.status.in_(["healthy", "degraded"]),
+        ).first()
+        return {
+            "status": "ok",
+            "dependencies": {
+                "netbox": "configured" if netbox.get("enabled") else "disabled",
+                "elk": "configured" if elk.get("enabled") else "disabled",
+                "zabbix": "configured" if zabbix.get("enabled") else "disabled",
+                "identity": "configured" if enabled_identity_count else "missing",
+                "elk_checkpoint_lag_seconds": lag,
+                "worker": "alive" if worker_alive else "unavailable",
+            },
         }
     finally:
         db.close()
 
-    payload = {
-        "status": overall_status,
-        "checks": checks,
-    }
-    if overall_status == "healthy":
-        return payload
-    return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=payload)
+
+@app.get("/metrics", response_class=PlainTextResponse)
+async def prometheus_metrics():
+    from models.execution_job import ExecutionJob
+    from models.ingestion import IngestionCheckpoint
+    from models.verification import VerificationRun
+    from models.webhook import WebhookDelivery
+    from models.runtime import WorkerHeartbeat
+    from datetime import datetime, timedelta, timezone
+
+    db = SessionLocal()
+    try:
+        gauges = {
+            "agenticops_execution_jobs_running": float(db.query(ExecutionJob.id).filter(ExecutionJob.status == "running").count()),
+            "agenticops_webhook_deliveries_pending": float(db.query(WebhookDelivery.id).filter(WebhookDelivery.status.in_(["pending", "retry", "delivering"])).count()),
+            "agenticops_webhook_deliveries_dead": float(db.query(WebhookDelivery.id).filter(WebhookDelivery.status == "dead").count()),
+            "agenticops_verifications_pending": float(db.query(VerificationRun.id).filter(VerificationRun.status.in_(["pending", "checking"])).count()),
+            "agenticops_elk_checkpoint_lag_seconds": float(db.query(func.coalesce(func.max(IngestionCheckpoint.lag_seconds), 0)).scalar() or 0),
+            "agenticops_worker_alive": float(
+                bool(
+                    db.query(WorkerHeartbeat.worker_name).filter(
+                        WorkerHeartbeat.last_seen_at >= datetime.now(timezone.utc) - timedelta(minutes=2),
+                        WorkerHeartbeat.status.in_(["healthy", "degraded"]),
+                    ).first()
+                )
+            ),
+        }
+        return metrics_registry.render(gauges)
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":
@@ -240,5 +238,5 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True
+        reload=settings.debug
     )

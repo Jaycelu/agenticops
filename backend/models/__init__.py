@@ -38,6 +38,7 @@ from models.execution_job import ExecutionActionResult, ExecutionJob, Idempotenc
 from models.webhook import OutboxEvent, WebhookDelivery, WebhookEndpoint
 from models.verification import BaselineSnapshot, VerificationCheck, VerificationRun
 from models.ingestion import IngestedLogEvent, IngestionCheckpoint, LogAggregationBucket, NoiseReductionSnapshot
+from models.runtime import WorkerHeartbeat
 
 __all__ = [
     "Site",
@@ -83,4 +84,5 @@ __all__ = [
     "IngestedLogEvent",
     "LogAggregationBucket",
     "NoiseReductionSnapshot",
+    "WorkerHeartbeat",
 ]

@@ -46,15 +46,22 @@ CI 使用独立的 `netops_agenticops_test` 测试库并会清理其中数据；
 
 ## 4. 启动流程
 
-### 4.1 后端
+### 4.1 数据库迁移、API 与 Worker
 
 ```bash
-cd backend
-python3 main.py
+export APP_SECRET_KEY='至少 32 字节的随机值'
+export POSTGRES_PASSWORD='数据库随机密码'
+docker compose up -d postgres
+docker compose run --rm migrate
+docker compose up -d backend worker frontend
 ```
 
 健康检查：
-- `GET http://localhost:8000/health`
+- API 存活：`GET http://localhost:8000/health/live`
+- API 就绪（数据库与迁移版本）：`GET http://localhost:8000/health/ready`
+- 依赖状态（含 Worker、SSO、ELK checkpoint）：`GET http://localhost:8000/health/dependencies`
+- Prometheus 指标：`GET http://localhost:8000/metrics`
+- Worker：`docker compose exec worker python -m scripts.check_worker_health`
 - Swagger: `http://localhost:8000/docs`
 
 ### 4.2 前端
@@ -167,9 +174,13 @@ pip3 install -r requirements.txt
 
 ## 9. 回滚策略
 
-1. 前端异常：回退对应页面/API 提交；确保 `npm run build` 恢复。
-2. 后端异常：优先回退 API 行为变更；保证 `python3 -m compileall .` 通过。
-3. 数据层：本阶段未引入破坏性迁移，按服务回滚即可。
+1. 变更前执行 `pg_dump -Fc`，记录应用提交 SHA 和 Alembic revision。
+2. 应用异常但 schema 兼容：回退镜像/提交，保持 `AUTOMATION_OBSERVE_ONLY=true`，重启 API 与 Worker。
+3. schema 不兼容：停止 API/Worker，将备份恢复到新建的空数据库，切换 `DATABASE_URL`；不要在原生产库上反复 downgrade/upgrade。
+4. Webhook 或设备动作异常：先停 Worker，再禁用 Endpoint/变更策略；API 可继续提供只读查询。
+5. 恢复后验证 `/health/ready`、Worker heartbeat、审计链、待投递队列与 checkpoint，再恢复流量。
+
+详细命令和放量门禁见 `docs/PRODUCTION_DEPLOYMENT.md`。
 
 ## 10. 交接清单
 

@@ -85,6 +85,16 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+  deployment-contract:
+    runs-on: ubuntu-latest
+    env:
+      APP_SECRET_KEY: ci-only-secret-at-least-32-bytes
+      POSTGRES_PASSWORD: ci-only-postgres-password
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config -q
+      - run: python -m compileall -q backend
+
   security-audit:
     runs-on: ubuntu-latest
     defaults:

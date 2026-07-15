@@ -34,10 +34,21 @@ alembic upgrade head
 
 # 启动后端服务
 echo "启动后端服务..."
-python3 main.py &
+uvicorn main:app --host "${BACKEND_HOST:-0.0.0.0}" --port "${BACKEND_PORT:-8000}" &
 
 BACKEND_PID=$!
 echo "后端服务已启动 (PID: $BACKEND_PID)"
+
+echo "启动后台 Worker..."
+python3 -m worker &
+WORKER_PID=$!
+echo "后台 Worker 已启动 (PID: $WORKER_PID)"
+
+cleanup() {
+  kill "$BACKEND_PID" "$WORKER_PID" 2>/dev/null || true
+  wait "$BACKEND_PID" "$WORKER_PID" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
 
 echo ""
 echo "=========================================="
@@ -50,5 +61,6 @@ echo ""
 echo "按 Ctrl+C 停止服务"
 echo "=========================================="
 
-# 等待后端服务
-wait $BACKEND_PID
+# 任一关键进程退出都终止启动脚本，避免留下半运行状态。
+wait -n "$BACKEND_PID" "$WORKER_PID"
+exit 1

@@ -24,8 +24,17 @@ export function configureAxios(instance: AxiosInstance): AxiosInstance {
   instance.interceptors.response.use(
     (response) => response,
     (error: unknown) => {
-      if (axios.isAxiosError(error) && error.response?.status === 401) {
-        window.dispatchEvent(new CustomEvent('auth:unauthorized'))
+      if (axios.isAxiosError(error) && error.response) {
+        const payload = error.response.data
+        if (payload && typeof payload === 'object' && 'error' in payload) {
+          const envelope = payload.error
+          if (envelope && typeof envelope === 'object' && 'message' in envelope && !('detail' in payload)) {
+            Object.assign(payload, { detail: envelope.message })
+          }
+        }
+        if (error.response.status === 401) {
+          window.dispatchEvent(new CustomEvent('auth:unauthorized'))
+        }
       }
       return Promise.reject(error)
     }
