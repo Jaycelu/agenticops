@@ -13,6 +13,7 @@ from auth.schemas import Principal
 from config.settings import settings
 from models.agenticops import RemediationPlan, RemediationPlanStatus
 from models.approval import ApprovalDecision, PlanVersion
+from webhooks.service import webhook_service
 
 
 def canonical_plan_payload(plan: RemediationPlan) -> dict[str, Any]:
@@ -68,6 +69,20 @@ class ApprovalService:
         plan.approval_status = "pending"
         db.flush()
         self._audit(db, "approval.initiated", "success", plan, version, principal)
+        webhook_service.enqueue(
+            db,
+            event_type="approval.requested",
+            aggregate_type="remediation_plan",
+            aggregate_id=str(plan.id),
+            payload={
+                "plan_id": int(plan.id),
+                "case_id": int(plan.case_id),
+                "version": version.version,
+                "plan_hash": version.plan_hash,
+                "risk_level": plan.risk_level,
+                "expires_at": version.expires_at.isoformat(),
+            },
+        )
         db.commit()
         db.refresh(version)
         return version
@@ -124,6 +139,20 @@ class ApprovalService:
         plan.approved_at = now if normalized == "approved" else None
         db.flush()
         self._audit(db, "approval.decided", "success", plan, version, principal, {"decision": normalized})
+        webhook_service.enqueue(
+            db,
+            event_type=f"approval.{normalized}",
+            aggregate_type="remediation_plan",
+            aggregate_id=str(plan.id),
+            payload={
+                "plan_id": int(plan.id),
+                "case_id": int(plan.case_id),
+                "version": version.version,
+                "plan_hash": version.plan_hash,
+                "decision": normalized,
+                "decided_by_user_id": principal.user_id,
+            },
+        )
         db.commit()
         db.refresh(record)
         return record

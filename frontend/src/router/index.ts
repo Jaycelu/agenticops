@@ -86,6 +86,11 @@ const routes: RouteRecordRaw[] = [
         path: 'identity',
         name: 'IdentityAdmin',
         component: () => import('@/pages/IdentityAdmin.vue')
+      },
+      {
+        path: 'webhooks',
+        name: 'Webhooks',
+        component: () => import('@/pages/Webhooks.vue')
       }
     ]
   }

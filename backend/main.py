@@ -20,6 +20,7 @@ from api import (
     auth_router,
     identity_admin_router,
     probes_router,
+    webhooks_router,
 )
 from api.ssh_management import router as ssh_management_router
 from api.events import router as events_router
@@ -187,6 +188,7 @@ app.include_router(zabbix_router, dependencies=read_dependency)
 app.include_router(auth_router)
 app.include_router(identity_admin_router)
 app.include_router(probes_router)
+app.include_router(webhooks_router)
 
 
 @app.get("/")

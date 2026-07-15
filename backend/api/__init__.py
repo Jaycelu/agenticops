@@ -14,6 +14,7 @@ from .zabbix import router as zabbix_router
 from .auth import router as auth_router
 from .identity_admin import router as identity_admin_router
 from .probes import router as probes_router
+from .webhooks import router as webhooks_router
 
 __all__ = [
     "assets_router",
@@ -32,4 +33,5 @@ __all__ = [
     "auth_router",
     "identity_admin_router",
     "probes_router",
+    "webhooks_router",
 ]

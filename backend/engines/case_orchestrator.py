@@ -41,6 +41,7 @@ from services.memory_ingestion_service import memory_ingestion_service
 from services.memory_retriever import memory_retriever
 from probes.gateway import probe_gateway
 from probes.schemas import ProbeRequest
+from webhooks.service import webhook_service
 
 
 class CaseOrchestrator:
@@ -108,6 +109,19 @@ class CaseOrchestrator:
         )
         db.add(case)
         db.flush()
+        webhook_service.enqueue(
+            db,
+            event_type="case.created",
+            aggregate_type="case",
+            aggregate_id=str(case.id),
+            payload={
+                "case_id": int(case.id),
+                "case_code": case.case_code,
+                "title": case.title,
+                "severity": severity,
+                "source_system": source_system,
+            },
+        )
 
         self._create_evidence(
             db,

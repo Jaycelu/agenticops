@@ -80,6 +80,8 @@ class Settings(BaseSettings):
     probe_max_output_bytes: int = 262144
     approval_ttl_hours: int = 24
     idempotency_ttl_hours: int = 72
+    webhook_allow_http: bool = False
+    webhook_lease_seconds: int = 60
 
     # Ticket integration mode: local|external
     ticket_mode: str = "local"

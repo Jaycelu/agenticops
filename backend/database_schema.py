@@ -53,6 +53,7 @@ def active_tables() -> list[Table]:
     from models.probe import DeviceHostKey, ProbeRun, ProbeTemplateVersion
     from models.approval import ApprovalDecision, PlanVersion
     from models.execution_job import ExecutionActionResult, ExecutionJob, IdempotencyRecord
+    from models.webhook import OutboxEvent, WebhookDelivery, WebhookEndpoint
 
     return [
         Site.__table__,
@@ -93,6 +94,9 @@ def active_tables() -> list[Table]:
         ExecutionJob.__table__,
         ExecutionActionResult.__table__,
         IdempotencyRecord.__table__,
+        WebhookEndpoint.__table__,
+        OutboxEvent.__table__,
+        WebhookDelivery.__table__,
     ]
 
 

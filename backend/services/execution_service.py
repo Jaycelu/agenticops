@@ -25,6 +25,7 @@ from services.execution_engine import ExecutionStatus, ExecutorType, RetryPolicy
 from services.post_execution_verification_service import post_execution_verification_service
 from tools.base import ToolRequest
 from tools.registry import ToolSpec, tool_registry
+from webhooks.service import webhook_service
 
 
 # Advisory tools describe human process steps, not executor invocations.
@@ -112,6 +113,13 @@ class ExecutionService:
             target_id=str(job.id),
             details={"plan_id": plan_id, "plan_version_id": int(version.id), "plan_hash": version.plan_hash},
         )
+        webhook_service.enqueue(
+            db,
+            event_type="execution.accepted",
+            aggregate_type="execution_job",
+            aggregate_id=str(job.id),
+            payload={"execution_job_id": int(job.id), "plan_id": plan_id, "case_id": int(case.id)},
+        )
         db.commit()
 
         # Worker boundary: lock and verify the frozen hash again immediately before
@@ -197,7 +205,7 @@ class ExecutionService:
                 self._record_action_result(db, job, index, request, spec, "failed", execution_summaries[-1])
                 continue
 
-            result = await self._execute_allowed_action(run, request, spec, case=case)
+            result = await self._execute_allowed_action(db, run, request, spec, case=case)
             run.result_payload = result
             run.finished_at = datetime.now(timezone.utc)
             if result.get("status") == ExecutionStatus.SUCCESS.value:
@@ -307,6 +315,19 @@ class ExecutionService:
             target_id=str(job.id),
             details={"plan_id": plan_id, "status": job.status},
         )
+        webhook_service.enqueue(
+            db,
+            event_type=f"execution.{job.status}",
+            aggregate_type="execution_job",
+            aggregate_id=str(job.id),
+            payload={
+                "execution_job_id": int(job.id),
+                "plan_id": plan_id,
+                "case_id": int(case.id),
+                "status": job.status,
+                "success": response["success"],
+            },
+        )
         db.commit()
         return response
 
@@ -369,7 +390,6 @@ class ExecutionService:
             "body",
             "message",
             "title",
-            "webhook_url",
             "notification_type",
             "script_path",
             "script_args",
@@ -419,6 +439,7 @@ class ExecutionService:
 
     async def _execute_allowed_action(
         self,
+        db: Session,
         run: ExecutionRun,
         request: ToolRequest,
         spec: Optional[ToolSpec],
@@ -427,6 +448,25 @@ class ExecutionService:
     ) -> Dict[str, Any]:
         if spec is None:
             return {"status": ExecutionStatus.FAILED.value, "message": "tool spec missing", "error": "tool_spec_missing"}
+        if spec.capability == "notification":
+            event = webhook_service.enqueue(
+                db,
+                event_type="automation.notification",
+                aggregate_type="execution_run",
+                aggregate_id=str(run.id),
+                payload={
+                    "title": request.params.get("title") or "AgenticOps notification",
+                    "message": request.params.get("message") or "",
+                    "case_id": int(case.id),
+                    "plan_id": request.plan_id,
+                },
+            )
+            db.flush()
+            return {
+                "status": ExecutionStatus.SUCCESS.value,
+                "message": "notification queued in webhook outbox",
+                "details": {"event_id": event.event_id},
+            }
         try:
             executor_type = ExecutorType(spec.executor_type)
         except ValueError:
@@ -497,7 +537,7 @@ class ExecutionService:
                 run.error_message = decision.blocked_reason or "rollback_policy_blocked"
                 result: Dict[str, Any] = {"error": run.error_message}
             else:
-                result = await self._execute_allowed_action(run, request, spec, case=case)
+                result = await self._execute_allowed_action(db, run, request, spec, case=case)
                 if result.get("status") == ExecutionStatus.SUCCESS.value:
                     run.status = ExecutionRunStatus.ROLLED_BACK
                 else:

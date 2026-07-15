@@ -88,7 +88,8 @@ const rawNavSections: NavSection[] = [
       { path: '/assets', label: '资产拓扑', icon: Server },
       { path: '/tickets', label: '工单', icon: Ticket },
       { path: '/settings', label: '设置', icon: Settings },
-      { path: '/identity', label: '身份与权限', icon: ShieldCheck, permission: 'identities.manage' }
+      { path: '/identity', label: '身份与权限', icon: ShieldCheck, permission: 'identities.manage' },
+      { path: '/webhooks', label: 'Webhook', icon: Radio, permission: 'webhooks.manage' }
     ]
   }
 ]
