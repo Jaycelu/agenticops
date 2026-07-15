@@ -17,6 +17,8 @@ from api.schemas.assets import (
     SyncDevicesResponse,
     FetchConfigRequest,
 )
+from auth.dependencies import require_permissions
+from auth.rbac import Permission
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 netbox_mcp = NetBoxMCP()
@@ -147,7 +149,11 @@ async def get_rack_devices(rack_id: int):
         raise HTTPException(status_code=500, detail=error_detail("ASSET_UPSTREAM_ERROR", result.error))
 
 
-@router.post("/clear-cache", response_model=MessageResponse)
+@router.post(
+    "/clear-cache",
+    response_model=MessageResponse,
+    dependencies=[Depends(require_permissions(Permission.INTEGRATIONS_MANAGE.value))],
+)
 async def clear_cache():
     """清除资产缓存"""
     for prefix in [
@@ -341,7 +347,10 @@ async def get_device_detail(device_id: int, db: Session = Depends(get_db)):
     return data
 
 
-@router.post("/devices/{device_id:int}/fetch-config")
+@router.post(
+    "/devices/{device_id:int}/fetch-config",
+    dependencies=[Depends(require_permissions(Permission.CREDENTIALS_MANAGE.value))],
+)
 async def fetch_and_save_device_config(device_id: int, credentials: FetchConfigRequest):
     """从设备获取配置并写入NetBox"""
     params = {
@@ -360,7 +369,11 @@ async def fetch_and_save_device_config(device_id: int, credentials: FetchConfigR
         raise HTTPException(status_code=500, detail=error_detail("ASSET_UPSTREAM_ERROR", result.error))
 
 
-@router.post("/sync/devices", response_model=SyncDevicesResponse)
+@router.post(
+    "/sync/devices",
+    response_model=SyncDevicesResponse,
+    dependencies=[Depends(require_permissions(Permission.INTEGRATIONS_MANAGE.value))],
+)
 async def sync_devices(site: str = None, vendor: str = None, db: Session = Depends(get_db)):
     params = {"action": "query_devices"}
     if site:

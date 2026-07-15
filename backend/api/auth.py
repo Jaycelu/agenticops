@@ -8,12 +8,15 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from auth.dependencies import get_current_principal
+from auth.api_token_service import MACHINE_TOKEN_PERMISSIONS, api_token_service
+from auth.dependencies import get_current_principal, require_permissions
+from auth.rbac import Permission
 from auth.schemas import Principal, SessionCredentials
 from auth.service import AuthenticationFailed, LoginResult, authentication_service
 from auth.session_service import auth_session_service
 from config.settings import settings
 from database import get_db
+from models.auth import ApiToken
 
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
@@ -22,6 +25,12 @@ router = APIRouter(prefix="/api/auth", tags=["authentication"])
 class CredentialLoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=320)
     password: str = Field(min_length=1, max_length=4096)
+
+
+class ApiTokenCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    permissions: set[str] = Field(default_factory=lambda: set(MACHINE_TOKEN_PERMISSIONS))
+    expires_at: datetime | None = None
 
 
 def _client_ip(request: Request) -> str | None:
@@ -199,3 +208,64 @@ def logout(
     response = Response(status_code=status.HTTP_204_NO_CONTENT)
     _clear_auth_cookies(response)
     return response
+
+
+@router.get("/tokens")
+def list_api_tokens(
+    principal: Principal = Depends(require_permissions(Permission.TOKENS_MANAGE.value)),
+    db: Session = Depends(get_db),
+):
+    del principal
+    rows = db.query(ApiToken).order_by(ApiToken.created_at.desc()).all()
+    return {
+        "items": [
+            {
+                "id": int(row.id),
+                "name": row.name,
+                "token_prefix": f"agt_{row.token_prefix}",
+                "permissions": row.permissions or [],
+                "active": bool(row.active and row.revoked_at is None),
+                "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+                "last_used_at": row.last_used_at.isoformat() if row.last_used_at else None,
+                "created_at": row.created_at.isoformat(),
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.post("/tokens", status_code=status.HTTP_201_CREATED)
+def create_api_token(
+    payload: ApiTokenCreateRequest,
+    principal: Principal = Depends(require_permissions(Permission.TOKENS_MANAGE.value)),
+    db: Session = Depends(get_db),
+):
+    try:
+        row, plaintext = api_token_service.create(
+            db,
+            name=payload.name,
+            permissions=payload.permissions,
+            created_by=principal,
+            expires_at=payload.expires_at,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {
+        "id": int(row.id),
+        "name": row.name,
+        "token": plaintext,
+        "permissions": row.permissions,
+        "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+        "warning": "This token is shown once and cannot be recovered.",
+    }
+
+
+@router.delete("/tokens/{token_id}", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_api_token(
+    token_id: int,
+    principal: Principal = Depends(require_permissions(Permission.TOKENS_MANAGE.value)),
+    db: Session = Depends(get_db),
+):
+    if not api_token_service.revoke(db, token_id, actor=principal):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="api_token_not_found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -123,7 +123,7 @@ class RootCauseCandidateListResponse(BaseModel):
 
 
 class EventDispatchRequest(BaseModel):
-    reviewer: Optional[str] = "system"
+    model_config = ConfigDict(extra="forbid")
 
 
 class EventDispositionRequest(BaseModel):
@@ -141,10 +141,11 @@ class EventDispatchResponse(BaseModel):
 
 
 class EventTicketCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     title: Optional[str] = None
     description: Optional[str] = None
     priority: Optional[str] = "P3"
-    requester: Optional[str] = "netops-automation"
 
 
 class EventTicketResponse(BaseModel):

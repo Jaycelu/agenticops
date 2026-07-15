@@ -10,6 +10,8 @@ from database import get_db
 from models.agenticops import SourceEvent, SourceEventStatus
 from services.event_decision_service import event_decision_service
 from services.source_event_projection import attach_event_projection, upsert_source_event
+from auth.dependencies import require_permissions
+from auth.rbac import Permission
 
 router = APIRouter(prefix="/api/zabbix", tags=["zabbix"])
 
@@ -239,7 +241,10 @@ async def list_zabbix_alerts(
     }
 
 
-@router.post("/sync-alerts")
+@router.post(
+    "/sync-alerts",
+    dependencies=[Depends(require_permissions(Permission.INTEGRATIONS_MANAGE.value))],
+)
 async def sync_zabbix_alerts_to_events(
     host: Optional[str] = None,
     limit: int = Query(20, ge=1, le=200),

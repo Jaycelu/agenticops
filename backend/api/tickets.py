@@ -12,6 +12,9 @@ from api.schemas.tickets import (
 )
 from database import get_db
 from models.automation import LocalTicket
+from auth.dependencies import require_permissions
+from auth.rbac import Permission
+from auth.schemas import Principal
 
 router = APIRouter(prefix="/api/tickets", tags=["tickets"])
 
@@ -83,10 +86,14 @@ async def get_ticket(ticket_code: str, db: Session = Depends(get_db)):
     return {"success": True, "message": "ok", "ticket": _to_ticket_item(ticket)}
 
 
-@router.patch("/{ticket_code}", response_model=LocalTicketUpdateResponse)
+@router.patch(
+    "/{ticket_code}",
+    response_model=LocalTicketUpdateResponse,
+)
 async def update_ticket_status(
     ticket_code: str,
     payload: LocalTicketUpdateRequest,
+    principal: Principal = Depends(require_permissions(Permission.TICKETS_MANAGE.value)),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(LocalTicket).filter(LocalTicket.ticket_code == ticket_code).first()
@@ -106,7 +113,7 @@ async def update_ticket_status(
         {
             "from_status": previous_status,
             "to_status": status,
-            "operator": payload.operator or "operator",
+            "operator": principal.username,
             "comment": payload.comment or "",
             "updated_at": datetime.now().isoformat(),
         }

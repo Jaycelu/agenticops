@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from services.site_automation_service import site_automation_service
+from auth.dependencies import require_permissions
+from auth.rbac import Permission
 
 router = APIRouter(prefix="/api/sites", tags=["sites"])
 
@@ -27,7 +29,10 @@ async def get_site(
     return payload
 
 
-@router.put("/{site_id}/automation-toggle")
+@router.put(
+    "/{site_id}/automation-toggle",
+    dependencies=[Depends(require_permissions(Permission.AUTOMATION_MANAGE.value))],
+)
 async def toggle_site_automation(
     site_id: int,
     enabled: bool,

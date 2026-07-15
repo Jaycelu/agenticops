@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -19,6 +18,8 @@ from api.schemas.cases import (
 )
 from engines.case_orchestrator import case_orchestrator
 from models.agenticops import AgentClaim, AgentRun, CaseRecord, CaseStatus, EvidenceItem, RemediationPlan, SourceEvent
+from auth.dependencies import require_permissions
+from auth.rbac import Permission
 
 router = APIRouter(prefix="/api/cases", tags=["Case 中心"])
 
@@ -111,7 +112,11 @@ async def list_cases(
     return CaseListResponse(total=total, items=[_to_case_summary_response(item) for item in items])
 
 
-@router.post("", response_model=CaseDetailResponse)
+@router.post(
+    "",
+    response_model=CaseDetailResponse,
+    dependencies=[Depends(require_permissions(Permission.PROBES_RUN.value))],
+)
 async def create_case(payload: CaseCreateRequest, db: Session = Depends(get_db)):
     case = await case_orchestrator.intake_case(
         db,
@@ -140,7 +145,11 @@ async def create_case(payload: CaseCreateRequest, db: Session = Depends(get_db))
     )
 
 
-@router.post("/intake", response_model=CasePipelineResponse)
+@router.post(
+    "/intake",
+    response_model=CasePipelineResponse,
+    dependencies=[Depends(require_permissions(Permission.PROBES_RUN.value))],
+)
 async def intake_case(payload: CaseIntakeRequest, db: Session = Depends(get_db)):
     case = await case_orchestrator.intake_case(
         db,
@@ -212,7 +221,11 @@ async def list_case_evidence(case_id: int, db: Session = Depends(get_db)):
     ]
 
 
-@router.post("/{case_id}/run-agents", response_model=CasePipelineResponse)
+@router.post(
+    "/{case_id}/run-agents",
+    response_model=CasePipelineResponse,
+    dependencies=[Depends(require_permissions(Permission.PROBES_RUN.value))],
+)
 async def run_case_agents(
     case_id: int,
     base_name: Optional[str] = None,

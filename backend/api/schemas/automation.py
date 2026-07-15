@@ -1,12 +1,13 @@
 from datetime import datetime
 from typing import Dict, List, Optional, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TaskFeedbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     verdict: str = Field(..., description="correct|incorrect|partial")
     comment: Optional[str] = None
-    reviewer: Optional[str] = "operator"
     tags: Optional[List[str]] = Field(default_factory=list)
 
 
@@ -89,11 +90,13 @@ class ManualActionResponse(BaseModel):
 
 
 class ApprovalInitiateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     risk_level: str = Field(default="medium", description="low|medium|high|critical")
-    initiator: Optional[str] = "operator"
 
 
 class ApprovalDecisionRequest(BaseModel):
-    approver: str = Field(..., min_length=1, max_length=100)
+    model_config = ConfigDict(extra="forbid")
+
     decision: str = Field(..., description="approved|rejected")
     comment: Optional[str] = None

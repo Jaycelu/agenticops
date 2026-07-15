@@ -30,7 +30,7 @@ class ExecutionService:
     def __init__(self, guard: Optional[PolicyGuard] = None) -> None:
         self.guard = guard or policy_guard
 
-    async def execute_plan(self, db: Session, plan_id: int, *, triggered_by: str = "operator") -> Dict[str, Any]:
+    async def execute_plan(self, db: Session, plan_id: int, *, triggered_by: str) -> Dict[str, Any]:
         plan = db.query(RemediationPlan).filter(RemediationPlan.id == plan_id).first()
         if plan is None:
             raise LookupError("Plan not found")

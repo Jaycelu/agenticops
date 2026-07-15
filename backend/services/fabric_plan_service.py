@@ -17,7 +17,13 @@ def get_plan_or_raise(db: Session, plan_id: int) -> RemediationPlan:
     return plan
 
 
-def initiate_plan_approval(db: Session, plan_id: int, payload: ApprovalInitiateRequest) -> Dict[str, Any]:
+def initiate_plan_approval(
+    db: Session,
+    plan_id: int,
+    payload: ApprovalInitiateRequest,
+    *,
+    initiator: str,
+) -> Dict[str, Any]:
     plan = get_plan_or_raise(db, plan_id)
     safety_checks = dict(plan.safety_checks or {})
     approval_history = list(safety_checks.get("approval_history") or [])
@@ -25,7 +31,7 @@ def initiate_plan_approval(db: Session, plan_id: int, payload: ApprovalInitiateR
         {
             "stage": "initiate",
             "risk_level": (payload.risk_level or "medium").lower(),
-            "initiator": payload.initiator or "operator",
+            "initiator": initiator,
             "created_at": datetime.now().isoformat(),
         }
     )
@@ -44,7 +50,13 @@ def initiate_plan_approval(db: Session, plan_id: int, payload: ApprovalInitiateR
     }
 
 
-def decide_plan_approval(db: Session, plan_id: int, payload: ApprovalDecisionRequest) -> Dict[str, Any]:
+def decide_plan_approval(
+    db: Session,
+    plan_id: int,
+    payload: ApprovalDecisionRequest,
+    *,
+    approver: str,
+) -> Dict[str, Any]:
     decision = (payload.decision or "").lower()
     if decision not in {"approved", "rejected"}:
         raise ValueError("decision must be approved or rejected")
@@ -55,7 +67,7 @@ def decide_plan_approval(db: Session, plan_id: int, payload: ApprovalDecisionReq
     approval_history.append(
         {
             "stage": "decision",
-            "approver": payload.approver,
+            "approver": approver,
             "decision": decision,
             "comment": payload.comment or "",
             "decided_at": datetime.now().isoformat(),
@@ -83,7 +95,13 @@ def get_plan_approval_history(db: Session, plan_id: int) -> Dict[str, Any]:
     return {"plan_id": int(plan.id), "total": len(history), "approvals": history}
 
 
-def submit_plan_feedback(db: Session, plan_id: int, payload: TaskFeedbackRequest) -> Dict[str, Any]:
+def submit_plan_feedback(
+    db: Session,
+    plan_id: int,
+    payload: TaskFeedbackRequest,
+    *,
+    reviewer: str,
+) -> Dict[str, Any]:
     plan = get_plan_or_raise(db, plan_id)
     allowed_verdicts = {"correct", "incorrect", "partial"}
     if payload.verdict not in allowed_verdicts:
@@ -105,7 +123,7 @@ def submit_plan_feedback(db: Session, plan_id: int, payload: TaskFeedbackRequest
             "case_id": int(plan.case_id),
             "verdict": payload.verdict,
             "comment": payload.comment,
-            "reviewer": payload.reviewer or "operator",
+            "reviewer": reviewer,
             "tags": payload.tags or [],
         },
     )
@@ -119,7 +137,7 @@ def submit_plan_feedback(db: Session, plan_id: int, payload: TaskFeedbackRequest
             "plan_id": int(plan.id),
             "verdict": payload.verdict,
             "comment": payload.comment,
-            "reviewer": payload.reviewer or "operator",
+            "reviewer": reviewer,
             "tags": payload.tags or [],
             "created_at": entry.created_at,
         },

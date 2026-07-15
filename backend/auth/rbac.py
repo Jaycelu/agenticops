@@ -26,6 +26,8 @@ class Permission(StrEnum):
     USERS_MANAGE = "users.manage"
     AUDIT_READ = "audit.read"
     TOKENS_MANAGE = "tokens.manage"
+    EVENTS_INGEST = "events.ingest"
+    TICKETS_MANAGE = "tickets.manage"
 
 
 READ_PERMISSIONS = {
@@ -35,7 +37,8 @@ READ_PERMISSIONS = {
 
 ROLE_PERMISSIONS: dict[Role, set[Permission]] = {
     Role.VIEWER: set(READ_PERMISSIONS),
-    Role.OPERATOR: set(READ_PERMISSIONS) | {Permission.PROBES_RUN, Permission.APPROVALS_REQUEST},
+    Role.OPERATOR: set(READ_PERMISSIONS)
+    | {Permission.PROBES_RUN, Permission.APPROVALS_REQUEST, Permission.TICKETS_MANAGE},
     Role.APPROVER: set(READ_PERMISSIONS) | {Permission.APPROVALS_DECIDE},
     Role.EXECUTOR: set(READ_PERMISSIONS) | {Permission.EXECUTIONS_RUN},
     Role.ADMIN: set(Permission),

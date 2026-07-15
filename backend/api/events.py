@@ -35,6 +35,9 @@ from services.source_event_projection import attach_event_projection, build_even
 from services.ticket_adapter import ticket_adapter
 from services.automation_settings_service import automation_settings_service
 from services.topology_correlation_service import topology_correlation_service
+from auth.dependencies import require_api_permissions, require_permissions
+from auth.rbac import Permission
+from auth.schemas import Principal
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 _UNSET = object()
@@ -452,7 +455,9 @@ def _build_dedup_key(payload: EventIngestRequest) -> str:
     else:
         bucket = datetime.utcnow().strftime("%Y%m%d%H%M")
         raw_key = f"{payload.source}|{payload.host}|{payload.name}|{bucket}"
-    return hashlib.md5(raw_key.encode()).hexdigest()
+    # Compatibility fingerprint only; changing algorithms would duplicate existing
+    # events after upgrade. This digest is never used for signatures or secrets.
+    return hashlib.md5(raw_key.encode(), usedforsecurity=False).hexdigest()
 
 
 def _validate_source_centric_ingest(payload: EventIngestRequest) -> tuple[str, str]:
@@ -638,13 +643,21 @@ async def _dispatch_readonly_for_binding(
     }
 
 
-@router.get("/mode", response_model=MessageResponse)
+@router.get(
+    "/mode",
+    response_model=MessageResponse,
+    dependencies=[Depends(require_permissions(Permission.CASES_READ.value))],
+)
 async def get_mode():
     mode = "observe_only" if settings.automation_observe_only else "normal"
     return {"message": mode}
 
 
-@router.post("/ingest", response_model=EventIngestResponse)
+@router.post(
+    "/ingest",
+    response_model=EventIngestResponse,
+    dependencies=[Depends(require_api_permissions(Permission.EVENTS_INGEST.value))],
+)
 async def ingest_event(payload: EventIngestRequest, db: Session = Depends(get_db)):
     source_event = _upsert_event(db, payload)
     db.commit()
@@ -996,7 +1009,11 @@ async def _resolve_case_for_binding(
     }
 
 
-@router.get("", response_model=EventListResponse)
+@router.get(
+    "",
+    response_model=EventListResponse,
+    dependencies=[Depends(require_permissions(Permission.CASES_READ.value))],
+)
 async def list_events(
     status: Optional[str] = None,
     severity: Optional[str] = None,
@@ -1042,7 +1059,11 @@ async def list_events(
     }
 
 
-@router.get("/clusters", response_model=EventClusterListResponse)
+@router.get(
+    "/clusters",
+    response_model=EventClusterListResponse,
+    dependencies=[Depends(require_permissions(Permission.CASES_READ.value))],
+)
 async def list_event_clusters(
     status: Optional[str] = None,
     severity: Optional[str] = None,
@@ -1067,7 +1088,11 @@ async def list_event_clusters(
     }
 
 
-@router.get("/root-causes", response_model=RootCauseCandidateListResponse)
+@router.get(
+    "/root-causes",
+    response_model=RootCauseCandidateListResponse,
+    dependencies=[Depends(require_permissions(Permission.CASES_READ.value))],
+)
 async def list_root_cause_candidates(
     status: Optional[str] = None,
     severity: Optional[str] = None,
@@ -1093,10 +1118,14 @@ async def list_root_cause_candidates(
     }
 
 
-@router.post("/{event_id}/dispatch-readonly", response_model=EventDispatchResponse)
+@router.post(
+    "/{event_id}/dispatch-readonly",
+    response_model=EventDispatchResponse,
+)
 async def dispatch_readonly_diagnosis(
     event_id: int,
     payload: EventDispatchRequest,
+    principal: Principal = Depends(require_permissions(Permission.PROBES_RUN.value)),
     db: Session = Depends(get_db),
 ):
     source_event = _find_source_event_by_any_event_id(db, event_id)
@@ -1105,7 +1134,7 @@ async def dispatch_readonly_diagnosis(
 
     result = await _dispatch_readonly_for_binding(
         source_event=source_event,
-        reviewer=payload.reviewer or "system",
+        reviewer=principal.username,
         db=db,
     )
     return {
@@ -1118,10 +1147,14 @@ async def dispatch_readonly_diagnosis(
     }
 
 
-@router.post("/{event_id}/disposition", response_model=MessageResponse)
+@router.post(
+    "/{event_id}/disposition",
+    response_model=MessageResponse,
+)
 async def update_event_disposition(
     event_id: int,
     payload: EventDispositionRequest,
+    principal: Principal = Depends(require_permissions(Permission.PROBES_RUN.value)),
     db: Session = Depends(get_db),
 ):
     source_event = _find_source_event_by_any_event_id(db, event_id)
@@ -1136,6 +1169,7 @@ async def update_event_disposition(
         "disposition": disposition,
         "reason": (payload.reason or "").strip() or "manual_override",
         "confidence": 0.99,
+        "updated_by": principal.username,
         "updated_at": datetime.now().isoformat(),
     }
     resolved_at = datetime.now() if disposition == "noise" else None
@@ -1157,7 +1191,11 @@ async def update_event_disposition(
     return {"message": "Event disposition updated"}
 
 
-@router.post("/{event_id}/playbook-draft-check", response_model=EventPlaybookDraftResponse)
+@router.post(
+    "/{event_id}/playbook-draft-check",
+    response_model=EventPlaybookDraftResponse,
+    dependencies=[Depends(require_permissions(Permission.PROBES_RUN.value))],
+)
 async def generate_event_playbook_draft(
     event_id: int,
     payload: EventPlaybookDraftRequest,
@@ -1196,10 +1234,14 @@ async def generate_event_playbook_draft(
     }
 
 
-@router.post("/{event_id}/ticket", response_model=EventTicketResponse)
+@router.post(
+    "/{event_id}/ticket",
+    response_model=EventTicketResponse,
+)
 async def create_event_ticket(
     event_id: int,
     payload: EventTicketCreateRequest,
+    principal: Principal = Depends(require_permissions(Permission.TICKETS_MANAGE.value)),
     db: Session = Depends(get_db),
 ):
     source_event = _find_source_event_by_any_event_id(db, event_id)
@@ -1211,7 +1253,7 @@ async def create_event_ticket(
         "title": payload.title or f"[{event.severity}] {event.name}",
         "description": payload.description or f"source={event.source}, host={event.host}, event_id={event.id}",
         "priority": payload.priority,
-        "requester": payload.requester,
+        "requester": principal.username,
         "metadata": {
             "event_id": event.id,
             "source_event_id": int(source_event.id) if source_event is not None else None,
@@ -1280,7 +1322,11 @@ async def create_event_ticket(
     }
 
 
-@router.get("/{event_id}/relations", response_model=EventRelationsResponse)
+@router.get(
+    "/{event_id}/relations",
+    response_model=EventRelationsResponse,
+    dependencies=[Depends(require_permissions(Permission.CASES_READ.value))],
+)
 async def get_event_relations(event_id: int, db: Session = Depends(get_db)):
     source_event = _find_source_event_by_any_event_id(db, event_id)
     event = build_event_shadow(source_event) if source_event is not None else None

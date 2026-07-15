@@ -26,6 +26,8 @@
 
 CI 使用独立的 `netops_agenticops_test` 测试库并会清理其中数据；它不是生产部署的第二个数据库，也绝不能指向生产库。
 
+浏览器状态变更请求必须同时携带 Session Cookie、CSRF Cookie 及同值的 `X-CSRF-Token` 请求头。ELK/Zabbix 等机器事件接入不使用浏览器 Session，只接受具有 `events.ingest` 权限的 Bearer API Token；机器 Token 不能获得审批或执行权限。
+
 ## 4. 启动流程
 
 ### 4.1 后端
@@ -78,6 +80,7 @@ npm run build
 - `POST /api/events/ingest`
 - 最小体：`source`, `event_type`, `name`。
 - 仅接受：`source=ELK,event_type=log_signal` 或 `source=ZABBIX,event_type=zabbix_alert`。
+- 请求头：`Authorization: Bearer <events.ingest API Token>`。
 
 3. 查询事件：
 - `GET /api/events?limit=20`

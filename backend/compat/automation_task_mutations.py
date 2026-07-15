@@ -6,7 +6,7 @@ from typing import Any, Dict
 from sqlalchemy.orm import Session
 
 from api.schemas.automation import ApprovalDecisionRequest, ApprovalInitiateRequest, TaskFeedbackRequest
-from compat.automation_task_views import get_legacy_task_or_plan, list_plan_feedback_entries
+from compat.automation_task_views import get_legacy_task_or_plan
 from models.agenticops import RemediationPlanStatus
 from models.automation import AutomationApproval, AutomationTask, AutomationTaskFeedback
 from services.memory_ingestion_service import memory_ingestion_service
@@ -28,6 +28,8 @@ def initiate_task_approval_action(
     db: Session,
     task_id: int,
     payload: ApprovalInitiateRequest,
+    *,
+    initiator: str,
 ) -> Dict[str, Any]:
     task, plan = get_legacy_task_or_plan(db, task_id)
     if task is None and plan is None:
@@ -40,7 +42,7 @@ def initiate_task_approval_action(
             {
                 "stage": "initiate",
                 "risk_level": (payload.risk_level or "medium").lower(),
-                "initiator": payload.initiator or "operator",
+                "initiator": initiator,
                 "created_at": datetime.now().isoformat(),
             }
         )
@@ -69,7 +71,7 @@ def initiate_task_approval_action(
         task,
         stage="发起审批",
         payload={
-            "initiator": payload.initiator or "operator",
+            "initiator": initiator,
             "risk_level": (payload.risk_level or "medium").lower(),
             "created_at": datetime.now().isoformat(),
         },
@@ -88,6 +90,8 @@ def decide_task_approval_action(
     db: Session,
     task_id: int,
     payload: ApprovalDecisionRequest,
+    *,
+    approver: str,
 ) -> Dict[str, Any]:
     task, plan = get_legacy_task_or_plan(db, task_id)
     if task is None and plan is None:
@@ -104,7 +108,7 @@ def decide_task_approval_action(
             {
                 "stage": "decision",
                 "decision": decision,
-                "approver": payload.approver,
+                "approver": approver,
                 "comment": payload.comment,
                 "created_at": datetime.now().isoformat(),
             }
@@ -127,14 +131,14 @@ def decide_task_approval_action(
 
     duplicate = db.query(AutomationApproval).filter(
         AutomationApproval.task_id == task_id,
-        AutomationApproval.approver == payload.approver,
+        AutomationApproval.approver == approver,
     ).first()
     if duplicate:
         raise ValueError("approver has already submitted a decision")
 
     approval = AutomationApproval(
         task_id=task_id,
-        approver=payload.approver,
+        approver=approver,
         decision=decision,
         comment=payload.comment,
         decided_at=datetime.now(),
@@ -147,7 +151,7 @@ def decide_task_approval_action(
         task,
         stage="审批决策",
         payload={
-            "approver": payload.approver,
+            "approver": approver,
             "decision": decision,
             "comment": payload.comment,
             "created_at": datetime.now().isoformat(),
@@ -201,6 +205,8 @@ def submit_task_feedback_action(
     db: Session,
     task_id: int,
     payload: TaskFeedbackRequest,
+    *,
+    reviewer: str,
 ) -> Dict[str, Any]:
     task, plan = get_legacy_task_or_plan(db, task_id)
     if task is None and plan is None:
@@ -227,7 +233,7 @@ def submit_task_feedback_action(
                 "case_id": int(plan.case_id),
                 "verdict": payload.verdict,
                 "comment": payload.comment,
-                "reviewer": payload.reviewer or "operator",
+                "reviewer": reviewer,
                 "tags": payload.tags or [],
             },
         )
@@ -241,7 +247,7 @@ def submit_task_feedback_action(
                 "task_id": task_id,
                 "verdict": payload.verdict,
                 "comment": payload.comment,
-                "reviewer": payload.reviewer or "operator",
+                "reviewer": reviewer,
                 "tags": payload.tags or [],
                 "created_at": entry.created_at,
             },
@@ -251,7 +257,7 @@ def submit_task_feedback_action(
         task_id=task_id,
         verdict=payload.verdict,
         comment=payload.comment,
-        reviewer=payload.reviewer or "operator",
+        reviewer=reviewer,
         tags=payload.tags or [],
     )
     db.add(feedback)

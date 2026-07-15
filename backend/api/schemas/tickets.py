@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from api.schemas.common import PageMeta
 
@@ -29,9 +29,10 @@ class LocalTicketListResponse(BaseModel):
 
 
 class LocalTicketUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     status: str
     comment: Optional[str] = None
-    operator: Optional[str] = "operator"
 
 
 class LocalTicketUpdateResponse(BaseModel):

@@ -207,6 +207,8 @@ curl http://localhost:8000/health
 | `FRONTEND_URL` | CORS 前端地址 |
 | `AUTOMATION_OBSERVE_ONLY` | 安全开关，阻止非只读自动化动作 |
 
+浏览器接口使用服务端 Session + CSRF 双提交校验；事件接入使用权限受限的 Bearer API Token。API Token 首期只允许 `events.ingest`，不能用于人工审批或设备执行。
+
 ## 核心模块
 
 | 模块 | 路由 | 作用 |

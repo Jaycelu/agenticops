@@ -10,7 +10,6 @@ from api.schemas.fabric import (
     ExecutionRunListResponse,
     ExecutionRunResponse,
     FabricOverviewResponse,
-    RemediationPlanExecuteRequest,
     RemediationPlanExecuteResponse,
     RemediationPlanListResponse,
     RemediationPlanResponse,
@@ -24,6 +23,9 @@ from services.fabric_plan_service import (
     submit_plan_feedback,
 )
 from services.execution_service import execution_service
+from auth.dependencies import require_permissions
+from auth.rbac import Permission
+from auth.schemas import Principal
 
 router = APIRouter(prefix="/api/fabric", tags=["Automation Fabric"])
 
@@ -111,10 +113,11 @@ async def get_plan(plan_id: int, db: Session = Depends(get_db)):
 async def initiate_remediation_plan_approval(
     plan_id: int,
     payload: ApprovalInitiateRequest,
+    principal: Principal = Depends(require_permissions(Permission.APPROVALS_REQUEST.value)),
     db: Session = Depends(get_db),
 ):
     try:
-        return initiate_plan_approval(db, plan_id, payload)
+        return initiate_plan_approval(db, plan_id, payload, initiator=principal.username)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
@@ -125,10 +128,11 @@ async def initiate_remediation_plan_approval(
 async def decide_remediation_plan_approval(
     plan_id: int,
     payload: ApprovalDecisionRequest,
+    principal: Principal = Depends(require_permissions(Permission.APPROVALS_DECIDE.value)),
     db: Session = Depends(get_db),
 ):
     try:
-        return decide_plan_approval(db, plan_id, payload)
+        return decide_plan_approval(db, plan_id, payload, approver=principal.username)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
@@ -150,27 +154,31 @@ async def get_remediation_plan_approval_history(
 async def submit_remediation_plan_feedback(
     plan_id: int,
     payload: TaskFeedbackRequest,
+    principal: Principal = Depends(require_permissions(Permission.PROBES_RUN.value)),
     db: Session = Depends(get_db),
 ):
     try:
-        return submit_plan_feedback(db, plan_id, payload)
+        return submit_plan_feedback(db, plan_id, payload, reviewer=principal.username)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.post("/plans/{plan_id}/execute", response_model=RemediationPlanExecuteResponse)
+@router.post(
+    "/plans/{plan_id}/execute",
+    response_model=RemediationPlanExecuteResponse,
+)
 async def execute_remediation_plan(
     plan_id: int,
-    payload: RemediationPlanExecuteRequest | None = None,
+    principal: Principal = Depends(require_permissions(Permission.EXECUTIONS_RUN.value)),
     db: Session = Depends(get_db),
 ):
     try:
         return await execution_service.execute_plan(
             db,
             plan_id,
-            triggered_by=(payload.triggered_by if payload else None) or "operator",
+            triggered_by=principal.username,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -244,7 +252,10 @@ async def get_execution_run(execution_id: int, db: Session = Depends(get_db)):
     )
 
 
-@router.post("/executions/{execution_id}/verify-readonly")
+@router.post(
+    "/executions/{execution_id}/verify-readonly",
+    dependencies=[Depends(require_permissions(Permission.PROBES_RUN.value))],
+)
 async def verify_execution_readonly_harness(execution_id: int, db: Session = Depends(get_db)):
     """只读复查执行结果（Zabbix/ELK 快照），更新 execution / case 状态。"""
     result = await post_execution_verification_service.verify_execution_readonly(db, execution_id=execution_id)

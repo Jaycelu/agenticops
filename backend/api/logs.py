@@ -1,5 +1,5 @@
 from datetime import datetime
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel
 import hashlib
@@ -14,6 +14,8 @@ from api.schemas.logs import BaseConfigsResponse, LogsResponse, AggregationRespo
 from services.log_scope_service import log_scope_service
 from services.source_event_projection import attach_event_projection, upsert_source_event
 from models.agenticops import SourceEvent, SourceEventStatus
+from auth.dependencies import require_permissions
+from auth.rbac import Permission
 
 router = APIRouter(prefix="/api/logs", tags=["logs"])
 elk_mcp = ELKMCP()
@@ -244,7 +246,11 @@ async def query_logs_by_base(
         raise HTTPException(status_code=500, detail=error_detail("LOG_UPSTREAM_ERROR", result.error))
 
 
-@router.post("/clear-cache", response_model=MessageResponse)
+@router.post(
+    "/clear-cache",
+    response_model=MessageResponse,
+    dependencies=[Depends(require_permissions(Permission.INTEGRATIONS_MANAGE.value))],
+)
 async def clear_cache():
     """清除日志缓存"""
     netbox_cache.clear("logs")
@@ -262,7 +268,10 @@ class SingleLogAnalysisRequest(BaseModel):
     hostname: Optional[str] = None
 
 
-@router.post("/analyze-single")
+@router.post(
+    "/analyze-single",
+    dependencies=[Depends(require_permissions(Permission.PROBES_RUN.value))],
+)
 async def analyze_single_log(request: SingleLogAnalysisRequest):
     """使用 AI 分析单条日志"""
     try:
@@ -336,7 +345,10 @@ class LogAnalysisRequest(BaseModel):
     logs: Optional[List[Dict[str, Any]]] = None
 
 
-@router.post("/analyze")
+@router.post(
+    "/analyze",
+    dependencies=[Depends(require_permissions(Permission.PROBES_RUN.value))],
+)
 async def analyze_logs(request: LogAnalysisRequest):
     """使用 AI 分析日志数据"""
     try:
@@ -406,7 +418,11 @@ class LogAggregationRequest(BaseModel):
     }
 
 
-@router.post("/aggregate", response_model=AggregationResponse)
+@router.post(
+    "/aggregate",
+    response_model=AggregationResponse,
+    dependencies=[Depends(require_permissions(Permission.PROBES_RUN.value))],
+)
 async def aggregate_logs(request: LogAggregationRequest):
     """聚合日志数据"""
     try:
@@ -548,7 +564,10 @@ class DeviceLogAnalysisRequest(BaseModel):
     title: Optional[str] = None
 
 
-@router.post("/analyze-device")
+@router.post(
+    "/analyze-device",
+    dependencies=[Depends(require_permissions(Permission.PROBES_RUN.value))],
+)
 async def analyze_device_logs(request: DeviceLogAnalysisRequest):
     """使用 AI 分析设备的聚合日志数据"""
     try:

@@ -23,7 +23,9 @@ class Principal:
     display_name: str
     roles: frozenset[str]
     permissions: frozenset[str]
-    session_id: str
+    session_id: str | None
+    auth_type: str = "session"
+    token_id: int | None = None
 
 
 @dataclass(frozen=True)

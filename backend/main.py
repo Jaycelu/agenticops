@@ -1,4 +1,4 @@
-from fastapi import FastAPI, status
+from fastapi import Depends, FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -24,6 +24,9 @@ from api.events import router as events_router
 from api.tickets import router as tickets_router
 from database import SessionLocal
 from utils.cache import netbox_cache
+from auth.csrf import CSRFMiddleware
+from auth.dependencies import require_permissions
+from auth.rbac import Permission
 import asyncio
 
 logger = setup_logging()
@@ -145,6 +148,7 @@ allowed_origins = {
     settings.frontend_url,
 }
 
+app.add_middleware(CSRFMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=sorted(origin for origin in allowed_origins if origin),
@@ -153,19 +157,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(assets_router)
-app.include_router(logs_router)
-app.include_router(compat_router)
-app.include_router(settings_router)
-app.include_router(sites_router)
-app.include_router(ssh_management_router)
+read_dependency = [Depends(require_permissions(Permission.CASES_READ.value))]
+app.include_router(assets_router, dependencies=read_dependency)
+app.include_router(logs_router, dependencies=read_dependency)
+app.include_router(
+    compat_router,
+    dependencies=[Depends(require_permissions(Permission.AUTOMATION_MANAGE.value))],
+)
+app.include_router(
+    settings_router,
+    dependencies=[Depends(require_permissions(Permission.INTEGRATIONS_MANAGE.value))],
+)
+app.include_router(sites_router, dependencies=read_dependency)
+app.include_router(
+    ssh_management_router,
+    dependencies=[Depends(require_permissions(Permission.CREDENTIALS_MANAGE.value))],
+)
 app.include_router(events_router)
-app.include_router(tickets_router)
-app.include_router(cases_router)
-app.include_router(agents_router)
-app.include_router(memories_router)
-app.include_router(fabric_router)
-app.include_router(zabbix_router)
+app.include_router(tickets_router, dependencies=read_dependency)
+app.include_router(cases_router, dependencies=read_dependency)
+app.include_router(agents_router, dependencies=read_dependency)
+app.include_router(memories_router, dependencies=read_dependency)
+app.include_router(fabric_router, dependencies=read_dependency)
+app.include_router(zabbix_router, dependencies=read_dependency)
 app.include_router(auth_router)
 
 

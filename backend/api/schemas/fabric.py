@@ -55,10 +55,6 @@ class FabricOverviewResponse(BaseModel):
     failed_executions: int
 
 
-class RemediationPlanExecuteRequest(BaseModel):
-    triggered_by: Optional[str] = "operator"
-
-
 class ExecutionActionSummary(BaseModel):
     # None when the action was skipped (advisory / non-executable) and produced no ExecutionRun.
     execution_run_id: Optional[int] = None

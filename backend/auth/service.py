@@ -219,7 +219,22 @@ class AuthenticationService:
         user = self._resolve_user(db, provider, identity)
         if not user.active:
             raise AuthenticationFailed("user account is inactive")
-        self._sync_provider_roles(db, provider, user, identity.groups)
+        added_roles, removed_roles = self._sync_provider_roles(db, provider, user, identity.groups)
+        if added_roles or removed_roles:
+            security_audit_service.append(
+                db,
+                event_type="auth.roles.synced",
+                outcome="success",
+                actor_user_id=int(user.id),
+                target_type="user_account",
+                target_id=str(user.id),
+                source_ip=client_ip,
+                details={
+                    "provider_key": provider.provider_key,
+                    "added": sorted(added_roles),
+                    "removed": sorted(removed_roles),
+                },
+            )
         user.last_login_at = datetime.now(timezone.utc)
         credentials = auth_session_service.create_session(
             db,
@@ -308,7 +323,7 @@ class AuthenticationService:
         provider: IdentityProvider,
         user: UserAccount,
         groups: tuple[str, ...],
-    ) -> None:
+    ) -> tuple[set[str], set[str]]:
         mapping = provider.group_role_mapping or {}
         normalized_mapping = {str(key).casefold(): value for key, value in mapping.items()}
         desired: set[str] = set()
@@ -327,11 +342,14 @@ class AuthenticationService:
             .all()
         )
         existing_by_role = {binding.role: binding for binding in existing}
+        removed = set(existing_by_role) - desired
+        added = desired - set(existing_by_role)
         for role, binding in existing_by_role.items():
             if role not in desired:
                 db.delete(binding)
-        for role in desired - set(existing_by_role):
+        for role in added:
             db.add(RoleBinding(user_id=user.id, role=role, source="provider", provider_id=provider.id))
+        return added, removed
 
 
 authentication_service = AuthenticationService()
