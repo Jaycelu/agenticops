@@ -89,6 +89,22 @@ class Settings(BaseSettings):
     elk_ingestion_page_size: int = 500
     elk_initial_lookback_hours: int = 1
 
+    # Durable diagnostic graph defaults. These are centralized safety thresholds,
+    # not agent prompt hints.
+    agent_graph_lease_seconds: int = 60
+    agent_graph_poll_seconds: float = 1.0
+    agent_max_runs_per_case: int = 16
+    agent_max_llm_calls_per_case: int = 8
+    agent_max_tool_calls_per_case: int = 12
+    agent_max_probe_calls_per_case: int = 10
+    agent_max_replan_count: int = 3
+    agent_max_runtime_seconds: int = 900
+    agent_max_target_devices: int = 3
+    agent_max_tool_calls_per_run: int = 3
+    hypothesis_confirm_confidence: float = 0.75
+    hypothesis_evidence_max_age_seconds: int = 3600
+    hypothesis_max_high_weight_contradictions: int = 0
+
     # Ticket integration mode: local|external
     ticket_mode: str = "local"
 

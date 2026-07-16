@@ -1,6 +1,8 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import asyncio
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -20,6 +22,9 @@ from engines.case_orchestrator import case_orchestrator
 from models.agenticops import AgentClaim, AgentRun, CaseRecord, CaseStatus, EvidenceItem, RemediationPlan, SourceEvent
 from auth.dependencies import require_permissions
 from auth.rbac import Permission
+from auth.schemas import Principal
+from models.agent_graph import AgentBudget, AgentCheckpoint, AgentGraphRun, AgentMessage, AgentTask, AgentToolCall, CaseHypothesis, CaseTimelineEvent
+from orchestration.graph_service import graph_service
 
 router = APIRouter(prefix="/api/cases", tags=["Case 中心"])
 
@@ -224,7 +229,7 @@ async def list_case_evidence(case_id: int, db: Session = Depends(get_db)):
 @router.post(
     "/{case_id}/run-agents",
     response_model=CasePipelineResponse,
-    dependencies=[Depends(require_permissions(Permission.PROBES_RUN.value))],
+    status_code=http_status.HTTP_202_ACCEPTED,
 )
 async def run_case_agents(
     case_id: int,
@@ -233,18 +238,132 @@ async def run_case_agents(
     time_range: str = "-15m,now",
     log_limit: int = Query(200, ge=1, le=1000),
     credential_id: Optional[int] = None,
+    force_restart: bool = False,
+    wait: bool = False,
+    timeout_seconds: int = Query(30, ge=1, le=30),
+    principal: Principal = Depends(require_permissions(Permission.PROBES_RUN.value)),
     db: Session = Depends(get_db),
 ):
-    result = await case_orchestrator.run_case_pipeline(
-        db,
-        case_id=case_id,
-        base_name=base_name,
-        log_query=log_query,
-        time_range=time_range,
-        log_limit=log_limit,
-        credential_id=credential_id,
-    )
-    return CasePipelineResponse(**result)
+    if force_restart and Permission.AGENT_GRAPHS_RESTART.value not in principal.permissions:
+        raise HTTPException(status_code=403, detail={"code": "permission_denied", "missing": [Permission.AGENT_GRAPHS_RESTART.value]})
+    try:
+        run, already_running = graph_service.enqueue(
+            db,
+            case_id=case_id,
+            principal=principal,
+            force_restart=force_restart,
+            input_payload={
+                "base_name": base_name,
+                "log_query": log_query,
+                "time_range": time_range,
+                "log_limit": log_limit,
+                "credential_id": credential_id,
+            },
+        )
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Case not found")
+    if wait:
+        deadline = asyncio.get_running_loop().time() + timeout_seconds
+        while asyncio.get_running_loop().time() < deadline:
+            db.expire_all()
+            current = db.query(AgentGraphRun).filter(AgentGraphRun.id == run.id).one()
+            if current.status in {"completed", "failed", "cancelled", "timed_out", "budget_exhausted"}:
+                payload = graph_service.view(current, already_running=already_running)
+                payload["status"] = current.status
+                payload["queued"] = False
+                return CasePipelineResponse(**payload)
+            await asyncio.sleep(0.25)
+    return CasePipelineResponse(**graph_service.view(run, already_running=already_running))
+
+
+def _graph_view(run: AgentGraphRun) -> dict:
+    return {
+        "graph_run_id": run.id, "case_id": run.case_id, "graph_version": run.graph_version,
+        "status": run.status, "current_state": run.current_state, "current_node": run.current_node,
+        "stop_reason": run.stop_reason, "error_message": run.error_message,
+        "forced_from_run_id": run.forced_from_run_id, "started_at": run.started_at,
+        "finished_at": run.finished_at, "created_at": run.created_at, "updated_at": run.updated_at,
+    }
+
+
+@router.get("/{case_id}/graph-runs")
+async def list_case_graph_runs(case_id: int, db: Session = Depends(get_db)):
+    rows = db.query(AgentGraphRun).filter(AgentGraphRun.case_id == case_id).order_by(AgentGraphRun.created_at.desc()).all()
+    return {"case_id": case_id, "items": [_graph_view(item) for item in rows]}
+
+
+@router.get("/{case_id}/graph-runs/{graph_run_id}")
+async def get_case_graph_run(case_id: int, graph_run_id: str, db: Session = Depends(get_db)):
+    run = db.query(AgentGraphRun).filter(AgentGraphRun.id == graph_run_id, AgentGraphRun.case_id == case_id).first()
+    if run is None:
+        raise HTTPException(status_code=404, detail="Graph run not found")
+    tasks = db.query(AgentTask).filter(AgentTask.graph_run_id == run.id).order_by(AgentTask.id.asc()).all()
+    calls = db.query(AgentToolCall).filter(AgentToolCall.graph_run_id == run.id).order_by(AgentToolCall.id.asc()).all()
+    checkpoint = db.query(AgentCheckpoint).filter(AgentCheckpoint.graph_run_id == run.id).order_by(AgentCheckpoint.id.desc()).first()
+    return {
+        **_graph_view(run),
+        "tasks": [{
+            "id": item.id, "task_code": item.task_code, "task_type": item.task_type, "graph_node": item.graph_node,
+            "goal": item.goal, "assigned_agent_type": item.assigned_agent_type, "status": item.status,
+            "priority": item.priority, "attempt_count": item.attempt_count, "max_attempts": item.max_attempts,
+            "insight_round": item.insight_round, "output_payload": item.output_payload or {},
+            "error_message": item.error_message, "started_at": item.started_at, "finished_at": item.finished_at,
+        } for item in tasks],
+        "tool_calls": [{
+            "id": item.id, "task_id": item.task_id, "agent_run_id": item.agent_run_id, "tool_id": item.tool_id,
+            "mode": item.mode, "status": item.status, "policy_decision": item.policy_decision or {},
+            "result_payload": item.result_payload or {}, "error_message": item.error_message,
+            "duration_ms": item.duration_ms, "started_at": item.started_at, "finished_at": item.finished_at,
+        } for item in calls],
+        "checkpoint": ({
+            "id": checkpoint.id, "current_node": checkpoint.current_node, "state_payload": checkpoint.state_payload,
+            "pending_tasks": checkpoint.pending_tasks, "budget_snapshot": checkpoint.budget_snapshot,
+            "created_at": checkpoint.created_at,
+        } if checkpoint else None),
+    }
+
+
+@router.get("/{case_id}/timeline")
+async def get_case_timeline(case_id: int, limit: int = Query(500, ge=1, le=1000), db: Session = Depends(get_db)):
+    rows = db.query(CaseTimelineEvent).filter(CaseTimelineEvent.case_id == case_id).order_by(CaseTimelineEvent.created_at.asc()).limit(limit).all()
+    return {"case_id": case_id, "items": [{
+        "id": item.id, "graph_run_id": item.graph_run_id, "task_id": item.task_id, "event_type": item.event_type,
+        "title": item.title, "payload": item.payload or {}, "actor_type": item.actor_type, "actor_id": item.actor_id,
+        "correlation_id": item.correlation_id, "created_at": item.created_at,
+    } for item in rows]}
+
+
+@router.get("/{case_id}/hypotheses")
+async def get_case_hypotheses(case_id: int, db: Session = Depends(get_db)):
+    rows = db.query(CaseHypothesis).filter(CaseHypothesis.case_id == case_id).order_by(CaseHypothesis.insight_round.desc(), CaseHypothesis.confidence.desc()).all()
+    return {"case_id": case_id, "items": [{
+        "id": item.id, "graph_run_id": item.graph_run_id, "task_id": item.task_id,
+        "hypothesis_code": item.hypothesis_code, "cause_code": item.cause_code, "cause": item.cause,
+        "confidence": item.confidence, "supporting_evidence_ids": item.supporting_evidence_ids or [],
+        "contradicting_evidence_ids": item.contradicting_evidence_ids or [], "missing_evidence": item.missing_evidence or [],
+        "next_probe_requests": item.next_probe_requests or [], "status": item.status, "insight_round": item.insight_round,
+        "critic_decision": item.critic_decision, "critic_payload": item.critic_payload or {},
+    } for item in rows]}
+
+
+@router.get("/{case_id}/agent-budget")
+async def get_case_agent_budget(case_id: int, graph_run_id: str | None = None, db: Session = Depends(get_db)):
+    query = db.query(AgentBudget).filter(AgentBudget.case_id == case_id)
+    if graph_run_id:
+        query = query.filter(AgentBudget.graph_run_id == graph_run_id)
+    item = query.order_by(AgentBudget.id.desc()).first()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Agent budget not found")
+    return {
+        "case_id": case_id, "graph_run_id": item.graph_run_id,
+        "limits": {name: getattr(item, f"max_{name}") for name in ("agent_runs", "llm_calls", "tool_calls", "probe_calls", "replan_count", "runtime_seconds", "target_devices")},
+        "usage": {
+            "agent_runs": item.used_agent_runs, "llm_calls": item.used_llm_calls, "tool_calls": item.used_tool_calls,
+            "probe_calls": item.used_probe_calls, "replan_count": item.used_replan_count,
+            "runtime_seconds": item.used_runtime_seconds, "target_devices": len(item.target_device_ids or []),
+        },
+        "exhausted": item.exhausted, "exhausted_reason": item.exhausted_reason,
+    }
 
 
 @router.get("/{case_id}/agents")

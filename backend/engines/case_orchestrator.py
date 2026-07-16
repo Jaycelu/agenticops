@@ -164,6 +164,33 @@ class CaseOrchestrator:
         log_limit: int = 200,
         credential_id: Optional[int] = None,
     ) -> Dict[str, Any]:
+        """Compatibility entry point: enqueue the durable graph and return acceptance."""
+        from orchestration.graph_service import graph_service
+
+        run, already_running = graph_service.enqueue(
+            db,
+            case_id=case_id,
+            input_payload={
+                "base_name": base_name,
+                "log_query": log_query,
+                "time_range": time_range,
+                "log_limit": log_limit,
+                "credential_id": credential_id,
+            },
+        )
+        return graph_service.view(run, already_running=already_running)
+
+    async def run_legacy_case_pipeline(
+        self,
+        db: Session,
+        *,
+        case_id: int,
+        base_name: Optional[str] = None,
+        log_query: Optional[str] = None,
+        time_range: str = "-15m,now",
+        log_limit: int = 200,
+        credential_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """
         Phase 3 起：把 agent 顺序声明在 pipelines/definitions/*.json，由 PipelineEngine 驱动。
         默认 playbook（pipelines/definitions/default.json）完整复刻先前硬编码顺序。

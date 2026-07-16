@@ -23,6 +23,12 @@ class ToolSpec:
     timeout: int = 30
     audit: bool = True
     param_schema: Dict[str, Any] = field(default_factory=dict)
+    agent_selectable: bool = False
+    read_only: bool = False
+    target_scope: List[str] = field(default_factory=list)
+    vendor_support: List[str] = field(default_factory=list)
+    output_parser: Optional[str] = None
+    evidence_mapper: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ToolSpec":
@@ -41,6 +47,13 @@ class ToolSpec:
             timeout=int(data.get("timeout") or 30),
             audit=bool(data.get("audit", True)),
             param_schema=dict(data.get("param_schema") or {}),
+            # Legacy catalog entries remain non-selectable by default.
+            agent_selectable=bool(data.get("agent_selectable", False)),
+            read_only=bool(data.get("read_only", data.get("capability") == "read_only")),
+            target_scope=[str(item) for item in data.get("target_scope") or []],
+            vendor_support=[str(item).lower() for item in data.get("vendor_support") or []],
+            output_parser=str(data["output_parser"]) if data.get("output_parser") else None,
+            evidence_mapper=str(data["evidence_mapper"]) if data.get("evidence_mapper") else None,
         )
 
 
@@ -64,6 +77,25 @@ class ToolRegistry:
 
     def list(self) -> List[ToolSpec]:
         return list(self._tools.values())
+
+    def agent_tools(self) -> List[ToolSpec]:
+        return [item for item in self._tools.values() if item.agent_selectable and item.read_only]
+
+    def validate_agent_selection(self, spec: ToolSpec, target: Dict[str, Any], vendor: str | None = None) -> Tuple[bool, List[str]]:
+        errors: List[str] = []
+        if not spec.agent_selectable:
+            errors.append("tool_not_agent_selectable")
+        if not spec.read_only or spec.capability != "read_only":
+            errors.append("tool_not_read_only")
+        if spec.target_scope and not any(target.get(field) not in (None, "") for field in spec.target_scope):
+            errors.append("target_out_of_scope")
+        if vendor and spec.vendor_support and vendor.lower() not in spec.vendor_support and "all" not in spec.vendor_support:
+            errors.append("vendor_not_supported")
+        if not spec.output_parser:
+            errors.append("output_parser_missing")
+        if not spec.evidence_mapper:
+            errors.append("evidence_mapper_missing")
+        return not errors, errors
 
     def validate_params(self, spec: ToolSpec, params: Dict[str, Any]) -> Tuple[bool, List[str]]:
         missing = [

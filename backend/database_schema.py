@@ -57,6 +57,17 @@ def active_tables() -> list[Table]:
     from models.verification import BaselineSnapshot, VerificationCheck, VerificationRun
     from models.ingestion import IngestedLogEvent, IngestionCheckpoint, LogAggregationBucket, NoiseReductionSnapshot
     from models.runtime import WorkerHeartbeat
+    from models.agent_graph import (
+        AgentBudget,
+        AgentCheckpoint,
+        AgentGraphRun,
+        AgentMessage,
+        AgentTask,
+        AgentToolCall,
+        CaseHypothesis,
+        CaseStateTransition,
+        CaseTimelineEvent,
+    )
 
     return [
         Site.__table__,
@@ -108,6 +119,15 @@ def active_tables() -> list[Table]:
         LogAggregationBucket.__table__,
         NoiseReductionSnapshot.__table__,
         WorkerHeartbeat.__table__,
+        AgentGraphRun.__table__,
+        AgentTask.__table__,
+        AgentMessage.__table__,
+        AgentToolCall.__table__,
+        AgentBudget.__table__,
+        AgentCheckpoint.__table__,
+        CaseTimelineEvent.__table__,
+        CaseStateTransition.__table__,
+        CaseHypothesis.__table__,
     ]
 
 

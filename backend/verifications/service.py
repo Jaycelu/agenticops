@@ -9,6 +9,8 @@ from sqlalchemy import or_
 from adapters.elk_adapter import elk_adapter
 from adapters.zabbix_adapter import zabbix_adapter
 from models.agenticops import CaseRecord, CaseStatus, ExecutionRun, ExecutionRunStatus
+from services.case_state_service import case_state_service
+import uuid
 from models.verification import BaselineSnapshot, VerificationCheck, VerificationRun
 from verifications.baseline import matching_zabbix_alerts
 from verifications.schemas import CheckDefinition, CheckResult, VerificationPolicy
@@ -204,25 +206,35 @@ class VerificationService:
                 VerificationRun.status != "verified",
             ).first()
             if remaining is None:
-                case.status = CaseStatus.RESOLVED
-                case.current_phase = "verified"
-                case.closed_at = datetime.now(timezone.utc)
+                target_state = CaseStatus.RESOLVED
+                target_phase = "verified"
             else:
-                case.status = CaseStatus.VERIFYING
-                case.current_phase = "verification_pending_siblings"
+                target_state = CaseStatus.VERIFYING
+                target_phase = "verification_pending_siblings"
             if execution:
                 execution.status = ExecutionRunStatus.VERIFIED
                 execution.verified_at = datetime.now(timezone.utc)
         elif run.status == "regressed":
-            case.status = CaseStatus.ESCALATED
-            case.current_phase = "verification_regressed"
+            target_state = CaseStatus.ESCALATED
+            target_phase = "verification_regressed"
             if execution:
                 execution.status = ExecutionRunStatus.FAILED
         else:
-            case.status = CaseStatus.VERIFYING
-            case.current_phase = f"verification_{run.status}"
+            target_state = CaseStatus.VERIFYING
+            target_phase = f"verification_{run.status}"
             if execution:
                 execution.status = ExecutionRunStatus.VERIFYING
+        case_state_service.transition(
+            db,
+            case_id=case.id,
+            to_state=target_state,
+            trigger_type="verification",
+            trigger_id=str(run.id),
+            reason=f"verification verdict: {run.status}",
+            idempotency_key=f"verification-state:{run.id}:{run.status}:{run.rounds_completed}",
+            correlation_id=str(uuid.uuid4()),
+            phase=target_phase,
+        )
 
     @staticmethod
     def view(run: VerificationRun, results: list[CheckResult]) -> dict[str, Any]:

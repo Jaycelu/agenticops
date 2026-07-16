@@ -6,6 +6,8 @@ from agents.schemas import AgentDecision, AgentExecutionContext
 from models.agenticops import AgentType
 from models.llm_client import LLMClient
 from services.model_registry import build_client
+from orchestration.graph_contracts import EvidenceRequest
+from config.settings import settings
 
 
 class InsightAnalysisAgent(BaseOpsAgent):
@@ -22,9 +24,11 @@ class InsightAnalysisAgent(BaseOpsAgent):
             "输出字段：root_cause, impact_scope, severity, confidence, summary, recommendations, gaps, cited_evidence_ids, hypotheses。"
             "cited_evidence_ids 为 evidence_items_index 中你实际引用的 id 列表（整数），不得编造未出现的 id。"
             " hypotheses 是根因假设树，列表形式，含 2-4 个候选；证据严重不足时可只给 1 个 unknown 候选。"
-            "每个候选含 id (h1, h2, ...), cause, confidence (0..1),"
+            "每个候选含 id (h1, h2, ...), cause_code, cause, confidence (0..1), status, missing_evidence,"
             " supporting_evidence_ids 与 contradicting_evidence_ids（均为 evidence_items_index 中出现过的整数 id，不得编造），"
-            " 以及 next_probe（建议补采的下一步证据，自然语言，可为 null）。优先输出对主候选有反证或可证伪的候选。"
+            "以及 next_probe_requests。next_probe_requests 只能使用用户输入中明确提供的 netbox_device_id，"
+            "且每项必须含 probe_id,target.netbox_device_id,parameters,reason,expected_evidence_type；禁止输出 shell 或原始命令。"
+            "优先输出对主候选有反证或可证伪的候选。"
         )
         try:
             result = await self.llm_client.chat_completion_with_json(
@@ -72,6 +76,7 @@ class InsightAnalysisAgent(BaseOpsAgent):
                 "source_system": context.source_system,
                 "device_ip": context.device_ip,
                 "host": context.host,
+                "netbox_device_id": context.netbox_device_id,
             },
             "insight_round": context.insight_round,
             "evidence_items_index": evidence_index,
@@ -94,6 +99,43 @@ class InsightAnalysisAgent(BaseOpsAgent):
 
         # Phase 4: parse hypothesis tree from the LLM output (or synthesize from legacy fields).
         hypotheses = self._parse_hypothesis_tree(llm_result, valid_ids)
+        next_evidence_requests: List[Dict[str, Any]] = []
+        has_direct_device_evidence = any(
+            str(item.get("evidence_type")) == "command_output" for item in (context.evidence_items or [])
+        )
+        for index, hypothesis in enumerate(hypotheses):
+            hypothesis["hypothesis_code"] = str(hypothesis.get("id") or f"h{index + 1}")
+            hypothesis["cause_code"] = str(hypothesis.get("cause_code") or hypothesis["hypothesis_code"])
+            hypothesis["missing_evidence"] = list(hypothesis.get("missing_evidence") or gaps)
+            hypothesis["status"] = str(hypothesis.get("status") or ("supported" if hypothesis.get("confidence", 0) >= 0.6 else "proposed"))
+            validated_requests = []
+            for raw in hypothesis.get("next_probe_requests") or []:
+                try:
+                    parsed = EvidenceRequest.model_validate(raw)
+                except Exception:
+                    continue
+                if context.netbox_device_id and parsed.target.netbox_device_id == context.netbox_device_id:
+                    item = parsed.model_dump(mode="json")
+                    validated_requests.append(item)
+                    next_evidence_requests.append(item)
+            hypothesis["next_probe_requests"] = validated_requests
+        top_for_request = hypotheses[0] if hypotheses else None
+        if (
+            top_for_request
+            and context.netbox_device_id
+            and not has_direct_device_evidence
+            and float(top_for_request.get("confidence") or 0) < settings.hypothesis_confirm_confidence
+            and not next_evidence_requests
+        ):
+            fallback_request = EvidenceRequest.model_validate({
+                "probe_id": "network.system_status",
+                "target": {"netbox_device_id": context.netbox_device_id},
+                "parameters": {},
+                "reason": "obtain direct device evidence before confirming root cause",
+                "expected_evidence_type": "command_output",
+            }).model_dump(mode="json")
+            top_for_request["next_probe_requests"] = [fallback_request]
+            next_evidence_requests.append(fallback_request)
         top_hypothesis = hypotheses[0] if hypotheses else None
 
         cited_ids: List[int] = []
@@ -149,6 +191,7 @@ class InsightAnalysisAgent(BaseOpsAgent):
                 },
             },
             cited_evidence_item_ids=cited_ids,
+            next_evidence_requests=next_evidence_requests,
             metadata={
                 "insight_round": context.insight_round,
                 "hypothesis_count": len(hypotheses),
@@ -224,6 +267,10 @@ class InsightAnalysisAgent(BaseOpsAgent):
                     "supporting_evidence_ids": supporting,
                     "contradicting_evidence_ids": contradicting,
                     "next_probe": next_probe,
+                    "cause_code": str(item.get("cause_code") or item.get("id") or f"h{idx + 1}"),
+                    "missing_evidence": list(item.get("missing_evidence") or []),
+                    "next_probe_requests": list(item.get("next_probe_requests") or []),
+                    "status": str(item.get("status") or "proposed"),
                 })
 
         if not parsed:
@@ -242,6 +289,10 @@ class InsightAnalysisAgent(BaseOpsAgent):
                 "supporting_evidence_ids": supporting,
                 "contradicting_evidence_ids": [],
                 "next_probe": None,
+                "cause_code": "unknown",
+                "missing_evidence": [],
+                "next_probe_requests": [],
+                "status": "proposed",
             }]
 
         parsed.sort(key=lambda h: -h.get("confidence", 0.0))

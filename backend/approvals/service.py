@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -16,6 +17,7 @@ from models.approval import ApprovalDecision, PlanVersion
 from webhooks.service import webhook_service
 from tools.registry import tool_registry
 from verifications.schemas import VerificationPolicy
+from services.case_state_service import case_state_service
 
 
 def canonical_plan_payload(plan: RemediationPlan) -> dict[str, Any]:
@@ -71,6 +73,17 @@ class ApprovalService:
         plan.status = RemediationPlanStatus.PENDING_APPROVAL
         plan.approval_status = "pending"
         db.flush()
+        case_state_service.transition(
+            db,
+            case_id=plan.case_id,
+            to_state="awaiting_approval",
+            trigger_type="approval",
+            trigger_id=str(version.id),
+            reason="frozen plan submitted for human approval",
+            idempotency_key=f"approval-state:{version.id}:pending",
+            correlation_id=str(uuid.uuid4()),
+            phase="awaiting_approval",
+        )
         self._audit(db, "approval.initiated", "success", plan, version, principal)
         webhook_service.enqueue(
             db,
@@ -140,6 +153,18 @@ class ApprovalService:
         plan.approval_status = normalized
         plan.status = RemediationPlanStatus.APPROVED if normalized == "approved" else RemediationPlanStatus.CANCELLED
         plan.approved_at = now if normalized == "approved" else None
+        if normalized == "rejected":
+            case_state_service.transition(
+                db,
+                case_id=plan.case_id,
+                to_state="planning",
+                trigger_type="approval",
+                trigger_id=str(version.id),
+                reason="human rejected frozen plan",
+                idempotency_key=f"approval-state:{version.id}:rejected",
+                correlation_id=str(uuid.uuid4()),
+                phase="approval_rejected",
+            )
         db.flush()
         self._audit(db, "approval.decided", "success", plan, version, principal, {"decision": normalized})
         webhook_service.enqueue(

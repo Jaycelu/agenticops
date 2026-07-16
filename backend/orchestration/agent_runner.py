@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from agents.schemas import AgentExecutionContext
 from models.agenticops import AgentClaim, AgentRun, AgentRunStatus, CaseRecord, ClaimStatus
+from services.agent_budget_service import agent_budget_service
 
 
 class AgentRunner:
@@ -16,11 +17,21 @@ class AgentRunner:
         case: CaseRecord,
         agent: Any,
         context: AgentExecutionContext,
+        *,
+        graph_run_id: str | None = None,
+        task_id: int | None = None,
     ) -> tuple[AgentRun, AgentClaim]:
+        if graph_run_id:
+            agent_budget_service.consume(db, graph_run_id, "agent_runs")
+            agent_type_value = agent.agent_type.value if hasattr(agent.agent_type, "value") else str(agent.agent_type)
+            if agent_type_value == "insight_analysis":
+                agent_budget_service.consume(db, graph_run_id, "llm_calls")
         started_at = datetime.utcnow()
         claim_meta = {"insight_round": context.insight_round, "harness_trace": list(context.harness_trace)}
         run = AgentRun(
             case_id=case.id,
+            graph_run_id=graph_run_id,
+            task_id=task_id,
             agent_type=agent.agent_type,
             agent_name=agent.agent_name,
             status=AgentRunStatus.RUNNING,

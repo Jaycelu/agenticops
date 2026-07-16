@@ -19,15 +19,26 @@ class SourceEventStatus(str, enum.Enum):
 
 
 class CaseStatus(str, enum.Enum):
+    NEW = "new"
+    NORMALIZED = "normalized"
     OPEN = "open"
     TRIAGED = "triaged"
+    EVIDENCE_COLLECTING = "evidence_collecting"
+    DIAGNOSING = "diagnosing"
+    HYPOTHESIS_REVIEW = "hypothesis_review"
+    PLANNING = "planning"
+    SAFETY_REVIEW = "safety_review"
+    AWAITING_APPROVAL = "awaiting_approval"
     INVESTIGATING = "investigating"
     PLANNED = "planned"
     EXECUTING = "executing"
     VERIFYING = "verifying"
+    OBSERVING = "observing"
     RESOLVED = "resolved"
+    ROLLED_BACK = "rolled_back"
     CLOSED = "closed"
     ESCALATED = "escalated"
+    FAILED = "failed"
 
 
 class AgentRunStatus(str, enum.Enum):
@@ -140,7 +151,7 @@ class CaseRecord(Base):
     host = Column(String(255), index=True)
     priority = Column(String(20), default="P3", index=True)
     risk_level = Column(String(20), default="medium", index=True)
-    status = Column(SQLEnum(CaseStatus), nullable=False, default=CaseStatus.OPEN, index=True)
+    status = Column(SQLEnum(CaseStatus), nullable=False, default=CaseStatus.NEW, index=True)
     current_phase = Column(String(50), default="intake", index=True)
     case_metadata = Column(JSON, default=dict)
     opened_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
@@ -170,6 +181,9 @@ class EvidenceItem(Base):
     id = Column(BigInteger, primary_key=True, index=True)
     case_id = Column(BigInteger, ForeignKey("case_record.id"), nullable=False, index=True)
     source_event_id = Column(BigInteger, ForeignKey("source_event.id"), nullable=True, index=True)
+    task_id = Column(BigInteger, ForeignKey("agent_task.id", ondelete="SET NULL"), nullable=True, index=True)
+    tool_call_id = Column(BigInteger, ForeignKey("agent_tool_call.id", ondelete="SET NULL"), nullable=True, index=True)
+    probe_run_id = Column(BigInteger, ForeignKey("probe_run.id", ondelete="SET NULL"), nullable=True, index=True)
     evidence_type = Column(SQLEnum(EvidenceType), nullable=False, index=True)
     source_system = Column(String(50), nullable=False, index=True)
     source_ref = Column(String(255), index=True)
@@ -199,6 +213,8 @@ class AgentRun(Base):
 
     id = Column(BigInteger, primary_key=True, index=True)
     case_id = Column(BigInteger, ForeignKey("case_record.id"), nullable=False, index=True)
+    graph_run_id = Column(String(64), ForeignKey("agent_graph_run.id", ondelete="SET NULL"), nullable=True, index=True)
+    task_id = Column(BigInteger, ForeignKey("agent_task.id", ondelete="SET NULL"), nullable=True, index=True)
     agent_type = Column(SQLEnum(AgentType), nullable=False, index=True)
     agent_name = Column(String(120), nullable=False, index=True)
     status = Column(SQLEnum(AgentRunStatus), nullable=False, default=AgentRunStatus.PENDING, index=True)

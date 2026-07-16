@@ -101,6 +101,15 @@ class CaseOverviewResponse(BaseModel):
 
 class CasePipelineResponse(BaseModel):
     case_id: int
+    status: str = "accepted"
+    execution_mode: str = "async"
+    graph_run_id: Optional[str] = None
+    current_state: Optional[str] = None
+    current_node: Optional[str] = None
+    queued: bool = False
+    already_running: bool = False
+    message: Optional[str] = None
+    legacy_result: Optional[Dict[str, Any]] = None
     agent_run_ids: List[int] = Field(default_factory=list)
     claim_ids: List[int] = Field(default_factory=list)
     remediation_plan_id: Optional[int] = None

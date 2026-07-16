@@ -15,6 +15,7 @@ class Permission(StrEnum):
     CASES_READ = "cases.read"
     EVIDENCE_READ = "evidence.read"
     PROBES_RUN = "probes.run"
+    AGENT_GRAPHS_RESTART = "agent_graphs.restart"
     APPROVALS_REQUEST = "approvals.request"
     APPROVALS_DECIDE = "approvals.decide"
     EXECUTIONS_RUN = "executions.run"

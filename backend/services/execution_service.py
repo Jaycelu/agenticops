@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
@@ -22,6 +23,7 @@ from models.agenticops import (
 from models.execution_job import ExecutionActionResult, ExecutionJob, IdempotencyRecord
 from policies.guard import PolicyGuard, policy_guard
 from services.execution_engine import ExecutionStatus, ExecutorType, RetryPolicy, execution_engine
+from services.case_state_service import case_state_service
 from tools.base import ToolRequest
 from tools.registry import ToolSpec, tool_registry
 from webhooks.service import webhook_service
@@ -155,8 +157,17 @@ class ExecutionService:
         actions = list((version.canonical_payload.get("plan_payload") or {}).get("recommended_actions") or [])
 
         plan.status = RemediationPlanStatus.EXECUTING
-        case.status = CaseStatus.EXECUTING
-        case.current_phase = "executing"
+        case_state_service.transition(
+            db,
+            case_id=case.id,
+            to_state=CaseStatus.EXECUTING,
+            trigger_type="execution_job",
+            trigger_id=str(job.id),
+            reason="approved frozen plan execution started",
+            idempotency_key=f"execution-state:{job.id}:started",
+            correlation_id=str(uuid.uuid4()),
+            phase="executing",
+        )
         db.flush()
 
         execution_summaries: List[Dict[str, Any]] = []
@@ -286,31 +297,47 @@ class ExecutionService:
 
         if rollback_attempted and rollback_succeeded:
             plan.status = RemediationPlanStatus.ROLLED_BACK
-            case.status = CaseStatus.ESCALATED
-            case.current_phase = "execution_rolled_back"
+            target_state = CaseStatus.ROLLED_BACK
+            target_phase = "execution_rolled_back"
         elif rollback_attempted:
             plan.status = RemediationPlanStatus.FAILED
-            case.status = CaseStatus.ESCALATED
-            case.current_phase = "rollback_failed"
+            target_state = CaseStatus.ESCALATED
+            target_phase = "rollback_failed"
         elif allowed_success and not hard_failure:
             plan.status = RemediationPlanStatus.SUCCEEDED
             if not verified_resolved:
-                case.status = CaseStatus.VERIFYING
-                case.current_phase = "post_execution_verify"
+                target_state = CaseStatus.VERIFYING
+                target_phase = "post_execution_verify"
+            else:
+                target_state = None
+                target_phase = None
         elif allowed_success:
             plan.status = RemediationPlanStatus.FAILED
-            case.status = CaseStatus.VERIFYING
-            case.current_phase = "post_execution_partial"
+            target_state = CaseStatus.VERIFYING
+            target_phase = "post_execution_partial"
         elif hard_failure:
             plan.status = RemediationPlanStatus.FAILED
-            case.status = CaseStatus.ESCALATED
-            case.current_phase = "execution_blocked"
+            target_state = CaseStatus.ESCALATED
+            target_phase = "execution_blocked"
         else:
             # Only advisory / skipped actions — nothing executed, nothing failed.
             # The plan is purely advisory: revert to DRAFT, leave the case PLANNED.
             plan.status = RemediationPlanStatus.DRAFT
-            case.status = CaseStatus.PLANNED
-            case.current_phase = "advisory_only"
+            target_state = CaseStatus.PLANNED
+            target_phase = "advisory_only"
+
+        if target_state is not None:
+            case_state_service.transition(
+                db,
+                case_id=case.id,
+                to_state=target_state,
+                trigger_type="execution_job",
+                trigger_id=str(job.id),
+                reason=f"execution outcome: {plan.status.value}",
+                idempotency_key=f"execution-state:{job.id}:outcome:{target_state.value}",
+                correlation_id=str(uuid.uuid4()),
+                phase=target_phase,
+            )
 
         response = {
             "success": not hard_failure,

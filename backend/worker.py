@@ -18,6 +18,7 @@ from services.embedding_service import backfill_memory_embeddings, build_embedde
 from utils.cache import netbox_cache
 from verifications.service import verification_service
 from webhooks.worker import webhook_worker
+from orchestration.graph_worker import agent_graph_worker
 
 
 setup_logging()
@@ -37,7 +38,7 @@ class RuntimeWorker:
         self._install_signals()
         logger.bind(worker_name=self.name).info("worker_started")
         while not self.stop_event.is_set():
-            cycle = {"webhook": 0, "ingestion": 0, "verification": 0}
+            cycle = {"webhook": 0, "ingestion": 0, "verification": 0, "agent_graph": 0}
             try:
                 for _ in range(20):
                     if not await asyncio.to_thread(webhook_worker.run_once):
@@ -47,6 +48,10 @@ class RuntimeWorker:
                     cycle["ingestion"] += 1
                 if await verification_service.run_due_once():
                     cycle["verification"] += 1
+                for _ in range(20):
+                    if not await agent_graph_worker.run_once():
+                        break
+                    cycle["agent_graph"] += 1
                 await self._maintenance()
                 self._heartbeat("healthy", cycle)
             except Exception as exc:
