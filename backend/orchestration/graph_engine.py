@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
+from loguru import logger
 
 from agents.alert_triage_agent import alert_triage_agent
 from agents.autonomous_remediation_agent import autonomous_remediation_agent
@@ -21,11 +22,12 @@ from orchestration.agent_runner import agent_runner
 from orchestration.case_supervisor import case_supervisor
 from orchestration.graph_contracts import EvidenceRequest
 from services.agent_checkpoint_service import agent_checkpoint_service
-from services.agent_budget_service import BudgetExhausted
+from services.agent_budget_service import BudgetExhausted, agent_budget_service
 from services.agent_task_service import agent_task_service
 from services.agent_tool_service import AgentToolRejected, agent_tool_service
 from services.case_state_service import case_state_service
 from services.case_timeline_service import case_timeline_service
+from observability.metrics import metrics_registry
 
 
 AGENTS = {
@@ -41,6 +43,12 @@ AGENTS = {
 class CaseGraphEngine:
     async def execute_task(self, db: Session, graph_run: AgentGraphRun, task: AgentTask) -> None:
         correlation_id = str(uuid.uuid4())
+        task_log = logger.bind(
+            request_id=(graph_run.input_payload or {}).get("request_id"),
+            case_id=task.case_id, task_id=task.id, agent_run_id=None, tool_call_id=None,
+            graph_node=task.graph_node, correlation_id=correlation_id,
+        )
+        task_log.info("agent_graph_task_started")
         graph_run.status = "running"
         graph_run.started_at = graph_run.started_at or datetime.now(timezone.utc)
         graph_run.current_node = task.graph_node
@@ -52,6 +60,25 @@ class CaseGraphEngine:
             payload={"attempt": task.attempt_count},
         )
         try:
+            if task.deadline_at is not None:
+                deadline = task.deadline_at
+                if deadline.tzinfo is None:
+                    deadline = deadline.replace(tzinfo=timezone.utc)
+                if deadline <= datetime.now(timezone.utc):
+                    agent_task_service.transition(db, task, "timed_out", error="task_deadline_exceeded")
+                    graph_run.status = "timed_out"
+                    graph_run.stop_reason = "task_deadline_exceeded"
+                    graph_run.finished_at = datetime.now(timezone.utc)
+                    case_state_service.transition(
+                        db, case_id=task.case_id, to_state="escalated", trigger_type="timeout", trigger_id=graph_run.id,
+                        reason=graph_run.stop_reason, idempotency_key=f"state:{graph_run.id}:timed-out",
+                        graph_run_id=graph_run.id, task_id=task.id, correlation_id=correlation_id,
+                    )
+                    agent_checkpoint_service.create(db, graph_run, {"last_task_id": task.id, "timed_out": True})
+                    db.commit()
+                    return
+            elapsed = (datetime.now(timezone.utc) - graph_run.started_at).total_seconds()
+            agent_budget_service.record_runtime(db, graph_run.id, elapsed)
             if task.graph_node == "normalize":
                 self._normalize(db, graph_run, task, correlation_id)
             elif task.graph_node == "supervisor":
@@ -68,6 +95,7 @@ class CaseGraphEngine:
                 self._schedule_supervisor(db, graph_run, parent_task_id=task.id)
             agent_checkpoint_service.create(db, graph_run, {"last_task_id": task.id, "correlation_id": correlation_id})
             db.commit()
+            task_log.bind(task_status=task.status, graph_status=graph_run.status).info("agent_graph_task_finished")
         except BudgetExhausted as exc:
             db.rollback()
             task = db.query(AgentTask).filter(AgentTask.id == task.id).with_for_update().one()
@@ -87,10 +115,15 @@ class CaseGraphEngine:
                 graph_run_id=graph_run.id, task_id=task.id, correlation_id=correlation_id,
             )
             db.commit()
+            task_log.bind(resource=str(exc)).warning("agent_graph_budget_exhausted")
         except Exception as exc:
             db.rollback()
             task = db.query(AgentTask).filter(AgentTask.id == task.id).with_for_update().one()
             graph_run = db.query(AgentGraphRun).filter(AgentGraphRun.id == graph_run.id).with_for_update().one()
+            # The transition to running belongs to the rolled-back transaction.
+            # Persist the failed attempt explicitly so retries remain bounded.
+            task.attempt_count += 1
+            task.started_at = task.started_at or datetime.now(timezone.utc)
             if task.attempt_count < task.max_attempts:
                 task.status = "ready"
                 task.error_message = f"{type(exc).__name__}: {str(exc)[:2000]}"
@@ -107,6 +140,7 @@ class CaseGraphEngine:
                 payload={"error_type": type(exc).__name__, "retry": task.status == "ready"},
             )
             db.commit()
+            task_log.bind(error_type=type(exc).__name__, retry=task.status == "ready").exception("agent_graph_task_failed")
 
     def _normalize(self, db: Session, graph_run: AgentGraphRun, task: AgentTask, correlation_id: str) -> None:
         case = db.query(CaseRecord).filter(CaseRecord.id == task.case_id).one()
@@ -134,6 +168,10 @@ class CaseGraphEngine:
             message_type="safety_review" if decision.decision == "safety_review" else "task_assignment",
             content=task.output_payload, artifact_refs=[], correlation_id=correlation_id,
         ))
+        metrics_registry.increment(
+            "agent_message_total",
+            message_type="safety_review" if decision.decision == "safety_review" else "task_assignment",
+        )
         case_timeline_service.append(
             db, case_id=graph_run.case_id, graph_run_id=graph_run.id, task_id=task.id,
             event_type="supervisor_decision", title=f"Supervisor: {decision.decision}", actor_type="supervisor",
@@ -148,6 +186,10 @@ class CaseGraphEngine:
                 graph_run_id=graph_run.id, task_id=task.id, correlation_id=correlation_id,
             )
             graph_run.current_state = target.upper()
+        if decision.decision == "collect_more_evidence" and any(
+            (item.input_payload or {}).get("requests") for item in decision.next_tasks
+        ):
+            agent_budget_service.consume(db, graph_run.id, "replan_count")
         for index, next_task in enumerate(decision.next_tasks):
             explicit_key = (next_task.input_payload or {}).get("idempotency_key")
             round_no = int((next_task.input_payload or {}).get("insight_round") or (next_task.input_payload or {}).get("next_insight_round") or 0)
@@ -160,6 +202,8 @@ class CaseGraphEngine:
                 parent_task_id=task.id, insight_round=round_no,
                 idempotency_key=explicit_key or f"{next_task.graph_node}:{task.id}:{index}:{round_no}",
             )
+        if decision.decision == "collect_more_evidence":
+            graph_run.status = "waiting_evidence"
         if decision.stop_reason:
             graph_run.stop_reason = decision.stop_reason
             graph_run.status = "completed" if decision.decision == "observe_only_stop" else "failed"
@@ -187,16 +231,35 @@ class CaseGraphEngine:
                 sender_type="supervisor", sender_id="case_supervisor", receiver_type="human", receiver_id=None,
                 message_type="human_handoff", content={"reason": "credential_required_for_probe"}, artifact_refs=[], correlation_id=correlation_id,
             ))
+            metrics_registry.increment("agent_message_total", message_type="human_handoff")
+            metrics_registry.increment("human_escalation_total", reason="credential_required_for_probe")
+            case_timeline_service.append(
+                db, case_id=task.case_id, graph_run_id=graph_run.id, task_id=task.id,
+                event_type="human_handoff", title="Human input required: probe credential",
+                actor_type="supervisor", actor_id="case_supervisor", correlation_id=correlation_id,
+                idempotency_key=f"human-handoff:{task.id}:credential",
+                payload={"reason": "credential_required_for_probe"},
+            )
             return
         evidence_ids = []
+        tool_call_ids = []
+        errors = []
         for index, raw in enumerate(requests[: settings.agent_max_tool_calls_per_run]):
             request = EvidenceRequest.model_validate(raw)
             _call, evidence = agent_tool_service.execute_probe(
                 db, task=task, request_payload=request.model_dump(mode="json"), credential_id=int(credential_id), call_index=index,
             )
+            tool_call_ids.append(_call.id)
             if evidence:
                 evidence_ids.append(evidence.id)
-        task.output_payload = {"evidence_ids": evidence_ids, "request_count": len(requests)}
+            elif _call.error_message:
+                errors.append({"tool_call_id": _call.id, "error": _call.error_message})
+        task.output_payload = {
+            "evidence_ids": evidence_ids,
+            "tool_call_ids": tool_call_ids,
+            "errors": errors,
+            "request_count": len(requests),
+        }
 
     async def _run_agent_node(self, db: Session, graph_run: AgentGraphRun, task: AgentTask, correlation_id: str) -> None:
         case = db.query(CaseRecord).filter(CaseRecord.id == task.case_id).one()
@@ -214,6 +277,20 @@ class CaseGraphEngine:
             db, case, agent, context, graph_run_id=graph_run.id, task_id=task.id,
         )
         task.output_payload = run.output_payload or {}
+        result_message_type = {
+            "critic": "critique",
+            "plan_candidate": "plan_candidate",
+            "safety_review": "safety_review",
+        }.get(task.graph_node)
+        if result_message_type:
+            db.add(AgentMessage(
+                graph_run_id=graph_run.id, case_id=case.id, task_id=task.id,
+                sender_type="agent", sender_id=agent_key, receiver_type="supervisor", receiver_id="case_supervisor",
+                message_type=result_message_type, content=run.output_payload or {},
+                artifact_refs=[{"type": "agent_run", "id": run.id}, {"type": "claim", "id": claim.id}],
+                correlation_id=correlation_id,
+            ))
+            metrics_registry.increment("agent_message_total", message_type=result_message_type)
         case_timeline_service.append(
             db, case_id=case.id, graph_run_id=graph_run.id, task_id=task.id,
             event_type="critic" if task.graph_node == "critic" else "agent_run",
@@ -241,6 +318,7 @@ class CaseGraphEngine:
                 hypothesis.critic_payload = run.output_payload or {}
                 if decision == "reject":
                     hypothesis.status = "rejected"
+                    metrics_registry.increment("hypothesis_rejected_total")
                 elif decision == "revise":
                     hypothesis.status = "weakened"
                 else:
@@ -313,6 +391,7 @@ class CaseGraphEngine:
                 message_type="hypothesis", content=self._hypothesis_view(row),
                 artifact_refs=[{"type": "hypothesis", "id": row.id}], correlation_id=correlation_id,
             ))
+            metrics_registry.increment("agent_message_total", message_type="hypothesis")
             case_timeline_service.append(
                 db, case_id=task.case_id, graph_run_id=graph_run.id, task_id=task.id,
                 event_type="hypothesis", title=f"Hypothesis: {row.cause_code}", actor_type="agent", actor_id="insight_analysis",

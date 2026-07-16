@@ -35,6 +35,18 @@ class AgentBudgetService:
         db.flush()
         return budget
 
+    def record_runtime(self, db: Session, graph_run_id: str, elapsed_seconds: float) -> AgentBudget:
+        budget = db.query(AgentBudget).filter(AgentBudget.graph_run_id == graph_run_id).with_for_update().one()
+        budget.used_runtime_seconds = max(float(budget.used_runtime_seconds or 0), float(elapsed_seconds))
+        if budget.used_runtime_seconds > budget.max_runtime_seconds:
+            budget.exhausted = True
+            budget.exhausted_reason = "runtime_seconds"
+            metrics_registry.increment("agent_budget_exhausted_total", resource="runtime_seconds")
+            db.flush()
+            raise BudgetExhausted("runtime_seconds")
+        db.flush()
+        return budget
+
     def register_target(self, db: Session, graph_run_id: str, netbox_device_id: int) -> AgentBudget:
         budget = db.query(AgentBudget).filter(AgentBudget.graph_run_id == graph_run_id).with_for_update().one()
         targets = [int(item) for item in (budget.target_device_ids or [])]

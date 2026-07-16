@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 from models.agenticops import EvidenceItem
 from orchestration.graph_contracts import SupervisorDecision, SupervisorTaskDecision, SupervisorTransition
+from observability.metrics import metrics_registry
 
 
 ACTIVE_TASKS = {"pending", "ready", "running", "waiting_evidence", "waiting_agent", "waiting_human"}
@@ -83,6 +84,7 @@ class CaseSupervisor:
         ).all()
         confirmed = [item for item in hypotheses if self._confirmable(db, item, critic.output_payload or {})]
         if not confirmed:
+            metrics_registry.increment("human_escalation_total", reason="root_cause_unconfirmed")
             return SupervisorDecision(
                 decision="escalate",
                 reason="no hypothesis satisfies configured confirmation and critic thresholds",
@@ -91,6 +93,9 @@ class CaseSupervisor:
             )
         plan_done = any(item.graph_node == "plan_candidate" and item.status == "completed" for item in tasks)
         if not plan_done:
+            confirmed[0].status = "confirmed"
+            metrics_registry.increment("hypothesis_confirmed_total")
+            db.flush()
             return SupervisorDecision(
                 decision="plan",
                 reason=f"hypothesis {confirmed[0].hypothesis_code} passed arbitration",

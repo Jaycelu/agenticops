@@ -116,6 +116,15 @@ class AgentTaskService:
             task.attempt_count += 1
         if to_status in {"completed", "failed", "cancelled", "timed_out"}:
             task.finished_at = now
+            if task.started_at is not None:
+                started = task.started_at
+                if started.tzinfo is None:
+                    started = started.replace(tzinfo=timezone.utc)
+                duration = max(0.0, (now - started).total_seconds())
+                metrics_registry.increment(
+                    "agent_task_duration_seconds", value=duration,
+                    task_type=task.task_type, status=to_status,
+                )
         if output is not None:
             task.output_payload = output
         if error is not None:

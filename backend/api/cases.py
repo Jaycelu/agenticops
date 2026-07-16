@@ -72,12 +72,21 @@ def _to_case_summary_response(item: CaseRecord) -> CaseSummaryResponse:
 async def get_case_overview(db: Session = Depends(get_db)):
     total_cases = db.query(func.count(CaseRecord.id)).scalar() or 0
     open_cases = db.query(func.count(CaseRecord.id)).filter(CaseRecord.status.in_([
+        CaseStatus.NEW,
+        CaseStatus.NORMALIZED,
         CaseStatus.OPEN,
         CaseStatus.TRIAGED,
+        CaseStatus.EVIDENCE_COLLECTING,
+        CaseStatus.DIAGNOSING,
+        CaseStatus.HYPOTHESIS_REVIEW,
+        CaseStatus.PLANNING,
+        CaseStatus.SAFETY_REVIEW,
+        CaseStatus.AWAITING_APPROVAL,
         CaseStatus.INVESTIGATING,
         CaseStatus.PLANNED,
         CaseStatus.EXECUTING,
         CaseStatus.VERIFYING,
+        CaseStatus.OBSERVING,
     ])).scalar() or 0
     executing_cases = db.query(func.count(CaseRecord.id)).filter(CaseRecord.status == CaseStatus.EXECUTING).scalar() or 0
     resolved_cases = db.query(func.count(CaseRecord.id)).filter(CaseRecord.status.in_([CaseStatus.RESOLVED, CaseStatus.CLOSED])).scalar() or 0

@@ -65,7 +65,7 @@ class GraphService:
             case_id=case_id,
             graph_version=GRAPH_VERSION,
             status="queued",
-            current_state=(case.status.value if hasattr(case.status, "value") else str(case.status)),
+            current_state=(case.status.value if hasattr(case.status, "value") else str(case.status)).upper(),
             current_node="normalize",
             input_payload=input_payload,
             forced_from_run_id=forced_from,

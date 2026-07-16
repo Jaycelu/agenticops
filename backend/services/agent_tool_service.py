@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
+from loguru import logger
 
 from models.agent_graph import AgentMessage, AgentTask, AgentToolCall
 from models.agenticops import CaseRecord, EvidenceItem, EvidenceType
@@ -41,6 +42,17 @@ class AgentToolService:
         selectable, selection_errors = tool_registry.validate_agent_selection(spec, request.target.model_dump())
         if not selectable:
             raise AgentToolRejected(",".join(selection_errors))
+        params_valid, parameter_errors = tool_registry.validate_params(spec, request.parameters)
+        if not params_valid:
+            raise AgentToolRejected(",".join(parameter_errors))
+        idempotency_key = f"task:{task.id}:probe:{call_index}:{request.probe_id}"
+        existing = db.query(AgentToolCall).filter(
+            AgentToolCall.graph_run_id == task.graph_run_id,
+            AgentToolCall.idempotency_key == idempotency_key,
+        ).first()
+        if existing is not None:
+            evidence = db.query(EvidenceItem).filter(EvidenceItem.tool_call_id == existing.id).first()
+            return existing, evidence
         agent_budget_service.consume(db, task.graph_run_id, "tool_calls")
         agent_budget_service.consume(db, task.graph_run_id, "probe_calls")
         agent_budget_service.register_target(db, task.graph_run_id, request.target.netbox_device_id)
@@ -54,14 +66,6 @@ class AgentToolService:
         )
         case = db.query(CaseRecord).filter(CaseRecord.id == task.case_id).one()
         decision = policy_guard.check(tool_request, case=case, db=db)
-        idempotency_key = f"task:{task.id}:probe:{call_index}:{request.probe_id}"
-        existing = db.query(AgentToolCall).filter(
-            AgentToolCall.graph_run_id == task.graph_run_id,
-            AgentToolCall.idempotency_key == idempotency_key,
-        ).first()
-        if existing is not None:
-            evidence = db.query(EvidenceItem).filter(EvidenceItem.tool_call_id == existing.id).first()
-            return existing, evidence
         call = AgentToolCall(
             graph_run_id=task.graph_run_id,
             case_id=task.case_id,
@@ -76,23 +80,41 @@ class AgentToolService:
         )
         db.add(call)
         db.flush()
+        call_log = logger.bind(
+            request_id=None, case_id=task.case_id, task_id=task.id, agent_run_id=agent_run_id,
+            tool_call_id=call.id, graph_node=task.graph_node, correlation_id=None,
+        )
+        call_log.info("agent_tool_call_started")
         metrics_registry.increment("agent_tool_call_total", tool_id=request.probe_id, status=call.status)
         if not decision.allowed:
             call.finished_at = datetime.now(timezone.utc)
             call.error_message = decision.blocked_reason
             metrics_registry.increment("agent_tool_call_failures_total", tool_id=request.probe_id, reason=decision.blocked_reason or "rejected")
             db.flush()
-            raise AgentToolRejected(decision.blocked_reason or "policy_rejected")
+            call_log.bind(reason=decision.blocked_reason).warning("agent_tool_call_rejected")
+            return call, None
         started = datetime.now(timezone.utc)
-        result = probe_gateway.run(
-            db,
-            ProbeRequest(
-                probe_id=request.probe_id,
-                netbox_device_id=request.target.netbox_device_id,
-                credential_id=credential_id,
-                parameters=request.parameters,
-            ),
-        )
+        try:
+            result = probe_gateway.run(
+                db,
+                ProbeRequest(
+                    probe_id=request.probe_id,
+                    netbox_device_id=request.target.netbox_device_id,
+                    credential_id=credential_id,
+                    parameters=request.parameters,
+                ),
+            )
+        except Exception as exc:
+            call.finished_at = datetime.now(timezone.utc)
+            call.duration_ms = int((call.finished_at - started).total_seconds() * 1000)
+            call.status = "failed"
+            call.error_message = f"{type(exc).__name__}: {str(exc)[:1800]}"
+            metrics_registry.increment(
+                "agent_tool_call_failures_total", tool_id=request.probe_id, reason=type(exc).__name__,
+            )
+            db.flush()
+            call_log.bind(error_type=type(exc).__name__).exception("agent_tool_call_failed")
+            return call, None
         call.finished_at = datetime.now(timezone.utc)
         call.duration_ms = int((call.finished_at - started).total_seconds() * 1000)
         call.status = "completed" if result.status == "succeeded" else result.status
@@ -101,6 +123,7 @@ class AgentToolService:
             call.error_message = result.error_code or "probe_failed"
             metrics_registry.increment("agent_tool_call_failures_total", tool_id=request.probe_id, reason=call.error_message)
             db.flush()
+            call_log.bind(error_code=call.error_message).warning("agent_tool_call_failed")
             return call, None
         evidence = EvidenceItem(
             case_id=task.case_id,
@@ -148,6 +171,7 @@ class AgentToolService:
         )
         metrics_registry.increment("agent_message_total", message_type="evidence_response")
         db.flush()
+        call_log.bind(evidence_id=evidence.id, duration_ms=call.duration_ms).info("agent_tool_call_completed")
         return call, evidence
 
 

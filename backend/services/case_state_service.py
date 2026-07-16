@@ -16,9 +16,9 @@ class InvalidCaseTransition(ValueError):
 
 TERMINAL = {"resolved", "rolled_back", "escalated", "failed", "closed"}
 ALLOWED: dict[str, set[str]] = {
-    "new": {"normalized", "failed"},
+    "new": {"normalized", "escalated", "failed"},
     "open": {"normalized", "triaged", "investigating", "planned", "failed", "escalated"},
-    "normalized": {"triaged", "failed"},
+    "normalized": {"triaged", "escalated", "failed"},
     "triaged": {"evidence_collecting", "diagnosing", "investigating", "planned", "escalated", "failed"},
     "investigating": {"evidence_collecting", "diagnosing", "planning", "escalated", "failed"},
     "evidence_collecting": {"diagnosing", "escalated", "failed"},

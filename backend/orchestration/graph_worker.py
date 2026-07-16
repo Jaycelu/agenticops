@@ -4,6 +4,7 @@ import socket
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import or_
+from loguru import logger
 
 from config.settings import settings
 from database import SessionLocal
@@ -36,6 +37,16 @@ class AgentGraphWorker:
                     task.status = "ready"
                     task.error_message = "recovered_after_worker_lease_expired"
                 metrics_registry.increment("case_graph_resume_total")
+                logger.bind(
+                    request_id=(run.input_payload or {}).get("request_id"), case_id=run.case_id,
+                    task_id=None, agent_run_id=None, tool_call_id=None, graph_node=run.current_node,
+                    correlation_id=None, graph_run_id=run.id,
+                ).warning("agent_graph_lease_recovered")
+                # The task-selection query disables no autoflush explicitly, but
+                # PostgreSQL's row-locking query must observe the recovered state
+                # in this transaction. Flush before looking for ready work so a
+                # restarted worker can resume in the same polling cycle.
+                db.flush()
             run.lease_owner = self.owner
             run.lease_expires_at = now + timedelta(seconds=settings.agent_graph_lease_seconds)
             task = db.query(AgentTask).filter(

@@ -50,6 +50,15 @@ def test_migrations_create_current_schema_on_postgres() -> None:
         "auth_login_transaction",
         "api_token",
         "security_audit_event",
+        "agent_graph_run",
+        "agent_task",
+        "agent_message",
+        "agent_tool_call",
+        "agent_budget",
+        "agent_checkpoint",
+        "case_timeline_event",
+        "case_state_transition",
+        "case_hypothesis",
     }.issubset(tables)
 
 

@@ -12,11 +12,25 @@
     <div class="cases-filters app-toolbar">
       <select v-model="statusFilter" class="filter-input app-select" @change="loadCases">
         <option value="">全部状态</option>
+        <option value="new">new</option>
+        <option value="normalized">normalized</option>
         <option value="open">open</option>
         <option value="triaged">triaged</option>
+        <option value="evidence_collecting">evidence_collecting</option>
+        <option value="diagnosing">diagnosing</option>
+        <option value="hypothesis_review">hypothesis_review</option>
+        <option value="planning">planning</option>
+        <option value="safety_review">safety_review</option>
+        <option value="awaiting_approval">awaiting_approval</option>
         <option value="investigating">investigating</option>
         <option value="planned">planned</option>
+        <option value="executing">executing</option>
+        <option value="verifying">verifying</option>
+        <option value="observing">observing</option>
         <option value="resolved">resolved</option>
+        <option value="rolled_back">rolled_back</option>
+        <option value="escalated">escalated</option>
+        <option value="failed">failed</option>
         <option value="closed">closed</option>
       </select>
       <select v-model="phaseFilter" class="filter-input app-select" @change="loadCases">
@@ -231,7 +245,7 @@ const hypotheses = ref<any[]>([])
 const budget = ref<any | null>(null)
 const startingGraph = ref(false)
 let pollTimer: number | undefined
-const activeGraphStatuses = new Set(['queued', 'running', 'waiting_evidence', 'paused'])
+const activeGraphStatuses = new Set(['queued', 'running', 'waiting_evidence', 'waiting_human', 'paused'])
 const isGraphActive = computed(() => currentGraph.value && activeGraphStatuses.has(currentGraph.value.status))
 const budgetKeys = ['agent_runs', 'llm_calls', 'probe_calls', 'tool_calls', 'replan_count', 'runtime_seconds', 'target_devices']
 
