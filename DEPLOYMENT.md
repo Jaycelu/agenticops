@@ -25,12 +25,14 @@
 ```bash
 git clone https://github.com/Jaycelu/agenticops.git
 cd agenticops
-git checkout main
+git fetch --tags --prune
+git checkout v0.2.0
 ```
 
-确认当前提交并记录到变更单：
+生产环境应部署已验证的 Release tag，不要直接跟随开发分支。确认标签与提交并记录到变更单：
 
 ```bash
+git describe --tags --exact-match
 git rev-parse HEAD
 ```
 
@@ -74,8 +76,11 @@ FRONTEND_URL=https://agenticops.example.com
 | Embedding | `LLM_EMBEDDING_MODEL`、`LLM_EMBEDDING_API_URL`；留空时自动退回关键词检索 |
 | 端口 | `BACKEND_PORT`、`FRONTEND_PORT`、`POSTGRES_PORT` |
 | 采集容量 | `ELK_INGESTION_PAGE_SIZE`、`ELK_CHECKPOINT_LEASE_SECONDS` |
+| Agent Graph | `AGENT_GRAPH_LEASE_SECONDS`、`AGENT_MAX_*`、`HYPOTHESIS_*` |
 
 外部集成也可以在首次登录后从“设置”页面保存；敏感值会使用 `APP_SECRET_KEY` 派生密钥加密。
+
+Agent Graph 的默认预算适合首次 Observe-only 验证：单 Case 最多 16 次 Agent Run、8 次 LLM、12 次工具调用、10 次 Probe、3 次重规划、900 秒运行时间和 3 台目标设备；单 Agent Run 最多 3 次工具调用。不要先放大预算来掩盖无法收敛的诊断。证据确认阈值由 `HYPOTHESIS_CONFIRM_CONFIDENCE`、`HYPOTHESIS_EVIDENCE_MAX_AGE_SECONDS` 和 `HYPOTHESIS_MAX_HIGH_WEIGHT_CONTRADICTIONS` 集中控制。
 
 ### 3.3 首次部署必须保持
 
@@ -124,6 +129,8 @@ docker compose ps
 ```
 
 `migrate` 必须成功退出；应用启动不会偷偷创建或修改 schema。
+
+v0.2.0 的 Alembic head 是 `0011_multi_agent_graph`。确认迁移任务输出无错误，并保留迁移日志；`backend` 和 `worker` 必须使用同一镜像、同一 `DATABASE_URL` 和同一版本配置。
 
 ## 6. 已有 AgenticOps 数据库接管
 
@@ -188,24 +195,65 @@ docker compose logs --tail=100 backend worker
 
 还必须通过公开 HTTPS 域名验证登录、CSRF、SSO 回调和前端刷新。`/health/dependencies` 中未启用的集成可以显示 `disabled`，Worker 必须为 `alive`。
 
-## 10. 日常升级
+### 9.1 v0.2.0 Agent Graph 验收
+
+使用非生产测试 Case 在 Case 详情页点击“运行智能体”，并确认：
+
+1. 接口立即返回 `202 Accepted` 和持久化 `graph_run_id`，页面进入运行中而不是等待整轮诊断。
+2. `GET /api/cases/{case_id}/graph-runs/{graph_run_id}` 可看到当前状态与节点。
+3. Timeline、Hypotheses 和 Agent Budget 面板来自后端持久化数据，刷新页面后仍可恢复。
+4. 停止并重新启动 Worker 后，过期租约由 Worker 恢复，旧 Checkpoint 和 Timeline 不丢失。
+5. `AUTOMATION_OBSERVE_ONLY=True` 时 Graph 在 Safety Review 后停止或等待人工，不产生真实设备变更执行记录。
+
+对应查询接口为：
+
+```text
+GET /api/cases/{case_id}/graph-runs
+GET /api/cases/{case_id}/graph-runs/{graph_run_id}
+GET /api/cases/{case_id}/timeline
+GET /api/cases/{case_id}/hypotheses
+GET /api/cases/{case_id}/agent-budget
+```
+
+这些浏览器 API 继续要求 Session、RBAC 和 CSRF；不要为验收临时关闭认证或 PolicyGuard。
+
+## 10. 从旧版本升级到 v0.2.0
+
+升级会新增持久化 Graph、任务、消息、工具调用、预算、Checkpoint、Timeline、状态转换和假设表，并扩展 Case 状态枚举。旧 Case、Evidence、Claim、审批、冻结计划和执行记录仍可读取。升级期间必须停止 API 与 Worker 写入，不能只重启前端。
 
 ```bash
-git rev-parse HEAD
+export TARGET_RELEASE=v0.2.0
+git rev-parse HEAD > pre-upgrade-commit.txt
 docker compose stop worker backend
 docker compose exec -T postgres sh -c \
   'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
   > "netops_agenticops-$(date +%Y%m%d%H%M%S).dump"
-git fetch origin
-git checkout main
-git pull --ff-only origin main
+git fetch origin --tags --prune
+git checkout "$TARGET_RELEASE"
+git describe --tags --exact-match
 docker compose build
 docker compose run --rm migrate
 docker compose up -d backend worker frontend
 docker compose ps
+unset TARGET_RELEASE
 ```
 
-升级后重复第 9 节验收。迁移失败时不要反复重试或继续启动 Worker，应保留日志并按生产运行手册恢复。
+升级后重复第 9 节全部验收，并检查：
+
+```bash
+curl -fsS http://127.0.0.1:${BACKEND_PORT:-8000}/ | grep '0.2.0'
+docker compose logs --tail=200 migrate backend worker
+```
+
+迁移失败时不要反复重试或继续启动 Worker，应保留数据库、日志、旧提交 SHA 和备份，按 [0011 迁移/回滚说明](./docs/MIGRATION_0011_MULTI_AGENT_GRAPH.md) 与生产运行手册恢复。数据库已产生 v0.2.0 Graph 数据后，优先恢复升级前备份到新库；不要在原生产库上盲目 downgrade。
+
+### 10.1 API 兼容提醒
+
+原路径 `POST /api/cases/{case_id}/run-agents` 保留，但默认从“同步返回诊断结果”变为“返回 `202 Accepted` 和 `graph_run_id`”。旧客户端迁移期可显式使用 `wait=true&timeout_seconds=30`，但等待超时不会取消后台 Graph。前端默认使用轮询，不需要 WebSocket。
+
+### 10.2 回退应用
+
+若迁移成功但尚未产生新 Graph 数据，可在确认 schema 兼容后停止 Worker/API，切回 `pre-upgrade-commit.txt` 记录的提交并重建。若已经产生新数据或无法证明兼容，恢复升级前 `pg_dump -Fc` 到新的空数据库，再切换 `DATABASE_URL`。任何回退都保持 `AUTOMATION_OBSERVE_ONLY=True`，并先启动 API 验证健康后再启动 Worker。
 
 ## 11. 停止与卸载
 

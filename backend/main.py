@@ -75,7 +75,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="NetOps AI Platform",
     description="AI-driven Network Operations Platform",
-    version="0.1.1",
+    version="0.2.0",
     lifespan=lifespan
 )
 
@@ -129,7 +129,7 @@ app.include_router(ingestion_router)
 
 @app.get("/")
 async def root():
-    return {"message": "NetOps AI Platform API", "version": "0.1.1"}
+    return {"message": "NetOps AI Platform API", "version": "0.2.0"}
 
 
 @app.get("/health/live")

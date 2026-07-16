@@ -12,7 +12,7 @@ NetBox / ELK / Zabbix AgenticOps 运维系统
   <img src="https://img.shields.io/badge/Vue-3-42b883?logo=vue.js&logoColor=white" alt="Vue 3">
   <img src="https://img.shields.io/badge/FastAPI-0.104-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/PostgreSQL-14%2B-336791?logo=postgresql&logoColor=white" alt="PostgreSQL">
-  <img src="https://img.shields.io/badge/Release-v0.1.1-blue" alt="Release">
+  <img src="https://img.shields.io/badge/Release-v0.2.0-blue" alt="Release">
   <img src="https://img.shields.io/github/stars/Jaycelu/agenticops?style=social" alt="GitHub stars">
 </p>
 
@@ -47,6 +47,15 @@ AgenticOps 是面向网络运维场景的事件治理与执行闭环系统。系
 “可部署”不等于“已经生产认证”。首次上线必须保持 `AUTOMATION_OBSERVE_ONLY=true`，完成真实 SSO、设备、ELK、Zabbix、Webhook 联调以及至少 14 天 Shadow Mode 后，才能逐项开放设备变更能力。
 
 当前 Case 诊断采用持久化异步 Graph：Supervisor 根据证据和预算动态创建任务，Evidence Request 经 Tool Registry、PolicyGuard 和 Probe Gateway 自动闭环，独立 Critic 负责反证，Worker 可从租约和 Checkpoint 恢复。安全审查后仍在 Observe-only 停止，不会自动执行设备变更。详见 [多智能体诊断架构](./docs/MULTI_AGENT_DIAGNOSTIC_ARCHITECTURE.md) 与 [0011 迁移/回滚说明](./docs/MIGRATION_0011_MULTI_AGENT_GRAPH.md)。
+
+### v0.2.0 重点变化
+
+- `POST /api/cases/{case_id}/run-agents` 默认返回 `202 Accepted`，只表示持久化 Graph Job 已受理；诊断由 Worker 异步推进。
+- Case Supervisor 动态创建 Agent、Evidence、Critic、Policy 和 Human Gate 任务，不再依赖单次 HTTP 请求内的固定顺序调用。
+- Agent Task、Message、Tool Call、Budget、Checkpoint、Timeline 和 Hypothesis 均持久化，可审计、可轮询、可在 Worker 重启后恢复。
+- Agent 自主工具调用仅允许同时标记 `agent_selectable=true` 与 `read_only=true` 的目录工具，并始终经过 Tool Registry、PolicyGuard 和 Probe Gateway。
+- Case 详情页提供 Agent Timeline、Hypothesis Board、Budget Panel 和 Graph Run 状态；页面刷新后可从后端状态恢复。
+- OpenAI/httpx 依赖组合已固定；无 API Key 的测试不会创建真实外部客户端。
 
 ## 核心能力
 
@@ -93,13 +102,16 @@ AgenticOps 是面向网络运维场景的事件治理与执行闭环系统。系
 
 ```mermaid
 flowchart LR
-    A["NetBox / ELK / Zabbix / External Signals"] --> B["Event Center"]
-    B --> C["Dedup / Correlation / Routing"]
-    C --> D["Case Center"]
-    D --> E["Multi-Agent Analysis"]
-    E --> F["Memory Center"]
-    E --> G["Fabric / Execution"]
-    D --> H["Tickets / Human Handoff"]
+    A["NetBox / ELK / Zabbix / External Signals"] --> B["Normalize / Triage"]
+    B --> C["Case Supervisor"]
+    C --> D["Evidence Collection"]
+    D --> E["Diagnostic Agents"]
+    E --> F["Diagnostic Critic"]
+    F --> C
+    C --> G["Plan Candidate"]
+    G --> H["Safety Review"]
+    H --> I["Human Gate / Observe-only Stop"]
+    C -. checkpoint .-> J["Worker Resume"]
 ```
 
 统一事件中心的输出目前收敛为三类结果：
@@ -197,6 +209,8 @@ docker compose exec worker python -m scripts.check_worker_health
 
 完整的新装、已有数据库接管、升级和卸载步骤见 [DEPLOYMENT.md](./DEPLOYMENT.md)；生产备份、恢复、监控和放量见 [生产运行手册](./docs/PRODUCTION_DEPLOYMENT.md)。
 
+v0.2.0 从旧版本升级前请先备份数据库，并阅读 [0011 迁移/回滚说明](./docs/MIGRATION_0011_MULTI_AGENT_GRAPH.md) 与 [v0.2.0 发布说明](./docs/RELEASE_NOTES_v0.2.0.md)。生产部署建议检出发布标签，不要直接部署未验证的分支提交。
+
 停止服务：
 
 ```bash
@@ -283,6 +297,9 @@ curl http://localhost:8000/health
 | `LLM_API_URL` / `LLM_API_KEY` / `LLM_MODEL_NAME` | 模型服务配置 |
 | `FRONTEND_URL` | CORS 前端地址 |
 | `AUTOMATION_OBSERVE_ONLY` | 安全开关，首次上线保持 `true`，阻止非只读自动化动作 |
+| `AGENT_GRAPH_LEASE_SECONDS` | Worker Graph Run 租约时长；过期租约可由健康 Worker 恢复 |
+| `AGENT_MAX_*` | 单 Case 的 Agent、LLM、工具、Probe、重规划、运行时间和目标设备预算 |
+| `HYPOTHESIS_*` | 根因确认阈值、证据有效期和高权重反证上限 |
 
 身份源详细配置保存在数据库并加密敏感字段。环境变量中的外部集成配置可用于首次启动，也可以登录后在管理界面配置。Webhook Endpoint 在 `/webhooks` 管理，默认只允许解析到公网地址的 HTTPS URL，并使用 `X-AgenticOps-Signature` 进行 HMAC-SHA256 验签。
 
