@@ -33,6 +33,22 @@ export interface CaseOverview {
   by_phase: Record<string, number>
 }
 
+export interface GraphRun {
+  graph_run_id: string
+  case_id: number
+  graph_version: string
+  status: string
+  current_state: string
+  current_node: string
+  stop_reason?: string
+  error_message?: string
+  created_at?: string
+  updated_at?: string
+  tasks?: any[]
+  tool_calls?: any[]
+  checkpoint?: any
+}
+
 export const casesApi = {
   async getOverview(): Promise<CaseOverview> {
     const response = await axios.get(buildUrl('/api/cases/overview'))
@@ -67,6 +83,38 @@ export const casesApi = {
 
   async getPlans(caseId: number) {
     const response = await axios.get(buildUrl(`/api/cases/${caseId}/plans`))
+    return response.data
+  },
+
+  async runAgents(caseId: number, params?: { force_restart?: boolean; credential_id?: number }) {
+    const response = await axios.post(buildUrl(`/api/cases/${caseId}/run-agents`), null, { params })
+    return response.data
+  },
+
+  async getGraphRuns(caseId: number): Promise<{ case_id: number; items: GraphRun[] }> {
+    const response = await axios.get(buildUrl(`/api/cases/${caseId}/graph-runs`))
+    return response.data
+  },
+
+  async getGraphRun(caseId: number, graphRunId: string): Promise<GraphRun> {
+    const response = await axios.get(buildUrl(`/api/cases/${caseId}/graph-runs/${graphRunId}`))
+    return response.data
+  },
+
+  async getTimeline(caseId: number) {
+    const response = await axios.get(buildUrl(`/api/cases/${caseId}/timeline`))
+    return response.data
+  },
+
+  async getHypotheses(caseId: number) {
+    const response = await axios.get(buildUrl(`/api/cases/${caseId}/hypotheses`))
+    return response.data
+  },
+
+  async getAgentBudget(caseId: number, graphRunId?: string) {
+    const response = await axios.get(buildUrl(`/api/cases/${caseId}/agent-budget`), {
+      params: { graph_run_id: graphRunId }
+    })
     return response.data
   }
 }
