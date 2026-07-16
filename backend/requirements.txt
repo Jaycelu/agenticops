@@ -1,3 +1,6 @@
+# Keep the OpenAI HTTP stack reproducible across local, CI, and Docker installs.
+-c constraints.txt
+
 # FastAPI and Web Server
 fastapi==0.139.0
 uvicorn[standard]==0.51.0

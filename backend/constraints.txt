@@ -1,0 +1,5 @@
+# Compatibility set verified by the LLM client initialization test.
+openai==2.45.0
+httpx==0.28.1
+httpcore==1.0.9
+anyio==4.12.1

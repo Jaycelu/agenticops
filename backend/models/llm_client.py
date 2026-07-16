@@ -7,19 +7,27 @@ logger = logging.getLogger(__name__)
 
 
 class LLMClient:
-    def __init__(self, api_key: str = "", base_url: str = "", model: str = ""):
+    def __init__(
+        self,
+        api_key: str = "",
+        base_url: str = "",
+        model: str = "",
+        client: Optional[AsyncOpenAI] = None,
+    ):
         self.api_key = api_key or "EMPTY"
         self.base_url = base_url
         self.model = model
-        self._init_client()
+        self.client = client
 
-    def _init_client(self):
-        """初始化OpenAI客户端"""
-        self.client = AsyncOpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url,
-            timeout=60.0  # 默认60秒超时
-        )
+    def _get_client(self) -> AsyncOpenAI:
+        """Create the SDK client only when an actual LLM call is attempted."""
+        if self.client is None:
+            self.client = AsyncOpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url,
+                timeout=60.0,
+            )
+        return self.client
 
     def update_config(self, api_key: str = "", base_url: str = "", model: str = ""):
         """更新配置"""
@@ -29,7 +37,7 @@ class LLMClient:
             self.base_url = base_url
         if model:
             self.model = model
-        self._init_client()
+        self.client = None
 
     async def chat_completion(
         self,
@@ -58,7 +66,7 @@ class LLMClient:
             try:
                 # 使用asyncio.wait_for替代asyncio.timeout（兼容Python 3.10）
                 response = await asyncio.wait_for(
-                    self.client.chat.completions.create(
+                    self._get_client().chat.completions.create(
                         model=self.model,
                         messages=messages,
                         temperature=temperature,
@@ -110,7 +118,7 @@ class LLMClient:
                 print(f"[DEBUG] LLM API call attempt {attempt + 1}/{max_retries + 1}, timeout={timeout}s")
                 # 使用asyncio.wait_for替代asyncio.timeout（兼容Python 3.10）
                 response = await asyncio.wait_for(
-                    self.client.chat.completions.create(
+                    self._get_client().chat.completions.create(
                         model=self.model,
                         messages=messages,
                         temperature=temperature,
