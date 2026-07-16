@@ -23,8 +23,8 @@
 ## 2. 获取代码
 
 ```bash
-git clone https://github.com/Jaycelu/netops_bs.git
-cd netops_bs
+git clone https://github.com/Jaycelu/agenticops.git
+cd agenticops
 git checkout main
 ```
 
@@ -33,6 +33,8 @@ git checkout main
 ```bash
 git rev-parse HEAD
 ```
+
+Compose 项目名已在 `docker-compose.yml` 中固定为 `agenticops`，不会再随部署目录名变化。由旧版 `netops_bs` Compose 项目升级时，先按生产运行手册备份数据库；不要直接执行 `docker compose down -v`，旧命名卷需要单独迁移或显式挂载。
 
 ## 3. 创建并修改配置
 

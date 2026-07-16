@@ -13,7 +13,7 @@ NetBox / ELK / Zabbix AgenticOps 运维系统
   <img src="https://img.shields.io/badge/FastAPI-0.104-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/PostgreSQL-14%2B-336791?logo=postgresql&logoColor=white" alt="PostgreSQL">
   <img src="https://img.shields.io/badge/Release-v0.1.1-blue" alt="Release">
-  <img src="https://img.shields.io/github/stars/Jaycelu/netops_bs?style=social" alt="GitHub stars">
+  <img src="https://img.shields.io/github/stars/Jaycelu/agenticops?style=social" alt="GitHub stars">
 </p>
 
 </div>
@@ -187,11 +187,11 @@ docker compose exec worker python -m scripts.check_worker_health
 
 | 服务 | 容器 | 端口/类型 |
 | --- | --- | --- |
-| PostgreSQL | `netops-postgres` | 仅绑定 `127.0.0.1:5432` |
-| Migration | `netops-migrate` | 一次性任务 |
-| Backend | `netops-backend` | `8000` |
-| Worker | `netops-worker` | 无公开端口 |
-| Frontend | `netops-frontend` | `5173` |
+| PostgreSQL | `agenticops-postgres` | 仅绑定 `127.0.0.1:5432` |
+| Migration | `agenticops-migrate` | 一次性任务 |
+| Backend | `agenticops-backend` | `8000` |
+| Worker | `agenticops-worker` | 无公开端口 |
+| Frontend | `agenticops-frontend` | `5173` |
 
 完整的新装、已有数据库接管、升级和卸载步骤见 [DEPLOYMENT.md](./DEPLOYMENT.md)；生产备份、恢复、监控和放量见 [生产运行手册](./docs/PRODUCTION_DEPLOYMENT.md)。
 
@@ -305,7 +305,7 @@ curl http://localhost:8000/health
 ## 项目结构
 
 ```text
-netops_bs/
+agenticops/
 ├── backend/
 │   ├── api/                 # FastAPI 路由
 │   ├── agents/              # 多智能体逻辑

@@ -20,7 +20,7 @@ check_backend() {
         return 0
     else
         log "Backend is DOWN, attempting to restart..."
-        systemctl restart netops-backend.service
+        systemctl restart agenticops-backend.service
         return 1
     fi
 }
@@ -31,7 +31,7 @@ check_frontend() {
         return 0
     else
         log "Frontend is DOWN, attempting to restart..."
-        systemctl restart netops-frontend.service
+        systemctl restart agenticops-frontend.service
         return 1
     fi
 }

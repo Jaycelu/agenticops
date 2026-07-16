@@ -192,7 +192,7 @@
 
 在本次基础重构之上，新增一条“Source-Centric AgenticOps”优化线，详细设计见：
 
-- [2026-03-08-source-centric-agenticops-design.md](/Users/jayce/Desktop/Jayce/netops_bs/docs/plans/2026-03-08-source-centric-agenticops-design.md)
+- [2026-03-08-source-centric-agenticops-design.md](./2026-03-08-source-centric-agenticops-design.md)
 
 新增原则：
 

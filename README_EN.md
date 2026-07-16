@@ -57,11 +57,11 @@ Services:
 
 | Service | Container | Port |
 | --- | --- | --- |
-| PostgreSQL | `netops-postgres` | `5432` |
-| Migration | `netops-migrate` | one-shot job |
-| Backend | `netops-backend` | `8000` |
-| Worker | `netops-worker` | no public port |
-| Frontend | `netops-frontend` | `5173` |
+| PostgreSQL | `agenticops-postgres` | `5432` |
+| Migration | `agenticops-migrate` | one-shot job |
+| Backend | `agenticops-backend` | `8000` |
+| Worker | `agenticops-worker` | no public port |
+| Frontend | `agenticops-frontend` | `5173` |
 
 Keep `AUTOMATION_OBSERVE_ONLY=True` during initial deployment and the 14-day shadow period. Production also requires an HTTPS reverse proxy; Compose does not issue TLS certificates. See [DEPLOYMENT.md](./DEPLOYMENT.md) for the complete installation and upgrade procedure.
 
@@ -118,7 +118,7 @@ npm run dev
 ## Project Structure
 
 ```text
-netops_bs/
+agenticops/
 ├── backend/
 ├── frontend/
 ├── deploy/
