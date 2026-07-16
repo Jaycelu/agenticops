@@ -1521,3 +1521,32 @@ onMounted(() => {
   }
 }
 </style>
+
+<style scoped>
+/* Operations-console visual layer: keep dense log workflows, remove decorative surfaces. */
+.page { height: auto; min-height: 100%; background: transparent; }
+.page-content { max-width: none; padding: 0; overflow: visible; }
+.base-section, .filter-section, .stats-section, .aggregate-section, .aggregate-view-section { margin-bottom: 16px; }
+.base-grid { gap: 8px; }
+.base-card { padding: 13px; gap: 10px; background: var(--app-surface); border-color: var(--app-border); border-radius: var(--app-radius-md); transition: background .16s ease, border-color .16s ease; }
+.base-card:hover { background: var(--app-surface-subtle); border-color: var(--app-border-strong); transform: none; box-shadow: none; }
+.base-card.active { background: var(--app-primary-soft); border-color: #9fb5ed; box-shadow: none; }
+.base-icon { width: 38px; height: 38px; color: var(--app-primary); background: #fff; border: 1px solid #cdd9f8; border-radius: var(--app-radius-sm); }
+.aggregate-stat, .meta-info, .meta-warning { border-radius: 5px; }
+.aggregate-stat.warning { color: #8b470a; background: var(--app-warning-soft); }
+.device-group, .level-group, .log-item { border-color: var(--app-border); border-radius: var(--app-radius-md); transition: border-color .16s ease; }
+.device-group:hover, .log-item:hover { border-color: var(--app-border-strong); box-shadow: none; }
+.device-group-header, .device-group-header:hover, .log-main:hover, .log-actions { background: var(--app-surface-subtle); }
+.device-count { color: #234aa9; background: var(--app-primary-soft); border: 1px solid #d7e1ff; border-radius: 5px; }
+.device-analysis-result, .log-analysis-result { background: #f4f7ff; border-radius: var(--app-radius-sm); border-left-color: var(--app-primary); }
+.analysis-result-content, .detail-section pre { background: #fff; border-color: var(--app-border); border-radius: var(--app-radius-sm); }
+.level-badge { border-radius: 5px; }
+.level-emergencies, .level-alert, .level-critical { background: var(--app-danger); }
+.level-error { background: #d95638; }
+.level-warning { background: var(--app-warning); }
+.level-notification, .level-informational { background: var(--app-primary); }
+.level-debugging { background: #6b7280; }
+.level-unknown { background: #526077; }
+.loading, .empty { padding: 36px 16px; }
+.hint-details, .log-detail { background: var(--app-surface-subtle); border-radius: var(--app-radius-sm); }
+</style>

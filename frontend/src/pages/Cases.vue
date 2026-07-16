@@ -318,3 +318,7 @@ watch(
   }
 }
 </style>
+
+<style scoped>
+.case-card.active { background: var(--app-primary-soft); border-color: #9fb5ed; box-shadow: none; }
+</style>

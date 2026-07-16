@@ -139,9 +139,9 @@ onMounted(reload)
 .admin-page { display: grid; gap: 20px; color: #0f172a; }
 header { display: flex; justify-content: space-between; gap: 20px; align-items: start; }
 h1, h2, p { margin-top: 0; } .eyebrow { color: #2563eb; font-weight: 800; letter-spacing: .08em; }
-.panel { padding: 22px; border: 1px solid #dbe4f0; border-radius: 18px; background: rgba(255,255,255,.92); }
+.panel { padding: 18px; border: 1px solid var(--app-border); border-radius: var(--app-radius-md); background: var(--app-surface); }
 .provider-create { display: grid; grid-template-columns: 1fr 160px 1fr auto; gap: 10px; margin-bottom: 18px; }
-.provider-card, .user-row { display: grid; gap: 12px; padding: 16px; margin-top: 12px; border: 1px solid #e2e8f0; border-radius: 14px; }
+.provider-card, .user-row { display: grid; gap: 12px; padding: 14px; margin-top: 10px; border: 1px solid var(--app-border); border-radius: var(--app-radius-sm); }
 .card-title, .user-row > div:first-child { display: flex; align-items: center; gap: 12px; } code { color: #64748b; }
 label { display: grid; gap: 6px; color: #475569; font-size: 13px; font-weight: 700; }
 input, select, textarea { box-sizing: border-box; width: 100%; padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 9px; font: inherit; }

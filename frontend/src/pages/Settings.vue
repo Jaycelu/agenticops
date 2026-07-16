@@ -2306,3 +2306,33 @@ onMounted(() => {
   }
 }
 </style>
+
+<style scoped>
+/* Settings is a dense administration surface, not a promotional card gallery. */
+.page { height: auto; min-height: 100%; background: transparent; }
+.page-content { max-width: none; padding: 0; overflow: visible; }
+.page-header { margin-bottom: 16px; }
+.settings-container { background: var(--app-surface); border-color: var(--app-border); border-radius: var(--app-radius-md); box-shadow: none; }
+.settings-nav { padding: 0 8px; gap: 2px; background: var(--app-surface-subtle); border-color: var(--app-border); }
+.tab-button { min-height: 44px; padding: 11px 14px; color: var(--app-text-soft); border-radius: 0; transition: color .16s ease, background .16s ease; }
+.tab-button:hover { color: var(--app-text); background: #eef1f5; }
+.tab-button.active { color: var(--app-primary); background: #fff; box-shadow: inset 0 -3px 0 var(--app-primary); }
+.settings-content { padding: 18px; }
+.mode-switch-banner, .helper-banner { padding: 15px 16px; background: var(--app-surface-subtle); border-color: var(--app-border); border-radius: var(--app-radius-md); box-shadow: none; }
+.mode-button { min-height: 44px; padding: 9px 14px; background: #fff; border: 1px solid var(--app-border-strong); border-radius: var(--app-radius-sm); transition: color .16s ease, background .16s ease, border-color .16s ease; }
+.mode-button:hover:not(:disabled) { color: var(--app-text); background: #f8f9fb; border-color: #949fad; transform: none; box-shadow: none; }
+.mode-button.active { color: #fff; background: var(--app-primary); border-color: var(--app-primary); box-shadow: none; }
+.banner-status { border-radius: 5px; }
+.integration-card, .active-model-card, .model-card { background: #fff; border-color: var(--app-border); border-radius: var(--app-radius-md); box-shadow: none; }
+.active-model-card, .model-card.is-active { background: #f4f7ff; border-color: #9fb5ed; }
+.model-card:hover { transform: none; box-shadow: none; border-color: var(--app-border-strong); }
+.card-header { background: var(--app-surface-subtle); border-color: var(--app-border); }
+.badge, .binding-status { border-radius: 5px; }
+.badge-active { color: #17643d; background: var(--app-success-soft); box-shadow: none; }
+.btn-primary, .btn-edit, .btn-add { color: #fff; background: var(--app-primary); box-shadow: none; }
+.btn-test { color: #fff; background: var(--app-warning); box-shadow: none; }
+.btn-activate { color: #fff; background: var(--app-success); box-shadow: none; }
+.btn-delete { color: #fff; background: var(--app-danger); box-shadow: none; }
+.btn-primary:hover:not(:disabled), .btn-test:hover:not(:disabled), .btn-activate:hover, .btn-edit:hover, .btn-delete:hover, .btn-add:hover { transform: none; box-shadow: none; filter: brightness(.94); }
+.btn-test, .btn-activate, .btn-edit, .btn-delete, .btn-add { border-radius: var(--app-radius-sm); }
+</style>

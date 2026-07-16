@@ -2723,3 +2723,26 @@ onMounted(() => {
   }
 }
 </style>
+
+<style scoped>
+/* Preserve topology semantics while aligning surrounding controls with the console system. */
+.page { height: auto; min-height: 100%; background: transparent; }
+.page-content { max-width: none; padding: 0; overflow: visible; }
+.page-header { margin-bottom: 16px; }
+.btn-column-settings, .btn-search, .btn-save, .btn-detail, .btn-load-config, .btn-confirm { background: var(--app-primary); box-shadow: none; border-radius: var(--app-radius-sm); }
+.btn-column-settings:hover, .btn-search:hover, .btn-save:hover, .btn-detail:hover, .btn-load-config:hover, .btn-confirm:hover:not(:disabled) { transform: none; box-shadow: none; background: var(--app-primary-strong); }
+.btn-reset, .btn-back, .btn-cancel { background: #fff; border-color: var(--app-border-strong); border-radius: var(--app-radius-sm); }
+.sidebar { background: #111827; border-radius: var(--app-radius-md); box-shadow: none; }
+.tab-button.active { background: #233251; box-shadow: none; }
+.filter-section, .table-section, .device-config-section { background: var(--app-surface); border-color: var(--app-border); border-radius: var(--app-radius-md); box-shadow: none; }
+.filter-input, .filter-input select, .form-input { border-color: var(--app-border-strong); border-radius: var(--app-radius-sm); }
+.filter-input:focus, .filter-input select:focus, .form-input:focus { border-color: var(--app-primary); box-shadow: var(--app-focus); }
+.status-badge, .tag-badge { border-radius: 5px; box-shadow: none; }
+.tag-master { background: #fff7d6; }
+.tag-member { background: #eef0f3; }
+.tag-default { background: var(--app-primary-soft); }
+.tag-badge:hover { transform: none; }
+.modal-content { background: #fff; border: 1px solid var(--app-border); border-radius: var(--app-radius-lg); box-shadow: var(--app-shadow-lg); }
+.btn-fetch-config { background: var(--app-success); border-radius: var(--app-radius-sm); box-shadow: none; }
+.btn-fetch-config:hover { transform: none; box-shadow: none; filter: brightness(.94); }
+</style>

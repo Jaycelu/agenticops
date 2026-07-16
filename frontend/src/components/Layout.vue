@@ -16,33 +16,21 @@ import TopNav from '@/components/TopNav.vue'
 <style scoped>
 .layout {
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top, rgba(56, 189, 248, 0.14), transparent 28%),
-    linear-gradient(180deg, #edf3fb 0%, #f8fbff 42%, #eef3f9 100%);
+  background: var(--app-bg);
   display: flex;
 }
 
 .layout-content {
   flex: 1;
   min-width: 0;
-  padding: 24px;
-  position: relative;
+  padding: 20px 24px 32px;
 }
 
 .layout-workspace {
-  min-height: calc(100vh - 48px);
-  position: relative;
-}
-
-.layout-workspace::before {
-  content: '';
-  position: absolute;
-  inset: 8px 12px auto auto;
-  width: 260px;
-  height: 260px;
-  pointer-events: none;
-  background: radial-gradient(circle, rgba(37, 99, 235, 0.12), transparent 68%);
-  filter: blur(12px);
+  width: 100%;
+  max-width: 1680px;
+  min-height: calc(100vh - 52px);
+  margin: 0 auto;
 }
 
 @media (max-width: 980px) {
@@ -52,6 +40,12 @@ import TopNav from '@/components/TopNav.vue'
 
   .layout-content {
     padding: 16px;
+  }
+}
+
+@media (max-width: 560px) {
+  .layout-content {
+    padding: 12px;
   }
 }
 </style>

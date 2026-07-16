@@ -1296,3 +1296,10 @@ watch(
   }
 }
 </style>
+
+<style scoped>
+.page { min-height: 100%; padding: 0; background: transparent; }
+.page-content { max-width: none; }
+.mode-badge, .alert-severity, .alert-status, .check-badge, .task-status-badge { border-radius: 5px; }
+.cluster-card.active { background: var(--app-primary-soft); border-color: #9fb5ed; box-shadow: none; }
+</style>
