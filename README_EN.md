@@ -26,6 +26,8 @@ AgenticOps normalizes infrastructure signals into a single workflow:
 - Guarded read-only device probes, generic signed webhooks, durable ELK ingestion, and post-change verification
 - Source-oriented workspaces for assets, logs, Zabbix, tickets, and settings
 
+Case diagnosis now runs as a durable asynchronous graph. The Supervisor creates conditional tasks from evidence and budget state; strict Evidence Requests pass through Tool Registry, PolicyGuard and Probe Gateway; an independent Diagnostic Critic searches for counter-evidence; and the Worker recovers expired leases from checkpoints. The graph still stops after Safety Review in Observe-only mode and never autonomously performs a device change. See [Multi-Agent Diagnostic Architecture](./docs/MULTI_AGENT_DIAGNOSTIC_ARCHITECTURE.md) and [Migration 0011](./docs/MIGRATION_0011_MULTI_AGENT_GRAPH.md).
+
 ## Screenshot
 
 <img src="./agenticops.jpg" alt="AgenticOps overview" width="100%">

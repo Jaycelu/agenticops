@@ -14,7 +14,7 @@ RUN set -e; \
     apt-get install -y --no-install-recommends build-essential libffi-dev libssl-dev libxml2-dev libxmlsec1-dev libxmlsec1-openssl pkg-config >>/tmp/apt-install.log 2>&1; \
     rm -rf /var/lib/apt/lists/* /tmp/apt-install.log
 
-COPY requirements.txt .
+COPY requirements.txt constraints.txt ./
 RUN python -m pip install --no-cache-dir -r requirements.txt
 
 COPY . .

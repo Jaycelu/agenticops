@@ -46,11 +46,13 @@ AgenticOps 是面向网络运维场景的事件治理与执行闭环系统。系
 
 “可部署”不等于“已经生产认证”。首次上线必须保持 `AUTOMATION_OBSERVE_ONLY=true`，完成真实 SSO、设备、ELK、Zabbix、Webhook 联调以及至少 14 天 Shadow Mode 后，才能逐项开放设备变更能力。
 
+当前 Case 诊断采用持久化异步 Graph：Supervisor 根据证据和预算动态创建任务，Evidence Request 经 Tool Registry、PolicyGuard 和 Probe Gateway 自动闭环，独立 Critic 负责反证，Worker 可从租约和 Checkpoint 恢复。安全审查后仍在 Observe-only 停止，不会自动执行设备变更。详见 [多智能体诊断架构](./docs/MULTI_AGENT_DIAGNOSTIC_ARCHITECTURE.md) 与 [0011 迁移/回滚说明](./docs/MIGRATION_0011_MULTI_AGENT_GRAPH.md)。
+
 ## 核心能力
 
 - 统一事件中心：日志信号、Zabbix 告警、外部事件接入、去重、聚类、关联、分流。
 - Case 中心：证据、智能体结论、修复计划统一归档。
-- 多智能体分析：`Alert Triage`、`Historical Analysis`、`Insight Analysis`、`Autonomous Remediation`、`Safety Critic`。
+- 多智能体分析：持久化 Case Supervisor、动态任务图、`Alert Triage`、`Historical Analysis`、`Insight Analysis`、`Diagnostic Critic`、`Autonomous Remediation`、`Safety Critic`。
 - 记忆中心：episode、pattern、outcome、feedback 管理。
 - 执行中心：修复计划、审批状态、执行记录、策略审计。
 - 数据源模块：资产拓扑、日志中心、Zabbix 中心、工单、系统设置。
