@@ -12,37 +12,16 @@
     <div class="cases-filters app-toolbar">
       <select v-model="statusFilter" class="filter-input app-select" @change="loadCases">
         <option value="">全部状态</option>
-        <option value="new">new</option>
-        <option value="normalized">normalized</option>
-        <option value="open">open</option>
-        <option value="triaged">triaged</option>
-        <option value="evidence_collecting">evidence_collecting</option>
-        <option value="diagnosing">diagnosing</option>
-        <option value="hypothesis_review">hypothesis_review</option>
-        <option value="planning">planning</option>
-        <option value="safety_review">safety_review</option>
-        <option value="awaiting_approval">awaiting_approval</option>
-        <option value="investigating">investigating</option>
-        <option value="planned">planned</option>
-        <option value="executing">executing</option>
-        <option value="verifying">verifying</option>
-        <option value="observing">observing</option>
-        <option value="resolved">resolved</option>
-        <option value="rolled_back">rolled_back</option>
-        <option value="escalated">escalated</option>
-        <option value="failed">failed</option>
-        <option value="closed">closed</option>
+        <option v-for="(label, val) in CASE_STATUS_LABELS" :key="val" :value="val">{{ label }}</option>
       </select>
       <select v-model="phaseFilter" class="filter-input app-select" @change="loadCases">
         <option value="">全部阶段</option>
-        <option value="intake">intake</option>
-        <option value="analysis">analysis</option>
-        <option value="remediation_draft">remediation_draft</option>
+        <option v-for="(label, val) in CASE_PHASE_LABELS" :key="val" :value="val">{{ label }}</option>
       </select>
     </div>
 
     <div v-if="loading" class="state-block app-empty">加载中...</div>
-    <div v-else-if="cases.length === 0" class="state-block app-empty">暂无 case</div>
+    <div v-else-if="cases.length === 0" class="state-block app-empty">暂无 Case</div>
     <div v-else class="cases-layout">
       <div class="case-list">
         <button
@@ -54,7 +33,7 @@
         >
           <div class="case-head">
             <strong>{{ item.case_code }}</strong>
-            <span class="case-badge app-badge" :class="`status-${item.status}`">{{ item.status }}</span>
+            <span class="case-badge app-badge" :class="`status-${item.status}`">{{ formatStatus(item.status) }}</span>
           </div>
           <div class="case-title">{{ item.title }}</div>
           <div class="case-meta">
@@ -74,7 +53,7 @@
             </div>
             <div class="detail-tags">
               <span class="pill app-pill">{{ selectedCase.case_code }}</span>
-              <span class="pill app-pill">{{ selectedCase.status }}</span>
+              <span class="pill app-pill">{{ formatStatus(selectedCase.status) }}</span>
               <span class="pill app-pill">{{ selectedCase.current_phase }}</span>
               <button
                 class="app-button app-button-primary run-agent-button"
@@ -227,6 +206,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { casesApi, type CaseSummary } from '@/api/cases'
+import { CASE_STATUS_LABELS, CASE_PHASE_LABELS, formatStatus } from '@/utils/statusLabels'
 
 const route = useRoute()
 const loading = ref(false)

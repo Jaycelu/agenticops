@@ -172,6 +172,7 @@ async def submit_remediation_plan_feedback(
 async def execute_remediation_plan(
     plan_id: int,
     idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=16, max_length=160),
+    dry_run: bool = Query(False, description="Validate actions but do not execute"),
     principal: Principal = Depends(require_permissions(Permission.EXECUTIONS_RUN.value)),
     db: Session = Depends(get_db),
 ):
@@ -181,6 +182,7 @@ async def execute_remediation_plan(
             plan_id,
             principal=principal,
             idempotency_key=idempotency_key,
+            dry_run=dry_run,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))

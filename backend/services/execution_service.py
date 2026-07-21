@@ -48,6 +48,7 @@ class ExecutionService:
         *,
         principal: Principal,
         idempotency_key: str,
+        dry_run: bool = False,
     ) -> Dict[str, Any]:
         plan = db.query(RemediationPlan).filter(RemediationPlan.id == plan_id).with_for_update().first()
         if plan is None:
@@ -61,6 +62,8 @@ class ExecutionService:
         )
         if not frozen_actions:
             raise ValueError("Plan has no recommended actions")
+        if dry_run:
+            return self._dry_run_preview(db, plan, version, frozen_actions, principal)
         request_hash = hashlib.sha256(
             json.dumps(
                 {"plan_id": plan_id, "plan_version_id": int(version.id), "plan_hash": version.plan_hash},
@@ -384,6 +387,44 @@ class ExecutionService:
         )
         db.commit()
         return response
+
+    def _dry_run_preview(
+        self,
+        db: Session,
+        plan: RemediationPlan,
+        version: Any,
+        actions: list[dict],
+        principal: Principal,
+    ) -> dict:
+        case = db.query(CaseRecord).filter(CaseRecord.id == plan.case_id).first()
+        summaries = []
+        for action in actions:
+            request = self._build_tool_request(action, case=case, plan=plan, triggered_by=principal.username)
+            spec = tool_registry.get(request.tool_id)
+            decision = self.guard.check(request, case=case, plan=plan, db=db)
+            summaries.append({
+                "tool_id": request.tool_id,
+                "action_index": len(summaries) + 1,
+                "allowed": decision.allowed,
+                "blocked_reason": decision.blocked_reason,
+                "effective_risk": int(getattr(spec, "risk_level", 0) or 0) if spec else 0,
+                "mode": request.mode,
+                "target": {
+                    "device_ip": request.target.get("device_ip"),
+                    "host": request.target.get("host"),
+                },
+            })
+        return {
+            "success": True,
+            "dry_run": True,
+            "plan_id": int(plan.id),
+            "case_id": int(case.id) if case else None,
+            "status": "dry_run",
+            "plan_version_id": int(version.id),
+            "plan_hash": version.plan_hash,
+            "executions": summaries,
+            "message": "Dry-run completed. No actions were executed.",
+        }
 
     def _build_tool_request(
         self,

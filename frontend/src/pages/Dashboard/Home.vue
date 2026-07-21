@@ -39,6 +39,20 @@
         </article>
       </section>
 
+      <section class="trend-strip">
+        <article class="panel-card app-panel">
+          <div class="panel-head">
+            <h2>事件量趋势（近 24h）</h2>
+          </div>
+          <TrendChart
+            :series="trendSeries"
+            :labels="trendLabels"
+            height="180px"
+            y-label="事件数"
+          />
+        </article>
+      </section>
+
       <section class="panel-grid">
         <article class="panel-card app-panel">
           <div class="panel-head">
@@ -281,6 +295,9 @@ import { eventsApi, type EventClusterItem, type EventItem, type RootCauseCandida
 import { fabricApi } from '@/api/fabric'
 import { memoriesApi } from '@/api/memories'
 import { settingsApi, type IntegrationConfig } from '@/api/settings'
+import TrendChart from '@/components/TrendChart.vue'
+import { formatStatus } from '@/utils/statusLabels'
+interface TrendSeries { label: string; color: string; values: number[] }
 
 const router = useRouter()
 const loading = ref(false)
@@ -314,6 +331,8 @@ const recentEvents = ref<EventItem[]>([])
 const hotClusters = ref<EventClusterItem[]>([])
 const rootCauseCandidates = ref<RootCauseCandidateItem[]>([])
 const integrations = ref<IntegrationConfig[]>([])
+const trendLabels = ref<string[]>([])
+const trendSeries = ref<TrendSeries[]>([])
 
 const phaseRows = computed(() => {
   const entries = Object.entries(caseOverview.value.by_phase || {})
@@ -395,10 +414,6 @@ function formatTime(value?: string | null): string {
   return new Date(value).toLocaleString('zh-CN')
 }
 
-const statusLabels: Record<string, string> = {
-  open: '待处理', investigating: '分析中', executing: '执行中', resolved: '已解决',
-  closed: '已关闭', failed: '失败', pending: '等待中', approved: '已批准', draft: '草案'
-}
 const phaseLabels: Record<string, string> = {
   intake: '事件接入', evidence: '证据收集', analysis: '证据分析', planning: '处置规划',
   approval: '等待审批', execution: '执行处置', verification: '效果验证', closure: '闭环归档'
@@ -412,8 +427,7 @@ const agentTypeLabels: Record<string, string> = {
 }
 
 function displayStatus(value?: string | null): string {
-  if (!value) return '-'
-  return statusLabels[value.toLowerCase()] || value
+  return formatStatus(value) || '-'
 }
 
 function displayPhase(value?: string | null): string {
@@ -457,6 +471,17 @@ async function loadDashboard() {
     hotClusters.value = clusterData.clusters || []
     rootCauseCandidates.value = rootCauseData.items || []
     integrations.value = integrationData.data || []
+    // Populate trend chart (24h event volume)
+    trendLabels.value = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
+    const eventVolumes = recentEvents.value.reduce<number[]>((acc, item) => {
+      if (!item.occurred_at) return acc
+      const hour = new Date(item.occurred_at).getHours()
+      acc[hour] = (acc[hour] || 0) + 1
+      return acc
+    }, Array(24).fill(0))
+    trendSeries.value = [
+      { label: '事件量', color: '--app-primary', values: eventVolumes },
+    ]
     updatedAt.value = new Date().toISOString()
   } catch (error: any) {
     message.value = error?.response?.data?.detail || '加载驾驶舱失败'
@@ -525,6 +550,10 @@ onMounted(async () => {
 
 .metric-card:last-child {
   border-right: 0;
+}
+
+.trend-strip {
+  margin-bottom: 0;
 }
 
 .panel-grid {

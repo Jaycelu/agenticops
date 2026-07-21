@@ -70,6 +70,8 @@ class RemediationPlanExecuteResponse(BaseModel):
     plan_id: int
     case_id: int
     status: str
-    case_status: str
+    case_status: str = ""
     executions: List[ExecutionActionSummary] = Field(default_factory=list)
-    execution_job_id: int
+    execution_job_id: int = 0
+    dry_run: bool = False
+    message: str = ""

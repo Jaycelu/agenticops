@@ -251,7 +251,7 @@
                 {{ item.severity }}
               </div>
               <div class="alert-status" :class="{ acknowledged: item.acknowledged }">
-                {{ item.status }}
+                {{ formatStatus(item.status) }}
               </div>
               <div class="alert-time">
                 <Clock :size="14" />
@@ -293,7 +293,7 @@
         <div class="detail-row"><span>分流原因</span><strong>{{ selectedEvent.disposition_reason || '-' }}</strong></div>
         <div class="detail-row"><span>主机</span><strong>{{ selectedEvent.host || '-' }}</strong></div>
         <div class="detail-row"><span>级别</span><strong>{{ selectedEvent.severity }}</strong></div>
-        <div class="detail-row"><span>状态</span><strong>{{ selectedEvent.status }}</strong></div>
+        <div class="detail-row"><span>状态</span><strong>{{ formatStatus(selectedEvent.status) }}</strong></div>
         <div class="detail-row"><span>关联Case</span><strong>{{ selectedEventCase.caseCode || relations.linked_case?.case_code || '-' }}</strong></div>
         <div class="detail-row"><span>推荐Skill</span><strong>{{ recommendedSkillCode || '-' }}</strong></div>
         <div class="detail-row"><span>发生时间</span><strong>{{ formatTime(selectedEvent.occurred_at) }}</strong></div>
@@ -374,6 +374,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { eventsApi, type EventClusterItem, type EventItem, type RootCauseCandidateItem } from '@/api/events'
+import { formatStatus } from '@/utils/statusLabels'
 import { AlertCircle, AlertTriangle, BellRing, CheckCircle2, Clock, FileText, Layers3, Loader2, Radio, RefreshCw, Server } from 'lucide-vue-next'
 
 interface LinkedTaskRelation {
