@@ -101,6 +101,13 @@ class Settings(BaseSettings):
     agent_max_runtime_seconds: int = 900
     agent_max_target_devices: int = 3
     agent_max_tool_calls_per_run: int = 3
+
+    # Auto-enqueue the diagnostic graph when ingestion creates a case.
+    # Severity gate uses rank mapping (critical>major>minor>warning>info);
+    # site whitelist is comma-separated site ids, empty means all sites.
+    agent_auto_trigger_enabled: bool = True
+    agent_auto_trigger_min_severity: str = "major"
+    agent_auto_trigger_sites: str = ""
     hypothesis_confirm_confidence: float = 0.75
     hypothesis_evidence_max_age_seconds: int = 3600
     hypothesis_max_high_weight_contradictions: int = 0

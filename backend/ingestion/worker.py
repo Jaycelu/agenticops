@@ -4,11 +4,15 @@ import os
 import socket
 from datetime import datetime, timezone
 
+from loguru import logger
+from sqlalchemy.orm import Session
+
 from database import SessionLocal
 from engines.case_orchestrator import case_orchestrator
 from ingestion.aggregation import RULE_VERSION, log_aggregation_service
 from ingestion.checkpoints import CheckpointLeaseUnavailable, checkpoint_service
 from ingestion.elk_reader import elk_reader
+from models.agenticops import CaseRecord
 from models.ingestion import IngestionCheckpoint, LogAggregationBucket, NoiseReductionSnapshot
 from models.log_scope import LogScope
 from config.settings import settings
@@ -111,6 +115,27 @@ class IngestionWorker:
         await self.emit_pending()
         return bool(page.documents)
 
+    _SEVERITY_RANK = {"critical": 5, "major": 4, "minor": 3, "warning": 2, "info": 1}
+
+    async def _maybe_auto_trigger(self, db: Session, case: CaseRecord) -> None:
+        if not settings.agent_auto_trigger_enabled:
+            return
+        threshold = self._SEVERITY_RANK.get(settings.agent_auto_trigger_min_severity.lower(), 4)
+        if self._SEVERITY_RANK.get(str(case.severity or "").lower(), 0) < threshold:
+            return
+        whitelist = [item.strip() for item in settings.agent_auto_trigger_sites.split(",") if item.strip()]
+        if whitelist and str(case.site_id) not in whitelist:
+            return
+        try:
+            await case_orchestrator.run_case_pipeline(
+                db,
+                case_id=case.id,
+                log_query=case.device_ip or case.host,
+            )
+            logger.bind(case_id=case.id).info("agent_graph_auto_triggered")
+        except Exception:
+            logger.bind(case_id=case.id).warning("agent_graph_auto_trigger_failed")
+
     async def emit_pending(self) -> bool:
         db = SessionLocal()
         try:
@@ -149,6 +174,7 @@ class IngestionWorker:
             bucket.emitted_case_id = case.id
             bucket.emitted_at = datetime.now(timezone.utc)
             db.commit()
+            await self._maybe_auto_trigger(db, case)
             return True
         finally:
             db.close()

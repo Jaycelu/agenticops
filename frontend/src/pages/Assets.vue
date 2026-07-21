@@ -4,14 +4,14 @@
       <div class="page-header app-page-header">
         <div class="page-title app-page-title">
           <span class="app-page-title-icon">
-            <Server class="title-icon" :size="24" />
+            <Server :size="24" />
           </span>
           <div class="app-page-copy">
             <h1>资产视图</h1>
           </div>
         </div>
-        <button @click="showColumnSettings = true" class="btn-column-settings">
-          <Settings2 class="btn-icon" :size="16" />
+        <button @click="showColumnSettings = true" class="app-button app-button-secondary">
+          <Settings2 :size="16" />
           列设置
         </button>
       </div>
@@ -77,34 +77,34 @@
                   <input
                     v-model="deviceFilters.name"
                     placeholder="设备名称"
-                    class="filter-input"
+                    class="app-input filter-text"
                     @input="debouncedLoadDevices"
                   />
                 </div>
-                <select v-model="deviceFilters.site" class="filter-input" @change="loadDevices">
+                <select v-model="deviceFilters.site" class="app-select filter-select" @change="loadDevices">
                   <option value="">所有站点</option>
                   <option v-for="site in sites" :key="site.name" :value="site.name">
                     {{ site.name }}
                   </option>
                 </select>
-                <select v-model="deviceFilters.role" class="filter-input" @change="loadDevices">
+                <select v-model="deviceFilters.role" class="app-select filter-select" @change="loadDevices">
                   <option value="">所有角色</option>
                   <option value="核心交换机">核心交换机</option>
                   <option value="接入交换机">接入交换机</option>
                   <option value="汇聚交换机">汇聚交换机</option>
                   <option value="防火墙">防火墙</option>
                 </select>
-                <select v-model="deviceFilters.vendor" class="filter-input" @change="loadDevices">
+                <select v-model="deviceFilters.vendor" class="app-select filter-select" @change="loadDevices">
                   <option value="">所有厂商</option>
                   <option v-for="vendor in vendors" :key="vendor" :value="vendor">
                     {{ vendor }}
                   </option>
                 </select>
-                <button @click="loadDevices" class="btn-search">
+                <button @click="loadDevices" class="app-button app-button-primary">
                   <Search :size="16" />
                   搜索
                 </button>
-                <button @click="resetDeviceFilters" class="btn-reset">
+                <button @click="resetDeviceFilters" class="app-button app-button-secondary">
                   <RotateCcw :size="16" />
                   重置
                 </button>
@@ -112,11 +112,11 @@
             </div>
 
             <div class="table-section">
-              <div v-if="tabLoading.devices" class="loading">
+              <div v-if="tabLoading.devices" class="loading app-empty">
                 <Loader2 class="animate-spin" :size="40" />
                 <p>加载中...</p>
               </div>
-              <div v-else-if="devices.length === 0" class="empty">
+              <div v-else-if="devices.length === 0" class="empty app-empty">
                 <MonitorOff :size="48" />
                 <p>暂无设备数据</p>
               </div>
@@ -131,17 +131,17 @@
                 <tbody>
                   <tr v-for="device in devices" :key="device.id">
                     <td v-for="col in visibleDeviceColumns" :key="col.key">
-                      <span v-if="col.key === 'status'" :class="['status-badge', getStatusClass(device[col.key])]">
+                      <span v-if="col.key === 'status'" :class="['app-badge', getStatusClass(device[col.key])]">
                         <component :is="getStatusIcon(device[col.key])" :size="12" />
                         {{ device[col.key] || '-' }}
                       </span>
                       <span v-else-if="col.key === 'action'">
-                        <button @click="handleViewDetails(device, 'device')" class="btn-detail">
+                        <button @click="handleViewDetails(device, 'device')" class="app-button app-button-primary btn-table">
                           <Eye :size="14" />
                           详情
                         </button>
                       </span>
-                      <span v-else-if="col.key === 'vendor'" :class="['vendor-badge', getVendorClass(device.vendor)]">
+                      <span v-else-if="col.key === 'vendor'" :class="['app-badge', getVendorClass(device.vendor)]">
                         <span class="vendor-dot"></span>
                         {{ device.vendor || '-' }}
                       </span>
@@ -159,7 +159,7 @@
           <!-- 设备详情视图 -->
           <div v-if="activeTab === 'devices' && showDeviceDetail && selectedDevice" class="tab-content">
             <div class="rack-detail-header">
-              <button @click="closeDeviceDetail" class="btn-back">
+              <button @click="closeDeviceDetail" class="app-button app-button-secondary">
                 <ArrowLeft :size="16" />
                 返回
               </button>
@@ -190,14 +190,14 @@
                 </div>
                 <div class="info-item">
                   <span class="info-label">厂商:</span>
-                  <span :class="['vendor-badge', getVendorClass(selectedDevice.vendor)]">
+                  <span :class="['app-badge', getVendorClass(selectedDevice.vendor)]">
                     <span class="vendor-dot"></span>
                     {{ selectedDevice.vendor || '-' }}
                   </span>
                 </div>
                 <div class="info-item">
                   <span class="info-label">状态:</span>
-                  <span :class="['info-value', 'status-badge', getStatusClass(selectedDevice.status)]">
+                  <span :class="['info-value', 'app-badge', getStatusClass(selectedDevice.status)]">
                     <component :is="getStatusIcon(selectedDevice.status)" :size="12" />
                     {{ selectedDevice.status || '-' }}
                   </span>
@@ -226,7 +226,7 @@
                   <span class="info-label">设备标签:</span>
                   <div class="tags-container">
                     <span v-if="selectedDevice.tags && selectedDevice.tags.length > 0" class="tags-list">
-                      <span v-for="tag in selectedDevice.tags" :key="tag" :class="['tag-badge', getTagClass(tag)]">
+                      <span v-for="tag in selectedDevice.tags" :key="tag" :class="['app-badge', getTagClass(tag)]">
                         <Tag :size="12" />
                         {{ tag }}
                       </span>
@@ -242,30 +242,30 @@
                 <Settings2 :size="18" />
                 <h3>设备配置</h3>
                 <div class="config-actions">
-                  <button v-if="!deviceConfig" @click="loadDeviceConfig" class="btn-load-config">
+                  <button v-if="!deviceConfig" @click="loadDeviceConfig" class="app-button app-button-primary">
                     <Download :size="14" />
                     查看配置
                   </button>
-                  <button v-else @click="loadDeviceConfig" class="btn-load-config">
+                  <button v-else @click="loadDeviceConfig" class="app-button app-button-primary">
                     <RefreshCw :size="14" />
                     刷新配置
                   </button>
-                  <button @click="showCredentialsDialog = true" class="btn-fetch-config">
+                  <button @click="showCredentialsDialog = true" class="app-button app-button-primary">
                     <Upload :size="14" />
                     获取并写入NetBox
                   </button>
                 </div>
               </div>
-              <div v-if="loadingConfig" class="loading">
+              <div v-if="loadingConfig" class="loading app-empty">
                 <Loader2 class="animate-spin" :size="40" />
                 <p>加载配置中...</p>
               </div>
-              <div v-else-if="!deviceConfig" class="empty-config">
+              <div v-else-if="!deviceConfig" class="empty-config app-empty">
                 <FileX :size="48" />
                 <p>暂无配置信息，点击上方按钮获取</p>
               </div>
               <div v-else class="config-content">
-                <div v-if="!deviceConfig.has_config" class="empty-config">
+                <div v-if="!deviceConfig.has_config" class="empty-config app-empty">
                   <FileX :size="48" />
                   <p>该设备暂无配置信息</p>
                 </div>
@@ -274,7 +274,7 @@
                     <h4>设备配置</h4>
                     <pre class="config-text">{{ deviceConfig.config_context.running_config }}</pre>
                   </div>
-                  <div v-else class="empty-config">
+                  <div v-else class="empty-config app-empty">
                     <FileX :size="48" />
                     <p>该设备暂无运行配置</p>
                   </div>
@@ -292,22 +292,22 @@
                   <input
                     v-model="ipFilters.address"
                     placeholder="IP地址"
-                    class="filter-input"
+                    class="app-input filter-text"
                     @input="debouncedLoadIPs"
                   />
                 </div>
-                <select v-model="ipFilters.status" class="filter-input" @change="loadIPs">
+                <select v-model="ipFilters.status" class="app-select filter-select" @change="loadIPs">
                   <option value="">所有状态</option>
                   <option value="Active">Active</option>
                   <option value="Reserved">Reserved</option>
                   <option value="Deprecated">Deprecated</option>
                   <option value="DHCP">DHCP</option>
                 </select>
-                <button @click="loadIPs" class="btn-search">
+                <button @click="loadIPs" class="app-button app-button-primary">
                   <Search :size="16" />
                   搜索
                 </button>
-                <button @click="resetIPFilters" class="btn-reset">
+                <button @click="resetIPFilters" class="app-button app-button-secondary">
                   <RotateCcw :size="16" />
                   重置
                 </button>
@@ -315,11 +315,11 @@
             </div>
 
             <div class="table-section">
-              <div v-if="tabLoading.ips" class="loading">
+              <div v-if="tabLoading.ips" class="loading app-empty">
                 <Loader2 class="animate-spin" :size="40" />
                 <p>加载中...</p>
               </div>
-              <div v-else-if="ips.length === 0" class="empty">
+              <div v-else-if="ips.length === 0" class="empty app-empty">
                 <FileX :size="48" />
                 <p>暂无IP数据</p>
               </div>
@@ -334,7 +334,7 @@
                 <tbody>
                   <tr v-for="ip in ips" :key="ip.id">
                     <td v-for="col in visibleIPColumns" :key="col.key">
-                      <span v-if="col.key === 'status'" :class="['status-badge', getStatusClass(ip[col.key])]">
+                      <span v-if="col.key === 'status'" :class="['app-badge', getStatusClass(ip[col.key])]">
                         <component :is="getStatusIcon(ip[col.key])" :size="12" />
                         {{ ip[col.key] || '-' }}
                       </span>
@@ -355,21 +355,21 @@
                   <input
                     v-model="rackFilters.name"
                     placeholder="机柜名称"
-                    class="filter-input"
+                    class="app-input filter-text"
                     @input="debouncedLoadRacks"
                   />
                 </div>
-                <select v-model="rackFilters.site" class="filter-input" @change="loadRacks">
+                <select v-model="rackFilters.site" class="app-select filter-select" @change="loadRacks">
                   <option value="">所有站点</option>
                   <option v-for="site in sites" :key="site.name" :value="site.name">
                     {{ site.name }}
                   </option>
                 </select>
-                <button @click="loadRacks" class="btn-search">
+                <button @click="loadRacks" class="app-button app-button-primary">
                   <Search :size="16" />
                   搜索
                 </button>
-                <button @click="resetRackFilters" class="btn-reset">
+                <button @click="resetRackFilters" class="app-button app-button-secondary">
                   <RotateCcw :size="16" />
                   重置
                 </button>
@@ -377,11 +377,11 @@
             </div>
 
             <div class="table-section">
-              <div v-if="tabLoading.racks" class="loading">
+              <div v-if="tabLoading.racks" class="loading app-empty">
                 <Loader2 class="animate-spin" :size="40" />
                 <p>加载中...</p>
               </div>
-              <div v-else-if="racks.length === 0" class="empty">
+              <div v-else-if="racks.length === 0" class="empty app-empty">
                 <HardDriveOff :size="48" />
                 <p>暂无机柜数据</p>
               </div>
@@ -396,12 +396,12 @@
                 <tbody>
                   <tr v-for="rack in racks" :key="rack.id">
                     <td v-for="col in visibleRackColumns" :key="col.key">
-                      <span v-if="col.key === 'status'" :class="['status-badge', getStatusClass(rack[col.key])]">
+                      <span v-if="col.key === 'status'" :class="['app-badge', getStatusClass(rack[col.key])]">
                         <component :is="getStatusIcon(rack[col.key])" :size="12" />
                         {{ rack[col.key] || '-' }}
                       </span>
                       <span v-else-if="col.key === 'action'">
-                        <button @click="handleViewDetails(rack, 'rack')" class="btn-detail">
+                        <button @click="handleViewDetails(rack, 'rack')" class="app-button app-button-primary btn-table">
                           <Eye :size="14" />
                           详情
                         </button>
@@ -420,7 +420,7 @@
           <!-- 机柜详情视图 -->
           <div v-if="showRackDetail && selectedRack" class="tab-content">
             <div class="rack-detail-header">
-              <button @click="closeRackDetail" class="btn-back">
+              <button @click="closeRackDetail" class="app-button app-button-secondary">
                 <ArrowLeft :size="16" />
                 返回
               </button>
@@ -447,7 +447,7 @@
                 </div>
                 <div class="info-item">
                   <span class="info-label">状态:</span>
-                  <span :class="['info-value', 'status-badge', getStatusClass(selectedRack.status)]">
+                  <span :class="['info-value', 'app-badge', getStatusClass(selectedRack.status)]">
                     <component :is="getStatusIcon(selectedRack.status)" :size="12" />
                     {{ selectedRack.status || '-' }}
                   </span>
@@ -476,11 +476,11 @@
                 <Monitor :size="18" />
                 <h3>机柜内设备 ({{ rackDevices.length }} 台)</h3>
               </div>
-              <div v-if="loading" class="loading">
+              <div v-if="loading" class="loading app-empty">
                 <Loader2 class="animate-spin" :size="40" />
                 <p>加载中...</p>
               </div>
-              <div v-else-if="rackDevices.length === 0" class="empty">
+              <div v-else-if="rackDevices.length === 0" class="empty app-empty">
                 <MonitorOff :size="48" />
                 <p>该机柜内暂无设备</p>
               </div>
@@ -505,7 +505,7 @@
                     <td>{{ device.device_type || '-' }}</td>
                     <td>{{ device.role || '-' }}</td>
                     <td>
-                      <span :class="['status-badge', getStatusClass(device.status)]">
+                      <span :class="['app-badge', getStatusClass(device.status)]">
                         <component :is="getStatusIcon(device.status)" :size="12" />
                         {{ device.status || '-' }}
                       </span>
@@ -514,7 +514,7 @@
                     <td>{{ device.face || '-' }}</td>
                     <td>{{ device.primary_ip || '-' }}</td>
                     <td>
-                      <button @click="openDeviceDetail(device)" class="btn-detail">
+                      <button @click="openDeviceDetail(device)" class="app-button app-button-primary btn-table">
                         <Eye :size="14" />
                         详情
                       </button>
@@ -534,27 +534,27 @@
                   <input
                     v-model="vlanFilters.name"
                     placeholder="VLAN名称"
-                    class="filter-input"
+                    class="app-input filter-text"
                     @input="debouncedLoadVLANs"
                   />
                 </div>
-                <select v-model="vlanFilters.site" class="filter-input" @change="loadVLANs">
+                <select v-model="vlanFilters.site" class="app-select filter-select" @change="loadVLANs">
                   <option value="">所有站点</option>
                   <option v-for="site in sites" :key="site.name" :value="site.name">
                     {{ site.name }}
                   </option>
                 </select>
-                <select v-model="vlanFilters.status" class="filter-input" @change="loadVLANs">
+                <select v-model="vlanFilters.status" class="app-select filter-select" @change="loadVLANs">
                   <option value="">所有状态</option>
                   <option value="active">活跃</option>
                   <option value="reserved">保留</option>
                   <option value="deprecated">已废弃</option>
                 </select>
-                <button @click="loadVLANs" class="btn-search">
+                <button @click="loadVLANs" class="app-button app-button-primary">
                   <Search :size="16" />
                   搜索
                 </button>
-                <button @click="resetVLANFilters" class="btn-reset">
+                <button @click="resetVLANFilters" class="app-button app-button-secondary">
                   <RotateCcw :size="16" />
                   重置
                 </button>
@@ -562,11 +562,11 @@
             </div>
 
             <div class="table-section">
-              <div v-if="tabLoading.vlans" class="loading">
+              <div v-if="tabLoading.vlans" class="loading app-empty">
                 <Loader2 class="animate-spin" :size="40" />
                 <p>加载中...</p>
               </div>
-              <div v-else-if="vlans.length === 0" class="empty">
+              <div v-else-if="vlans.length === 0" class="empty app-empty">
                 <FileX :size="48" />
                 <p>暂无VLAN数据</p>
               </div>
@@ -581,7 +581,7 @@
                 <tbody>
                   <tr v-for="vlan in vlans" :key="vlan.id">
                     <td v-for="col in visibleVLANColumns" :key="col.key">
-                      <span v-if="col.key === 'status'" :class="['status-badge', getStatusClass(vlan[col.key])]">
+                      <span v-if="col.key === 'status'" :class="['app-badge', getStatusClass(vlan[col.key])]">
                         <component :is="getStatusIcon(vlan[col.key])" :size="12" />
                         {{ vlan[col.key] || '-' }}
                       </span>
@@ -602,32 +602,32 @@
                   <input
                     v-model="prefixFilters.prefix"
                     placeholder="前缀地址"
-                    class="filter-input"
+                    class="app-input filter-text"
                     @input="debouncedLoadPrefixes"
                   />
                 </div>
-                <select v-model="prefixFilters.site" class="filter-input" @change="loadPrefixes">
+                <select v-model="prefixFilters.site" class="app-select filter-select" @change="loadPrefixes">
                   <option value="">所有站点</option>
                   <option v-for="site in sites" :key="site.name" :value="site.name">
                     {{ site.name }}
                   </option>
                 </select>
-                <select v-model="prefixFilters.family" class="filter-input" @change="loadPrefixes">
+                <select v-model="prefixFilters.family" class="app-select filter-select" @change="loadPrefixes">
                   <option value="">所有协议</option>
                   <option value="4">IPv4</option>
                   <option value="6">IPv6</option>
                 </select>
-                <select v-model="prefixFilters.status" class="filter-input" @change="loadPrefixes">
+                <select v-model="prefixFilters.status" class="app-select filter-select" @change="loadPrefixes">
                   <option value="">所有状态</option>
                   <option value="active">活跃</option>
                   <option value="reserved">保留</option>
                   <option value="deprecated">已废弃</option>
                 </select>
-                <button @click="loadPrefixes" class="btn-search">
+                <button @click="loadPrefixes" class="app-button app-button-primary">
                   <Search :size="16" />
                   搜索
                 </button>
-                <button @click="resetPrefixFilters" class="btn-reset">
+                <button @click="resetPrefixFilters" class="app-button app-button-secondary">
                   <RotateCcw :size="16" />
                   重置
                 </button>
@@ -635,11 +635,11 @@
             </div>
 
             <div class="table-section">
-              <div v-if="tabLoading.prefixes" class="loading">
+              <div v-if="tabLoading.prefixes" class="loading app-empty">
                 <Loader2 class="animate-spin" :size="40" />
                 <p>加载中...</p>
               </div>
-              <div v-else-if="prefixes.length === 0" class="empty">
+              <div v-else-if="prefixes.length === 0" class="empty app-empty">
                 <RouterOff :size="48" />
                 <p>暂无前缀数据</p>
               </div>
@@ -654,7 +654,7 @@
                 <tbody>
                   <tr v-for="prefix in prefixes" :key="prefix.id">
                     <td v-for="col in visiblePrefixColumns" :key="col.key">
-                      <span v-if="col.key === 'status'" :class="['status-badge', getStatusClass(prefix[col.key])]">
+                      <span v-if="col.key === 'status'" :class="['app-badge', getStatusClass(prefix[col.key])]">
                         <component :is="getStatusIcon(prefix[col.key])" :size="12" />
                         {{ prefix[col.key] || '-' }}
                       </span>
@@ -678,7 +678,7 @@
           <!-- 前缀详情视图 -->
           <div v-if="activeTab === 'prefixes' && showPrefixDetail && selectedPrefix" class="tab-content">
             <div class="rack-detail-header">
-              <button @click="closePrefixDetail" class="btn-back">
+              <button @click="closePrefixDetail" class="app-button app-button-secondary">
                 <ArrowLeft :size="16" />
                 返回
               </button>
@@ -701,7 +701,7 @@
                 </div>
                 <div class="info-item">
                   <span class="info-label">状态:</span>
-                  <span :class="['info-value', 'status-badge', getStatusClass(selectedPrefix.status)]">
+                  <span :class="['info-value', 'app-badge', getStatusClass(selectedPrefix.status)]">
                     <component :is="getStatusIcon(selectedPrefix.status)" :size="12" />
                     {{ selectedPrefix.status || '-' }}
                   </span>
@@ -742,11 +742,11 @@
                 <Globe :size="18" />
                 <h3>前缀内IP地址 ({{ prefixIPs.length }} 个)</h3>
               </div>
-              <div v-if="loading" class="loading">
+              <div v-if="loading" class="loading app-empty">
                 <Loader2 class="animate-spin" :size="40" />
                 <p>加载中...</p>
               </div>
-              <div v-else-if="prefixIPs.length === 0" class="empty">
+              <div v-else-if="prefixIPs.length === 0" class="empty app-empty">
                 <GlobeOff :size="48" />
                 <p>该前缀内暂无IP地址</p>
               </div>
@@ -764,7 +764,7 @@
                   <tr v-for="ip in prefixIPs" :key="ip.id">
                     <td>{{ ip.address || '-' }}</td>
                     <td>
-                      <span :class="['status-badge', getStatusClass(ip.status)]">
+                      <span :class="['app-badge', getStatusClass(ip.status)]">
                         <component :is="getStatusIcon(ip.status)" :size="12" />
                         {{ ip.status || '-' }}
                       </span>
@@ -783,7 +783,7 @@
       <!-- 列设置弹窗 -->
       <div v-if="showColumnSettings" class="modal-overlay" @click="showColumnSettings = false">
         <div class="modal-content column-settings-modal" @click.stop>
-          <div class="modal-header">
+          <div class="modal-header app-modal-header">
             <div class="modal-title">
               <Settings2 :size="20" />
               <h2>列设置 - {{ currentTabName }}</h2>
@@ -792,7 +792,7 @@
               <X :size="18" />
             </button>
           </div>
-          <div class="modal-body">
+          <div class="modal-body app-modal-body">
             <div class="column-list">
               <div
                 v-for="(col, index) in currentColumns"
@@ -814,11 +814,11 @@
               </div>
             </div>
             <div class="column-actions">
-              <button @click="resetColumns" class="btn-reset">
+              <button @click="resetColumns" class="app-button app-button-secondary">
                 <RotateCcw :size="14" />
                 重置默认
               </button>
-              <button @click="saveColumns" class="btn-save">
+              <button @click="saveColumns" class="app-button app-button-primary">
                 <Check :size="14" />
                 保存
               </button>
@@ -830,7 +830,7 @@
       <!-- 详情弹窗 -->
       <div v-if="selectedItem" class="modal-overlay" @click="closeModal">
         <div class="modal-content" @click.stop>
-          <div class="modal-header">
+          <div class="modal-header app-modal-header">
             <div class="modal-title">
               <Info :size="20" />
               <h2>{{ modalTitle }}</h2>
@@ -839,7 +839,7 @@
               <X :size="18" />
             </button>
           </div>
-          <div class="modal-body">
+          <div class="modal-body app-modal-body">
             <div v-for="(value, key) in selectedItem" :key="key" class="detail-row">
               <span class="detail-label">{{ formatLabel(key) }}:</span>
               <span class="detail-value">{{ value || '-' }}</span>
@@ -851,7 +851,7 @@
       <!-- 凭据输入对话框 -->
       <div v-if="showCredentialsDialog" class="modal-overlay" @click="showCredentialsDialog = false">
         <div class="modal-content credentials-modal" @click.stop>
-          <div class="modal-header">
+          <div class="modal-header app-modal-header">
             <div class="modal-title">
               <Lock :size="20" />
               <h2>设备登录凭据</h2>
@@ -860,7 +860,7 @@
               <X :size="18" />
             </button>
           </div>
-          <div class="modal-body">
+          <div class="modal-body app-modal-body">
             <div class="form-group">
               <label class="form-label">
                 <Key :size="16" />
@@ -869,7 +869,7 @@
               <input
                 v-model="credentialsForm.username"
                 type="text"
-                class="form-input"
+                class="app-input"
                 placeholder="请输入用户名"
               />
             </div>
@@ -881,7 +881,7 @@
               <input
                 v-model="credentialsForm.password"
                 type="password"
-                class="form-input"
+                class="app-input"
                 placeholder="请输入密码"
               />
             </div>
@@ -890,7 +890,7 @@
               <input
                 v-model="credentialsForm.port"
                 type="number"
-                class="form-input"
+                class="app-input"
                 placeholder="默认22"
               />
             </div>
@@ -899,15 +899,15 @@
               <input
                 v-model="credentialsForm.enable_password"
                 type="password"
-                class="form-input"
+                class="app-input"
                 placeholder="如需要请输入"
               />
             </div>
             <div class="form-actions">
-              <button @click="showCredentialsDialog = false" class="btn-cancel">
+              <button @click="showCredentialsDialog = false" class="app-button app-button-secondary">
                 取消
               </button>
-              <button @click="handleFetchAndSaveConfig" class="btn-confirm" :disabled="fetchingConfig">
+              <button @click="handleFetchAndSaveConfig" class="app-button app-button-primary" :disabled="fetchingConfig">
                 <Loader2 v-if="fetchingConfig" class="animate-spin" :size="14" />
                 {{ fetchingConfig ? '获取中...' : '获取并写入' }}
               </button>
@@ -1761,100 +1761,21 @@ onMounted(() => {
 
 <style scoped>
 .page {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8eef5 100%);
+  height: auto;
+  min-height: 100%;
 }
 
 .page-content {
   flex: 1;
-  padding: 24px;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
+  max-width: none;
+  padding: 0;
+  overflow: visible;
 }
 
 .page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.page-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.title-icon {
-  color: currentColor;
-}
-
-.btn-column-settings {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.78) 0%, rgba(30, 41, 59, 0.88) 100%);
-  color: white;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  border-radius: 14px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.3s;
-  box-shadow: 0 14px 24px rgba(15, 23, 42, 0.14);
-}
-
-.btn-column-settings:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 18px 34px rgba(15, 23, 42, 0.18);
-}
-
-.vendor-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border-radius: 999px;
-  padding: 2px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
-  color: #334155;
-}
-
-.vendor-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  display: inline-block;
-  background: currentColor;
-}
-
-.vendor-huawei {
-  color: #b91c1c;
-  border-color: #fecaca;
-  background: #fef2f2;
-}
-
-.vendor-cisco {
-  color: #1d4ed8;
-  border-color: #bfdbfe;
-  background: #eff6ff;
-}
-
-.vendor-h3c {
-  color: #0f766e;
-  border-color: #99f6e4;
-  background: #f0fdfa;
-}
-
-.vendor-juniper {
-  color: #065f46;
-  border-color: #a7f3d0;
-  background: #ecfdf5;
+  margin-bottom: 16px;
 }
 
 .content-layout {
@@ -1864,18 +1785,17 @@ onMounted(() => {
   overflow: hidden;
 }
 
+/* Sidebar navigation */
 .sidebar {
   width: 260px;
-  background:
-    radial-gradient(circle at top left, rgba(56, 189, 248, 0.14), transparent 34%),
-    linear-gradient(180deg, #071120 0%, #0f172a 45%, #111c32 100%);
-  border-radius: 22px;
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
-  padding: 12px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  color: #f8fafc;
+  padding: 12px;
+  color: var(--app-text-inverse);
+  background: var(--app-surface-dark);
+  border-radius: var(--app-radius-md);
 }
 
 .nav-item {
@@ -1883,29 +1803,27 @@ onMounted(() => {
   align-items: center;
   gap: 14px;
   padding: 16px;
-  border-radius: 12px;
+  border-radius: var(--app-radius-sm);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background var(--app-transition-fast);
 }
 
 .nav-item:hover {
   background: rgba(255, 255, 255, 0.06);
-  transform: translateX(4px);
 }
 
 .nav-item.active {
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(13, 148, 136, 0.16));
-  color: white;
-  box-shadow: 0 16px 28px rgba(15, 90, 224, 0.12);
+  background: var(--app-primary);
 }
 
 .nav-icon {
-  color: #7dd3fc;
   flex-shrink: 0;
+  color: var(--app-text-muted);
+  transition: color var(--app-transition-fast);
 }
 
 .nav-item.active .nav-icon {
-  color: white;
+  color: var(--app-text-inverse);
 }
 
 .nav-text {
@@ -1913,25 +1831,25 @@ onMounted(() => {
 }
 
 .nav-title {
-  font-weight: 600;
-  font-size: 15px;
   margin-bottom: 4px;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .nav-count {
   font-size: 13px;
-  opacity: 0.8;
+  opacity: 0.75;
 }
 
+/* Main panel */
 .main-area {
   flex: 1;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.92));
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 22px;
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-md);
 }
 
 .tab-content {
@@ -1941,132 +1859,57 @@ onMounted(() => {
   overflow: hidden;
 }
 
+/* Filters */
 .filter-section {
   padding: 20px 24px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
-  background: linear-gradient(180deg, rgba(250, 251, 252, 0.92), rgba(242, 247, 252, 0.9));
+  border-bottom: 1px solid var(--app-border);
 }
 
 .filter-group {
   display: flex;
-  gap: 12px;
   flex-wrap: wrap;
   align-items: center;
+  gap: 12px;
 }
 
 .filter-input-wrapper {
   position: relative;
-  min-width: 180px;
+  min-width: 200px;
 }
 
 .filter-icon {
   position: absolute;
   left: 12px;
   top: 50%;
-  transform: translateY(-50%);
-  color: #999;
+  margin-top: -8px;
+  color: var(--app-text-muted);
   pointer-events: none;
 }
 
-.filter-input {
-  width: 100%;
-  padding: 10px 12px 10px 40px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 14px;
-  font-size: 14px;
-  transition: all 0.3s;
-  background: rgba(255, 255, 255, 0.84);
+.filter-text {
+  padding-left: 36px;
 }
 
-.filter-input:focus {
-  outline: none;
-  border-color: rgba(15, 90, 224, 0.32);
-  box-shadow: 0 0 0 4px rgba(15, 90, 224, 0.08);
+.filter-select {
+  width: auto;
+  min-width: 150px;
 }
 
-.filter-input select {
-  padding: 10px 12px;
-  border: 2px solid #e8eef5;
-  border-radius: 10px;
-  font-size: 14px;
-  background: white;
-  cursor: pointer;
-  transition: all 0.3s;
-}
-
-.filter-input select:focus {
-  outline: none;
-  border-color: #4a9eff;
-  box-shadow: 0 0 0 4px rgba(74, 158, 255, 0.1);
-}
-
-.btn-search,
-.btn-reset,
-.btn-save {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.3s;
-}
-
-.btn-search {
-  background: linear-gradient(135deg, #0f5ae0 0%, #0f766e 100%);
-  color: white;
-  box-shadow: 0 14px 24px rgba(15, 90, 224, 0.16);
-}
-
-.btn-search:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
-}
-
-.btn-reset {
-  background: rgba(255, 255, 255, 0.82);
-  color: #0f172a;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-}
-
-.btn-reset:hover {
-  background: #e8eef5;
-}
-
-.btn-save {
-  background: linear-gradient(135deg, #0f5ae0 0%, #0f766e 100%);
-  color: white;
-  box-shadow: 0 14px 24px rgba(15, 90, 224, 0.16);
-}
-
-.btn-save:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
-}
-
+/* Table */
 .table-section {
   flex: 1;
   overflow-y: auto;
-  padding: 0;
 }
 
 .loading,
 .empty {
   padding: 80px 20px;
-  text-align: center;
-  color: #999;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
+  color: var(--app-text-muted);
 }
 
-.loading p,
-.empty p {
-  margin: 0;
-  font-size: 14px;
+.empty-config {
+  padding: 60px 20px;
+  color: var(--app-text-muted);
 }
 
 .data-table {
@@ -2075,295 +1918,118 @@ onMounted(() => {
 }
 
 .data-table thead {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
   position: sticky;
   top: 0;
   z-index: 1;
+  background: var(--app-surface-subtle);
 }
 
 .data-table th {
   padding: 16px;
   text-align: left;
+  font-size: 12px;
   font-weight: 600;
-  color: #333;
-  border-bottom: 2px solid #e8eef5;
-  font-size: 14px;
+  color: var(--app-text-soft);
+  border-bottom: 1px solid var(--app-border);
 }
 
 .data-table td {
   padding: 14px 16px;
-  border-bottom: 1px solid #e8eef5;
   font-size: 14px;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .data-table tbody tr {
-  transition: all 0.3s;
+  transition: background var(--app-transition-fast);
 }
 
 .data-table tbody tr:hover {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  transform: scale(1.005);
+  background: var(--app-surface-subtle);
 }
 
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 600;
+.btn-table {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 12px;
 }
 
-.status-active {
-  background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
-  color: #155724;
+/* Badge semantics layered on .app-badge */
+.app-badge.status-active {
+  color: var(--app-success);
+  background: var(--app-success-soft);
+  border-color: var(--app-success);
 }
 
-.status-offline {
-  background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
-  color: #721c24;
+.app-badge.status-offline {
+  color: var(--app-danger);
+  background: var(--app-danger-soft);
+  border-color: var(--app-danger);
 }
 
-.status-maintenance {
-  background: linear-gradient(135deg, #fff3cd 0%, #ffe69c 100%);
-  color: #856404;
+.app-badge.status-maintenance {
+  color: var(--app-warning);
+  background: var(--app-warning-soft);
+  border-color: var(--app-warning);
 }
 
-.status-unknown {
-  background: linear-gradient(135deg, #e2e3e5 0%, #d3d4d6 100%);
-  color: #383d41;
+.vendor-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
-.btn-detail {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  background: linear-gradient(135deg, #0f5ae0 0%, #2563eb 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.3s;
+.app-badge.vendor-huawei {
+  color: var(--app-danger);
 }
 
-.btn-detail:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
+.app-badge.vendor-cisco {
+  color: var(--app-primary);
 }
 
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(4px);
+.app-badge.vendor-h3c,
+.app-badge.vendor-juniper {
+  color: var(--app-success);
 }
 
-.modal-content {
-  background: white;
-  border-radius: 16px;
-  width: 90%;
-  max-width: 550px;
-  max-height: 85vh;
-  overflow-y: auto;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
-  animation: modalIn 0.3s ease-out;
+.app-badge.tag-master {
+  color: var(--app-warning);
+  background: var(--app-warning-soft);
+  border-color: var(--app-warning);
 }
 
-@keyframes modalIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95) translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-.column-settings-modal {
-  max-width: 420px;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px;
-  border-bottom: 1px solid #e8eef5;
-}
-
-.modal-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.modal-title h2 {
-  margin: 0;
-  color: #333;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.btn-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f5f5f5;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  color: #666;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  transition: all 0.3s;
-}
-
-.btn-close:hover {
-  background: #e8eef5;
-  color: #333;
-}
-
-.modal-body {
-  padding: 24px;
-}
-
-.column-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 24px;
-}
-
-.column-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  border-radius: 12px;
-  cursor: move;
-  transition: all 0.3s;
-}
-
-.column-item:hover {
-  background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
-  transform: translateX(4px);
-}
-
-.drag-handle {
-  color: #999;
-  cursor: move;
-  flex-shrink: 0;
-}
-
-.column-checkbox {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-  accent-color: #4a9eff;
-}
-
-.column-label {
-  flex: 1;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.column-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-}
-
-.detail-row {
-  display: flex;
-  padding: 14px 0;
-  border-bottom: 1px solid #e8eef5;
-}
-
-.detail-row:last-child {
-  border-bottom: none;
-}
-
-.detail-label {
-  min-width: 140px;
-  font-weight: 600;
-  color: #666;
-  font-size: 14px;
-}
-
-.detail-value {
-  flex: 1;
-  color: #333;
-  word-break: break-word;
-  font-size: 14px;
+.app-badge.tag-default {
+  color: var(--app-primary);
+  background: var(--app-primary-soft);
+  border-color: var(--app-primary);
 }
 
 .link-text {
-  color: #4a9eff;
+  color: var(--app-primary);
+  font-weight: 500;
   cursor: pointer;
   text-decoration: none;
-  font-weight: 500;
-  transition: all 0.3s;
+  transition: color var(--app-transition-fast);
 }
 
 .link-text:hover {
+  color: var(--app-primary-strong);
   text-decoration: underline;
-  color: #2196f3;
 }
 
+/* Detail views */
 .rack-detail-header {
   display: flex;
   align-items: center;
   gap: 16px;
   padding: 20px 24px;
-  border-bottom: 1px solid #e8eef5;
-}
-
-.btn-back {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.78) 0%, rgba(30, 41, 59, 0.88) 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.3s;
-  box-shadow: 0 2px 8px rgba(108, 117, 125, 0.3);
-}
-
-.btn-back:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(108, 117, 125, 0.4);
-}
-
-.rack-detail-header h2 {
-  margin: 0;
-  color: #333;
-  font-size: 18px;
-  font-weight: 600;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .rack-info-section {
   padding: 24px;
-  border-bottom: 1px solid #e8eef5;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .section-header {
@@ -2371,13 +2037,12 @@ onMounted(() => {
   align-items: center;
   gap: 10px;
   margin-bottom: 18px;
+  color: var(--app-text-soft);
 }
 
 .section-header h3 {
-  margin: 0;
-  color: #333;
-  font-size: 16px;
-  font-weight: 600;
+  flex: 1;
+  color: var(--app-text);
 }
 
 .info-grid {
@@ -2397,88 +2062,28 @@ onMounted(() => {
 }
 
 .info-label {
-  font-size: 13px;
-  color: #666;
+  font-size: 12px;
   font-weight: 600;
+  color: var(--app-text-muted);
 }
 
 .info-value {
-  font-size: 15px;
-  color: #333;
+  font-size: 14px;
   font-weight: 500;
+  color: var(--app-text);
 }
 
-.rack-devices-section {
-  flex: 1;
-  padding: 24px;
-  overflow-y: auto;
-}
-
-.rack-devices-section h3 {
-  margin: 0 0 18px 0;
-  color: #333;
-  font-size: 16px;
-  font-weight: 600;
-}
-
+.rack-devices-section,
 .device-config-section {
   flex: 1;
   padding: 24px;
   overflow-y: auto;
 }
 
-.device-config-section .section-header {
+.config-actions {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 18px;
-}
-
-.device-config-section .section-header h3 {
-  margin: 0;
-  color: #333;
-  font-size: 16px;
-  font-weight: 600;
-  flex: 1;
-}
-
-.btn-load-config {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-  background: linear-gradient(135deg, #0f5ae0 0%, #2563eb 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.3s;
-  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.3);
-}
-
-.btn-load-config:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
-}
-
-.empty-config {
-  padding: 60px 20px;
-  text-align: center;
-  color: #999;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-}
-
-.empty-config p {
-  margin: 0;
-  font-size: 14px;
-}
-
-.config-content {
-  padding: 0;
 }
 
 .config-section {
@@ -2490,114 +2095,191 @@ onMounted(() => {
 }
 
 .config-section h4 {
-  margin: 0 0 12px 0;
-  color: #333;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.config-json {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  padding: 16px;
-  border-radius: 10px;
-  font-size: 13px;
-  color: #333;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  font-family: 'Courier New', monospace;
-  line-height: 1.6;
+  margin-bottom: 12px;
 }
 
 .config-text {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  max-height: 600px;
   padding: 16px;
-  border-radius: 10px;
+  overflow: auto;
+  color: var(--app-text);
+  background: var(--app-surface-subtle);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
-  color: #333;
-  overflow-x: auto;
+  line-height: 1.5;
   white-space: pre-wrap;
   word-wrap: break-word;
-  font-family: 'Courier New', monospace;
-  line-height: 1.5;
-  max-height: 600px;
-  overflow-y: auto;
 }
 
-.tags-container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
+.tags-container,
 .tags-list {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
 }
 
-.tag-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
-  transition: all 0.3s;
-}
-
-.tag-master {
-  background: linear-gradient(135deg, #ffd700 0%, #ffb700 100%);
-  color: #333;
-  box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
-}
-
-.tag-member {
-  background: linear-gradient(135deg, #e0e0e0 0%, #bdbdbd 100%);
-  color: #333;
-  box-shadow: 0 2px 8px rgba(189, 189, 189, 0.3);
-}
-
-.tag-default {
-  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-  color: #1976d2;
-  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.2);
-}
-
-.tag-badge:hover {
-  transform: translateY(-2px);
-}
-
-.config-actions {
+/* Utilization meter */
+.utilization-cell {
   display: flex;
+  align-items: center;
   gap: 10px;
-  align-items: center;
 }
 
-.btn-fetch-config {
+.utilization-bar {
+  flex: 1;
+  min-width: 60px;
+  height: 8px;
+  overflow: hidden;
+  background: var(--app-bg-deep);
+  border-radius: var(--app-radius-sm);
+}
+
+.utilization-fill {
+  height: 100%;
+  background: var(--app-primary);
+  transition: width var(--app-transition-normal);
+}
+
+.utilization-text {
+  min-width: 50px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--app-text-soft);
+}
+
+/* Modals */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-  background: linear-gradient(135deg, #16a34a 0%, #0f766e 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.3s;
-  box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+  justify-content: center;
+  background: rgba(23, 32, 51, 0.45);
 }
 
-.btn-fetch-config:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+.modal-content {
+  width: 90%;
+  max-width: 550px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-lg);
+  box-shadow: var(--app-shadow-lg);
+}
+
+.column-settings-modal {
+  max-width: 420px;
 }
 
 .credentials-modal {
   max-width: 450px;
+}
+
+.modal-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--app-text);
+}
+
+.btn-close {
+  display: flex;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-text-muted);
+  background: transparent;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+  cursor: pointer;
+  transition: color var(--app-transition-fast), background var(--app-transition-fast),
+    border-color var(--app-transition-fast);
+}
+
+.btn-close:hover {
+  color: var(--app-text);
+  background: var(--app-surface-subtle);
+  border-color: var(--app-border-strong);
+}
+
+.column-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.column-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: var(--app-surface-subtle);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+  cursor: move;
+  transition: background var(--app-transition-fast), border-color var(--app-transition-fast);
+}
+
+.column-item:hover {
+  border-color: var(--app-border-strong);
+}
+
+.drag-handle {
+  flex-shrink: 0;
+  color: var(--app-text-muted);
+  cursor: move;
+}
+
+.column-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--app-primary);
+}
+
+.column-label {
+  flex: 1;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.column-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.detail-row {
+  display: flex;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-label {
+  min-width: 140px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--app-text-soft);
+}
+
+.detail-value {
+  flex: 1;
+  font-size: 14px;
+  color: var(--app-text);
+  word-break: break-word;
 }
 
 .form-group {
@@ -2608,106 +2290,19 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 8px;
   font-size: 14px;
   font-weight: 600;
-  color: #333;
-  margin-bottom: 8px;
-}
-
-.form-input {
-  width: 100%;
-  padding: 12px 14px;
-  border: 2px solid #e8eef5;
-  border-radius: 10px;
-  font-size: 14px;
-  transition: all 0.3s;
-  background: white;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: #4a9eff;
-  box-shadow: 0 0 0 4px rgba(74, 158, 255, 0.1);
+  color: var(--app-text);
 }
 
 .form-actions {
   display: flex;
-  gap: 12px;
   justify-content: flex-end;
+  gap: 12px;
   margin-top: 24px;
   padding-top: 20px;
-  border-top: 1px solid #e8eef5;
-}
-
-.btn-cancel {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  background: rgba(255, 255, 255, 0.82);
-  color: #0f172a;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.3s;
-}
-
-.btn-cancel:hover {
-  background: #e8eef5;
-}
-
-.btn-confirm {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #0f5ae0 0%, #0f766e 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.3s;
-  box-shadow: 0 14px 24px rgba(15, 90, 224, 0.16);
-}
-
-.btn-confirm:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
-}
-
-.btn-confirm:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.utilization-cell {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.utilization-bar {
-  flex: 1;
-  height: 10px;
-  background: #e8eef5;
-  border-radius: 6px;
-  overflow: hidden;
-  min-width: 60px;
-}
-
-.utilization-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #4caf50 0%, #ff9800 60%, #f44336 100%);
-  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.utilization-text {
-  font-size: 13px;
-  color: #333;
-  font-weight: 600;
-  min-width: 50px;
+  border-top: 1px solid var(--app-border);
 }
 
 .animate-spin {
@@ -2715,34 +2310,8 @@ onMounted(() => {
 }
 
 @keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
   to {
     transform: rotate(360deg);
   }
 }
-</style>
-
-<style scoped>
-/* Preserve topology semantics while aligning surrounding controls with the console system. */
-.page { height: auto; min-height: 100%; background: transparent; }
-.page-content { max-width: none; padding: 0; overflow: visible; }
-.page-header { margin-bottom: 16px; }
-.btn-column-settings, .btn-search, .btn-save, .btn-detail, .btn-load-config, .btn-confirm { background: var(--app-primary); box-shadow: none; border-radius: var(--app-radius-sm); }
-.btn-column-settings:hover, .btn-search:hover, .btn-save:hover, .btn-detail:hover, .btn-load-config:hover, .btn-confirm:hover:not(:disabled) { transform: none; box-shadow: none; background: var(--app-primary-strong); }
-.btn-reset, .btn-back, .btn-cancel { background: #fff; border-color: var(--app-border-strong); border-radius: var(--app-radius-sm); }
-.sidebar { background: #111827; border-radius: var(--app-radius-md); box-shadow: none; }
-.tab-button.active { background: #233251; box-shadow: none; }
-.filter-section, .table-section, .device-config-section { background: var(--app-surface); border-color: var(--app-border); border-radius: var(--app-radius-md); box-shadow: none; }
-.filter-input, .filter-input select, .form-input { border-color: var(--app-border-strong); border-radius: var(--app-radius-sm); }
-.filter-input:focus, .filter-input select:focus, .form-input:focus { border-color: var(--app-primary); box-shadow: var(--app-focus); }
-.status-badge, .tag-badge { border-radius: 5px; box-shadow: none; }
-.tag-master { background: #fff7d6; }
-.tag-member { background: #eef0f3; }
-.tag-default { background: var(--app-primary-soft); }
-.tag-badge:hover { transform: none; }
-.modal-content { background: #fff; border: 1px solid var(--app-border); border-radius: var(--app-radius-lg); box-shadow: var(--app-shadow-lg); }
-.btn-fetch-config { background: var(--app-success); border-radius: var(--app-radius-sm); box-shadow: none; }
-.btn-fetch-config:hover { transform: none; box-shadow: none; filter: brightness(.94); }
 </style>

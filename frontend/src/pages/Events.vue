@@ -788,13 +788,13 @@ watch(
 
 <style scoped>
 .page {
-  min-height: calc(100vh - 64px);
-  background: #f5f7fa;
-  padding: 24px;
+  min-height: 100%;
+  background: transparent;
+  padding: 0;
 }
 
 .page-content {
-  max-width: 1400px;
+  max-width: none;
   margin: 0 auto;
 }
 
@@ -809,7 +809,7 @@ watch(
 
 .mode-badge {
   padding: 6px 12px;
-  border-radius: 999px;
+  border-radius: 5px;
   font-size: 12px;
   font-weight: 600;
   background: rgba(59, 130, 246, 0.12);
@@ -949,8 +949,9 @@ watch(
 }
 
 .cluster-card.active {
-  border-color: rgba(15, 90, 224, 0.35);
-  box-shadow: 0 18px 42px rgba(15, 90, 224, 0.14);
+  background: var(--app-primary-soft);
+  border-color: #9fb5ed;
+  box-shadow: none;
 }
 
 .cluster-head,
@@ -1029,7 +1030,7 @@ watch(
 .alert-severity,
 .alert-status {
   font-size: 12px;
-  border-radius: 999px;
+  border-radius: 5px;
   padding: 4px 10px;
   background: rgba(148, 163, 184, 0.16);
   display: flex;
@@ -1151,7 +1152,7 @@ watch(
 }
 
 .check-badge {
-  border-radius: 999px;
+  border-radius: 5px;
   padding: 2px 8px;
   font-size: 11px;
   font-weight: 700;
@@ -1201,7 +1202,7 @@ watch(
 }
 
 .task-status-badge {
-  border-radius: 999px;
+  border-radius: 5px;
   padding: 2px 8px;
   font-size: 11px;
   font-weight: 600;
@@ -1297,9 +1298,3 @@ watch(
 }
 </style>
 
-<style scoped>
-.page { min-height: 100%; padding: 0; background: transparent; }
-.page-content { max-width: none; }
-.mode-badge, .alert-severity, .alert-status, .check-badge, .task-status-badge { border-radius: 5px; }
-.cluster-card.active { background: var(--app-primary-soft); border-color: #9fb5ed; box-shadow: none; }
-</style>

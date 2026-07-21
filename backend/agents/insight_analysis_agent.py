@@ -30,18 +30,17 @@ class InsightAnalysisAgent(BaseOpsAgent):
             "且每项必须含 probe_id,target.netbox_device_id,parameters,reason,expected_evidence_type；禁止输出 shell 或原始命令。"
             "优先输出对主候选有反证或可证伪的候选。"
         )
-        try:
-            result = await self.llm_client.chat_completion_with_json(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-                ],
-                temperature=0.1,
-                timeout=45.0,
-            )
-            return result if isinstance(result, dict) else {}
-        except Exception:
-            return {}
+        result = await self.llm_client.chat_completion_with_json(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+            ],
+            temperature=0.1,
+            timeout=45.0,
+        )
+        if not isinstance(result, dict):
+            raise ValueError(f"LLM returned non-dict payload: {type(result).__name__}")
+        return result
 
     async def run(self, context: AgentExecutionContext) -> AgentDecision:
         # 每次执行时刷新一次激活模型，避免 settings 页面切换后 agent 仍持有旧客户端。

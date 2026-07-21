@@ -1,7 +1,3 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 :root {
   color-scheme: light;
   --app-bg: #f4f6f8;
@@ -58,7 +54,7 @@ html {
 body {
   color: var(--app-text);
   background: var(--app-bg);
-  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   font-size: 14px;
   line-height: 1.5;

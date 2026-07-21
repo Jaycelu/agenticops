@@ -412,9 +412,9 @@ watch(
 }
 
 .case-card.active {
-  border-color: rgba(15, 90, 224, 0.32);
-  box-shadow: 0 18px 34px rgba(15, 90, 224, 0.14);
-  background: linear-gradient(180deg, rgba(240, 247, 255, 0.96), rgba(255, 255, 255, 0.92));
+  background: var(--app-primary-soft);
+  border-color: #9fb5ed;
+  box-shadow: none;
 }
 
 .case-head,
@@ -553,6 +553,3 @@ watch(
 }
 </style>
 
-<style scoped>
-.case-card.active { background: var(--app-primary-soft); border-color: #9fb5ed; box-shadow: none; }
-</style>

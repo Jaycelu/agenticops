@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from loguru import logger
 
@@ -27,6 +28,7 @@ from services.agent_task_service import agent_task_service
 from services.agent_tool_service import AgentToolRejected, agent_tool_service
 from services.case_state_service import case_state_service
 from services.case_timeline_service import case_timeline_service
+from services.memory_ingestion_service import memory_ingestion_service
 from observability.metrics import metrics_registry
 
 
@@ -208,6 +210,7 @@ class CaseGraphEngine:
             graph_run.stop_reason = decision.stop_reason
             graph_run.status = "completed" if decision.decision == "observe_only_stop" else "failed"
             graph_run.finished_at = datetime.now(timezone.utc)
+            self._remember_graph_outcome(db, graph_run, task, decision.decision)
 
     async def _collect_evidence(self, db: Session, graph_run: AgentGraphRun, task: AgentTask, correlation_id: str) -> None:
         requests = list((task.input_payload or {}).get("requests") or [])
@@ -331,6 +334,50 @@ class CaseGraphEngine:
             plan = db.query(RemediationPlan).filter(RemediationPlan.case_id == case.id).order_by(RemediationPlan.id.desc()).first()
             case_orchestrator._apply_safety_critic_decision(plan, run.output_payload or {}, decision)
 
+    def _memory_hits(self, db: Session, case: CaseRecord) -> list[dict]:
+        filters = [MemoryEntry.case_id == case.id, MemoryEntry.case_id.is_(None)]
+        if case.site_id is not None:
+            filters.append(CaseRecord.site_id == case.site_id)
+        query = db.query(MemoryEntry).outerjoin(CaseRecord, MemoryEntry.case_id == CaseRecord.id).filter(or_(*filters))
+        return [
+            {"id": item.id, "title": item.title, "confidence": item.confidence, "content": item.content or {}}
+            for item in query.order_by(MemoryEntry.created_at.desc()).limit(5).all()
+        ]
+
+    def _remember_graph_outcome(self, db: Session, graph_run: AgentGraphRun, task: AgentTask, decision: str) -> None:
+        case = db.query(CaseRecord).filter(CaseRecord.id == graph_run.case_id).one()
+        latest_runs = db.query(AgentRun).filter(
+            AgentRun.case_id == case.id,
+            AgentRun.graph_run_id == graph_run.id,
+        ).order_by(AgentRun.id.desc()).all()
+        safety = next((item for item in latest_runs if (item.agent_type.value if hasattr(item.agent_type, "value") else str(item.agent_type)) == "safety_critic"), None)
+        insight = next((item for item in latest_runs if (item.agent_type.value if hasattr(item.agent_type, "value") else str(item.agent_type)) == "insight_analysis"), None)
+        content = {
+            "graph_run_id": graph_run.id,
+            "status": graph_run.status,
+            "stop_reason": graph_run.stop_reason,
+            "supervisor_decision": decision,
+            "root_cause": (insight.output_payload or {}).get("root_cause") if insight else None,
+            "safety_decision": (safety.output_payload or {}).get("decision") if safety else None,
+        }
+        tags = ["agent_graph", graph_run.status]
+        if case.site_id is not None:
+            tags.append(f"site:{case.site_id}")
+        if case.netbox_device_id is not None:
+            tags.append(f"device:{case.netbox_device_id}")
+        memory_ingestion_service.remember_outcome(
+            db,
+            case_id=case.id,
+            memory_key=f"graph-outcome:{graph_run.id}",
+            title=f"{case.case_code} diagnostic graph outcome",
+            summary=f"Graph {graph_run.status}: {graph_run.stop_reason or decision}",
+            source="agent_graph",
+            content=content,
+            tags=tags,
+            confidence=1.0 if graph_run.status == "completed" else 0.2,
+            success_score=1.0 if (safety and (safety.output_payload or {}).get("decision") == "approved") else 0.0,
+        )
+
     def _context(self, db: Session, graph_run: AgentGraphRun, case: CaseRecord, insight_round: int) -> AgentExecutionContext:
         evidence = db.query(EvidenceItem).filter(EvidenceItem.case_id == case.id).order_by(EvidenceItem.id.asc()).all()
         claims = db.query(AgentClaim, AgentRun).join(AgentRun, AgentRun.id == AgentClaim.agent_run_id).filter(
@@ -355,8 +402,7 @@ class CaseGraphEngine:
                 "id": claim.id, "claim_type": claim.claim_type, "confidence": claim.confidence,
                 "gaps": claim.gaps or [], "metadata": claim.claim_metadata or {}, "output_payload": run.output_payload or {},
             } for claim, run in claims],
-            memory_hits=[{"id": item.id, "title": item.title, "confidence": item.confidence, "content": item.content or {}}
-                         for item in db.query(MemoryEntry).order_by(MemoryEntry.created_at.desc()).limit(5).all()],
+            memory_hits=self._memory_hits(db, case),
             runtime=runtime, insight_round=insight_round,
         )
 

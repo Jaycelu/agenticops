@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import socket
 from datetime import datetime, timedelta, timezone
 
@@ -16,6 +17,29 @@ from orchestration.graph_engine import case_graph_engine
 class AgentGraphWorker:
     def __init__(self) -> None:
         self.owner = f"{socket.gethostname()}:graph"
+
+    async def _renew_lease(self, run_id: str) -> None:
+        interval = max(5.0, settings.agent_graph_lease_seconds / 3)
+        while True:
+            await asyncio.sleep(interval)
+            renew_db = SessionLocal()
+            try:
+                now = datetime.now(timezone.utc)
+                renewed = renew_db.query(AgentGraphRun).filter(
+                    AgentGraphRun.id == run_id,
+                    AgentGraphRun.lease_owner == self.owner,
+                ).update(
+                    {"lease_expires_at": now + timedelta(seconds=settings.agent_graph_lease_seconds)},
+                    synchronize_session=False,
+                )
+                renew_db.commit()
+                if renewed:
+                    metrics_registry.increment("case_graph_lease_renew_total")
+            except Exception:
+                renew_db.rollback()
+                logger.bind(graph_run_id=run_id).warning("agent_graph_lease_renew_failed")
+            finally:
+                renew_db.close()
 
     async def run_once(self) -> bool:
         db = SessionLocal()
@@ -61,7 +85,12 @@ class AgentGraphWorker:
             db.commit()
             run = db.query(AgentGraphRun).filter(AgentGraphRun.id == run_id).one()
             task = db.query(AgentTask).filter(AgentTask.id == task.id).one()
-            await case_graph_engine.execute_task(db, run, task)
+            renew_task = asyncio.create_task(self._renew_lease(run_id))
+            try:
+                await case_graph_engine.execute_task(db, run, task)
+            finally:
+                renew_task.cancel()
+                await asyncio.gather(renew_task, return_exceptions=True)
             run = db.query(AgentGraphRun).filter(AgentGraphRun.id == run_id).one()
             run.lease_owner = None
             run.lease_expires_at = None

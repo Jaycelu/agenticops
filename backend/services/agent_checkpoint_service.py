@@ -36,8 +36,5 @@ class AgentCheckpointService:
         db.flush()
         return checkpoint
 
-    def latest(self, db: Session, graph_run_id: str) -> AgentCheckpoint | None:
-        return db.query(AgentCheckpoint).filter(AgentCheckpoint.graph_run_id == graph_run_id).order_by(AgentCheckpoint.id.desc()).first()
-
 
 agent_checkpoint_service = AgentCheckpointService()

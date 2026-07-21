@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Optional
 
 import asyncio
@@ -6,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status as http_sta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from audit.service import security_audit_service
 from database import get_db
 from api.schemas.cases import (
     CaseCreateRequest,
@@ -25,6 +27,7 @@ from auth.rbac import Permission
 from auth.schemas import Principal
 from models.agent_graph import AgentBudget, AgentCheckpoint, AgentGraphRun, AgentMessage, AgentTask, AgentToolCall, CaseHypothesis, CaseTimelineEvent
 from orchestration.graph_service import graph_service
+from services.case_timeline_service import case_timeline_service
 
 router = APIRouter(prefix="/api/cases", tags=["Case 中心"])
 
@@ -293,6 +296,79 @@ def _graph_view(run: AgentGraphRun) -> dict:
         "forced_from_run_id": run.forced_from_run_id, "started_at": run.started_at,
         "finished_at": run.finished_at, "created_at": run.created_at, "updated_at": run.updated_at,
     }
+
+
+@router.post(
+    "/{case_id}/graph/resume",
+    response_model=CasePipelineResponse,
+    status_code=http_status.HTTP_202_ACCEPTED,
+)
+async def resume_case_graph(
+    case_id: int,
+    credential_id: int = Query(..., ge=1, description="Credential ID for probe execution"),
+    principal: Principal = Depends(require_permissions(Permission.PROBES_RUN.value)),
+    db: Session = Depends(get_db),
+):
+    """Resume a graph run stuck in waiting_human by supplying the missing credential.
+
+    Resets the run to queued and all waiting tasks to ready,
+    so the next worker poll picks them up. Rejects 409 if no
+    waiting_human run or task exists.
+    """
+    run = db.query(AgentGraphRun).filter(
+        AgentGraphRun.case_id == case_id,
+        AgentGraphRun.status == "waiting_human",
+    ).order_by(AgentGraphRun.created_at.desc()).with_for_update().first()
+    if run is None:
+        case_exists = db.query(CaseRecord.id).filter(CaseRecord.id == case_id).first()
+        if case_exists is None:
+            raise HTTPException(status_code=404, detail="Case not found")
+        raise HTTPException(status_code=409, detail="No waiting_human graph run to resume")
+
+    tasks = db.query(AgentTask).filter(
+        AgentTask.graph_run_id == run.id,
+        AgentTask.status == "waiting_human",
+    ).order_by(AgentTask.id.asc()).all()
+    if not tasks:
+        raise HTTPException(status_code=409, detail="No waiting_human task to resume")
+
+    payload = dict(run.input_payload or {})
+    payload["credential_id"] = credential_id
+    run.input_payload = payload
+    run.status = "queued"
+    run.next_run_at = datetime.now(timezone.utc)
+    run.lease_owner = None
+    run.lease_expires_at = None
+    for task in tasks:
+        task.status = "ready"
+        task.error_message = None
+        task.finished_at = None
+
+    case_timeline_service.append(
+        db,
+        case_id=case_id,
+        graph_run_id=run.id,
+        task_id=tasks[0].id,
+        event_type="human_resume",
+        title="Human input supplied: probe credential",
+        actor_type="human",
+        actor_id=str(principal.user_id),
+        idempotency_key=f"human-resume:{run.id}:{credential_id}",
+        payload={"task_ids": [item.id for item in tasks]},
+    )
+    security_audit_service.append(
+        db,
+        event_type="agent_graph.resume",
+        outcome="success",
+        actor_user_id=principal.user_id,
+        actor_session_id=principal.session_id,
+        target_type="agent_graph_run",
+        target_id=run.id,
+        details={"case_id": case_id, "task_ids": [item.id for item in tasks]},
+    )
+    db.commit()
+    db.refresh(run)
+    return CasePipelineResponse(**graph_service.view(run))
 
 
 @router.get("/{case_id}/graph-runs")
