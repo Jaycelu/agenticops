@@ -2,7 +2,7 @@
 
 > Network operations system for NetBox, ELK, Zabbix, multi-agent analysis, execution workflows, and operational memory.
 
-Current release: **v0.2.0**
+Current release: **v0.2.1**
 
 [简体中文 README](./README.md)
 
@@ -29,7 +29,22 @@ AgenticOps normalizes infrastructure signals into a single workflow:
 - Guarded read-only device probes, generic signed webhooks, durable ELK ingestion, and post-change verification
 - Source-oriented workspaces for assets, logs, Zabbix, tickets, and settings
 
-Case diagnosis now runs as a durable asynchronous graph. The Supervisor creates conditional tasks from evidence and budget state; strict Evidence Requests pass through Tool Registry, PolicyGuard and Probe Gateway; an independent Diagnostic Critic searches for counter-evidence; and the Worker recovers expired leases from checkpoints. The graph still stops after Safety Review in Observe-only mode and never autonomously performs a device change. See [Multi-Agent Diagnostic Architecture](./docs/MULTI_AGENT_DIAGNOSTIC_ARCHITECTURE.md) and [Migration 0011](./docs/MIGRATION_0011_MULTI_AGENT_GRAPH.md).
+Case diagnosis now runs as a durable asynchronous graph. The Supervisor creates conditional tasks from evidence and budget state; strict Evidence Requests pass through Tool Registry, PolicyGuard and Probe Gateway; an independent Diagnostic Critic searches for counter-evidence; and the Worker recovers expired leases with heartbeat renewal. The graph still stops after Safety Review in Observe-only mode and never autonomously performs a device change. See [Multi-Agent Diagnostic Architecture](./docs/MULTI_AGENT_DIAGNOSTIC_ARCHITECTURE.md) and [Migration 0011](./docs/MIGRATION_0011_MULTI_AGENT_GRAPH.md).
+
+### What changed in v0.2.1
+
+- **Unified frontend visual language**: Assets/Settings/Logs fully rewritten (67 gradients→0, 288 hardcoded hex→0), Events/Cases double style blocks merged, Tailwind removed, native system font stack.
+- **Auto-trigger diagnostic graph**: ELK aggregated events now automatically enqueue the graph, gated by severity threshold and site whitelist (`AGENT_AUTO_TRIGGER_ENABLED` / `AGENT_AUTO_TRIGGER_MIN_SEVERITY` / `AGENT_AUTO_TRIGGER_SITES`).
+- **Memory closed loop**: Memory reads filtered by case/site to prevent cross-case leakage; graph completion writes outcome memory.
+- **waiting_human resume API**: `POST /cases/{case_id}/graph/resume` accepts a credential ID and resumes the blocked run.
+- **Lease heartbeat**: Worker renews lease during task execution to prevent concurrent re-runs under multi-worker.
+- **Explicit LLM failure**: Removed `except Exception: return {}`; exceptions propagate to agent_runner which marks the run as `FAILED`.
+- **Dry-run execution mode**: `POST /plans/{id}/execute?dry_run=true` skips real mutations.
+- **Chinese status labels**: Shared `frontend/src/utils/statusLabels.ts` module, all case/event enums now display in Chinese.
+- **Compact controls**: Desktop buttons/inputs reduced from 44px to 32px (touch breakpoint keeps 44px).
+- **Dark theme**: `[data-theme='dark']` CSS variable overrides.
+- **Dashboard trend chart**: 24-hour event volume sparkline (zero-dependency Canvas).
+- **Full-chain e2e tests**: Coverage for approve→execute→verify→rollback.
 
 ### What changed in v0.2.0
 
@@ -92,7 +107,7 @@ Services:
 
 Keep `AUTOMATION_OBSERVE_ONLY=True` during initial deployment and the 14-day shadow period. Production also requires an HTTPS reverse proxy; Compose does not issue TLS certificates. See [DEPLOYMENT.md](./DEPLOYMENT.md) for the complete installation and upgrade procedure.
 
-For production, deploy a verified release tag. Before upgrading to v0.2.0, back up PostgreSQL and review [Migration 0011](./docs/MIGRATION_0011_MULTI_AGENT_GRAPH.md) and the [v0.2.0 release notes](./docs/RELEASE_NOTES_v0.2.0.md).
+For production, deploy a verified release tag. Before upgrading to v0.2.1, back up PostgreSQL and review [Migration 0011](./docs/MIGRATION_0011_MULTI_AGENT_GRAPH.md) and the [v0.2.0 release notes](./docs/RELEASE_NOTES_v0.2.0.md).
 
 ```bash
 docker compose down
@@ -154,9 +169,9 @@ All browser requests require the existing session, RBAC, and CSRF controls. The 
 - Agent-selected tools must be both `agent_selectable=true` and `read_only=true`.
 - Every tool call is policy-checked, persisted, and mapped to Evidence.
 - Generic high-risk tools remain backward compatible but are not Agent-selectable.
-- No real device change is performed by the v0.2.0 diagnostic graph.
+- No real device change is performed by the v0.2.1 diagnostic graph.
 
-Graph limits are controlled with `AGENT_GRAPH_LEASE_SECONDS`, the `AGENT_MAX_*` budget variables, and the `HYPOTHESIS_*` confirmation thresholds in the environment templates.
+Graph limits are controlled with `AGENT_GRAPH_LEASE_SECONDS`, the `AGENT_MAX_*` budget variables, `AGENT_AUTO_TRIGGER_*` auto-enqueue settings, and the `HYPOTHESIS_*` confirmation thresholds in the environment templates.
 
 ## Verification
 

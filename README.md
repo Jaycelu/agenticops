@@ -12,7 +12,7 @@ NetBox / ELK / Zabbix AgenticOps 运维系统
   <img src="https://img.shields.io/badge/Vue-3-42b883?logo=vue.js&logoColor=white" alt="Vue 3">
   <img src="https://img.shields.io/badge/FastAPI-0.104-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/PostgreSQL-14%2B-336791?logo=postgresql&logoColor=white" alt="PostgreSQL">
-  <img src="https://img.shields.io/badge/Release-v0.2.0-blue" alt="Release">
+  <img src="https://img.shields.io/badge/Release-v0.2.1-blue" alt="Release">
   <img src="https://img.shields.io/github/stars/Jaycelu/agenticops?style=social" alt="GitHub stars">
 </p>
 
@@ -46,13 +46,28 @@ AgenticOps 是面向网络运维场景的事件治理与执行闭环系统。系
 
 “可部署”不等于“已经生产认证”。首次上线必须保持 `AUTOMATION_OBSERVE_ONLY=true`，完成真实 SSO、设备、ELK、Zabbix、Webhook 联调以及至少 14 天 Shadow Mode 后，才能逐项开放设备变更能力。
 
-当前 Case 诊断采用持久化异步 Graph：Supervisor 根据证据和预算动态创建任务，Evidence Request 经 Tool Registry、PolicyGuard 和 Probe Gateway 自动闭环，独立 Critic 负责反证，Worker 可从租约和 Checkpoint 恢复。安全审查后仍在 Observe-only 停止，不会自动执行设备变更。详见 [多智能体诊断架构](./docs/MULTI_AGENT_DIAGNOSTIC_ARCHITECTURE.md) 与 [0011 迁移/回滚说明](./docs/MIGRATION_0011_MULTI_AGENT_GRAPH.md)。
+当前 Case 诊断采用持久化异步 Graph：Supervisor 根据证据和预算动态创建任务，Evidence Request 经 Tool Registry、PolicyGuard 和 Probe Gateway 自动闭环，独立 Critic 负责反证，Worker 具备租约心跳续期和过期恢复能力。安全审查后仍在 Observe-only 停止，不会自动执行设备变更。详见 [多智能体诊断架构](./docs/MULTI_AGENT_DIAGNOSTIC_ARCHITECTURE.md) 与 [0011 迁移/回滚说明](./docs/MIGRATION_0011_MULTI_AGENT_GRAPH.md)。
+
+### v0.2.1 重点变化
+
+- **前端视觉统一**：Assets/Settings/Logs 三页样式全量重写（67 渐变→0，288 硬编码 hex→0），Events/Cases 双 style 补丁块合并，移除 Tailwind 死重，字体改纯系统栈。
+- **感知→诊断自动触发**：ELK 聚合事件 intake 后，按 severity 等级和站点白名单自动入诊断图（`AGENT_AUTO_TRIGGER_ENABLED` / `AGENT_AUTO_TRIGGER_MIN_SEVERITY` / `AGENT_AUTO_TRIGGER_SITES`）。
+- **记忆闭环修复**：图读取记忆加 case/site 过滤防跨 Case 泄漏；图进入终态时自动写入 outcome 记忆。
+- **waiting_human 恢复**：`POST /cases/{case_id}/graph/resume` 补凭据后恢复被阻塞的诊断。
+- **租约续租**：Worker 在任务执行期间 asyncio 心跳续期，防止并发重跑。
+- **LLM 失败显式化**：删除 `except Exception: return {}`，异常上抛后由 agent_runner 统一标记为 `AgentRun.FAILED`。
+- **Duration 执行 dry-run 模式**：`POST /plans/{id}/execute?dry_run=true` 跳过真实 mutation。
+- **枚举中文化**：Case 状态、事件状态统一中文映射（`frontend/src/utils/statusLabels.ts`）。
+- **控件紧凑化**：桌面端按钮/输入框从 44px 压缩至 32px（触屏断点保留 44px）。
+- **暗色主题**：`[data-theme='dark']` CSS 变量覆盖层，令牌体系切换。
+- **Dashboard 趋势图**：24h 事件量趋势图（零依赖 Canvas 组件）。
+- **审批全链路 e2e 测试**：涵盖 approve→execute→verify→rollback 完整路径。
 
 ### v0.2.0 重点变化
 
 - `POST /api/cases/{case_id}/run-agents` 默认返回 `202 Accepted`，只表示持久化 Graph Job 已受理；诊断由 Worker 异步推进。
 - Case Supervisor 动态创建 Agent、Evidence、Critic、Policy 和 Human Gate 任务，不再依赖单次 HTTP 请求内的固定顺序调用。
-- Agent Task、Message、Tool Call、Budget、Checkpoint、Timeline 和 Hypothesis 均持久化，可审计、可轮询、可在 Worker 重启后恢复。
+- Agent Task、Message、Tool Call、Budget、Checkpoint、Timeline 和 Hypothesis 均持久化，可审计、可轮询、可在 Worker 重启后从租约恢复。
 - Agent 自主工具调用仅允许同时标记 `agent_selectable=true` 与 `read_only=true` 的目录工具，并始终经过 Tool Registry、PolicyGuard 和 Probe Gateway。
 - Case 详情页提供 Agent Timeline、Hypothesis Board、Budget Panel 和 Graph Run 状态；页面刷新后可从后端状态恢复。
 - OpenAI/httpx 依赖组合已固定；无 API Key 的测试不会创建真实外部客户端。
@@ -297,7 +312,10 @@ curl http://localhost:8000/health
 | `LLM_API_URL` / `LLM_API_KEY` / `LLM_MODEL_NAME` | 模型服务配置 |
 | `FRONTEND_URL` | CORS 前端地址 |
 | `AUTOMATION_OBSERVE_ONLY` | 安全开关，首次上线保持 `true`，阻止非只读自动化动作 |
-| `AGENT_GRAPH_LEASE_SECONDS` | Worker Graph Run 租约时长；过期租约可由健康 Worker 恢复 |
+| `AGENT_GRAPH_LEASE_SECONDS` | Worker Graph Run 租约时长；Worker 执行期间自动心跳续期 |
+| `AGENT_AUTO_TRIGGER_ENABLED` | 是否在 ingestion 建 Case 后自动入图诊断 |
+| `AGENT_AUTO_TRIGGER_MIN_SEVERITY` | 自动触发最低 severity 等级（`critical`/`major`/`minor`/`warning`/`info`） |
+| `AGENT_AUTO_TRIGGER_SITES` | 自动触发站点白名单（逗号分隔，空=全部） |
 | `AGENT_MAX_*` | 单 Case 的 Agent、LLM、工具、Probe、重规划、运行时间和目标设备预算 |
 | `HYPOTHESIS_*` | 根因确认阈值、证据有效期和高权重反证上限 |
 
